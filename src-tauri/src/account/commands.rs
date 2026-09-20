@@ -6,7 +6,7 @@ use crate::account::helpers::authlib_injector::info::{
 };
 use crate::account::helpers::authlib_injector::jar::check_authlib_jar;
 use crate::account::helpers::authlib_injector::{self};
-use crate::account::helpers::{microsoft, misc, offline, vustb, vustb_presence};
+use crate::account::helpers::{microsoft, misc, offline, skin_backup, vustb, vustb_presence};
 use crate::account::models::{
   AccountError, AccountInfo, AuthServer, DeviceAuthResponseInfo, Player, PlayerInfo, PlayerType,
   PresetRole, SkinModel, Texture, TextureType, VustbAccount, VustbCheckinResult, VustbFriend,
@@ -334,7 +334,17 @@ pub async fn retrieve_vustb_wardrobe(
   app: AppHandle,
   texture_type: Option<String>,
 ) -> USTBLResult<Vec<VustbTexture>> {
-  vustb::fetch_wardrobe(&app, texture_type).await
+  let include_local_skins = texture_type
+    .as_deref()
+    .is_none_or(|texture_type| texture_type.eq_ignore_ascii_case("skin"));
+  let mut wardrobe = vustb::fetch_wardrobe(&app, texture_type).await?;
+  if include_local_skins {
+    let mut local_backups = skin_backup::list_local_skin_backups()?;
+    local_backups.append(&mut wardrobe);
+    Ok(local_backups)
+  } else {
+    Ok(wardrobe)
+  }
 }
 
 #[tauri::command]
@@ -389,7 +399,24 @@ pub async fn apply_vustb_texture_to_player(
   } else {
     TextureType::Skin
   };
-  let model: SkinModel = texture.model.parse().unwrap_or_default();
+  let local_texture = texture
+    .local_backup_id
+    .as_deref()
+    .map(skin_backup::load_local_skin_backup)
+    .transpose()?;
+  let model = local_texture
+    .as_ref()
+    .map(|texture| texture.model.clone())
+    .unwrap_or_else(|| texture.model.parse().unwrap_or_default());
+
+  if texture_type == TextureType::Skin
+    && matches!(
+      player.player_type,
+      PlayerType::Offline | PlayerType::Microsoft
+    )
+  {
+    skin_backup::backup_current_skin(&player)?;
+  }
 
   match player.player_type {
     PlayerType::Offline => {}
@@ -408,12 +435,25 @@ pub async fn apply_vustb_texture_to_player(
       .await?;
     }
     PlayerType::Microsoft if texture_type == TextureType::Skin => {
-      microsoft::oauth::set_skin_from_url(&app, &player, &texture.url, model.clone()).await?;
+      if let Some(local_backup_id) = texture.local_backup_id.as_deref() {
+        microsoft::oauth::set_skin_from_bytes(
+          &app,
+          &player,
+          skin_backup::local_skin_backup_bytes(local_backup_id)?,
+          model.clone(),
+        )
+        .await?;
+      } else {
+        microsoft::oauth::set_skin_from_url(&app, &player, &texture.url, model.clone()).await?;
+      }
     }
     _ => return Err(AccountError::Invalid.into()),
   }
 
-  let image = misc::fetch_image(&app, texture.url).await?;
+  let image = match local_texture {
+    Some(texture) => texture.image,
+    None => misc::fetch_image(&app, texture.url).await?,
+  };
   replace_player_texture(
     &app,
     &player_id,
@@ -444,6 +484,14 @@ pub async fn clear_player_texture(
       .ok_or(AccountError::NotFound)?;
     player
   };
+  if texture_type == TextureType::Skin
+    && matches!(
+      player.player_type,
+      PlayerType::Offline | PlayerType::Microsoft
+    )
+  {
+    skin_backup::backup_current_skin(&player)?;
+  }
   match player.player_type {
     PlayerType::Offline => {}
     PlayerType::ThirdParty
@@ -739,13 +787,20 @@ pub fn update_player_skin_offline_preset(
   let account_binding = app.state::<Mutex<AccountInfo>>();
   let mut account_state = account_binding.lock()?;
 
+  let current_player = account_state
+    .players
+    .iter()
+    .find(|player| player.id == player_id)
+    .cloned()
+    .ok_or(AccountError::NotFound)?;
+  if current_player.player_type != PlayerType::Offline {
+    return Err(AccountError::Invalid.into());
+  }
+  skin_backup::backup_current_skin(&current_player)?;
+
   let player = account_state
     .get_player_by_id_mut(player_id.clone())
     .ok_or(AccountError::NotFound)?;
-
-  if player.player_type != PlayerType::Offline {
-    return Err(AccountError::Invalid.into());
-  }
 
   player.textures = offline::load_preset_skin(&app, preset_role)?;
   account_state.save()?;
@@ -773,13 +828,22 @@ pub fn update_player_skin_offline_local(
   let account_binding = app.state::<Mutex<AccountInfo>>();
   let mut account_state = account_binding.lock()?;
 
+  let current_player = account_state
+    .players
+    .iter()
+    .find(|player| player.id == player_id)
+    .cloned()
+    .ok_or(AccountError::NotFound)?;
+  if current_player.player_type != PlayerType::Offline {
+    return Err(AccountError::Invalid.into());
+  }
+  if texture_type == TextureType::Skin {
+    skin_backup::backup_current_skin(&current_player)?;
+  }
+
   let player = account_state
     .get_player_by_id_mut(player_id.clone())
     .ok_or(AccountError::NotFound)?;
-
-  if player.player_type != PlayerType::Offline {
-    return Err(AccountError::Invalid.into());
-  }
 
   // remove existing texture of the same type
   player

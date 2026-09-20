@@ -347,6 +347,45 @@ pub async fn set_skin_from_url(
   Ok(())
 }
 
+pub async fn set_skin_from_bytes(
+  app: &AppHandle,
+  player: &PlayerInfo,
+  skin: Vec<u8>,
+  model: SkinModel,
+) -> USTBLResult<()> {
+  let token = get_access_token(app, player).await?;
+  let client = app.state::<reqwest::Client>();
+  let file = reqwest::multipart::Part::bytes(skin)
+    .file_name("skin.png")
+    .mime_str("image/png")
+    .map_err(|_| AccountError::TextureError)?;
+  let form = reqwest::multipart::Form::new()
+    .text(
+      "variant",
+      if model == SkinModel::Slim {
+        "slim"
+      } else {
+        "classic"
+      },
+    )
+    .part("file", file);
+  let response = client
+    .post(format!("{PROFILE_ENDPOINT}/skins"))
+    .bearer_auth(token)
+    .multipart(form)
+    .send()
+    .await
+    .map_err(|_| AccountError::NetworkError)?;
+  if !response.status().is_success() {
+    log::error!(
+      "Minecraft Services local skin upload failed: status={}",
+      response.status()
+    );
+    return Err(AccountError::TextureError.into());
+  }
+  Ok(())
+}
+
 pub async fn clear_skin(app: &AppHandle, player: &PlayerInfo) -> USTBLResult<()> {
   let token = get_access_token(app, player).await?;
   let client = app.state::<reqwest::Client>();

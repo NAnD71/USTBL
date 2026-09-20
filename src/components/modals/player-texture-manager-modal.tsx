@@ -16,7 +16,7 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import SegmentedControl from "@/components/common/segmented";
 import SkinPreview from "@/components/skin-preview";
 import VskinTextureThumbnail from "@/components/vskin-texture-thumbnail";
@@ -47,6 +47,8 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   const [selected, setSelected] = useState<VustbTexture>();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [previewWidth, setPreviewWidth] = useState(0);
 
   const isVustb =
     player.playerType === PlayerType.ThirdParty &&
@@ -70,7 +72,11 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
     if (!isOpen || !supported) return;
     setIsLoading(true);
     const response = await AccountService.retrieveVustbWardrobe(type);
-    setItems(response.status === "success" ? response.data : []);
+    setItems(
+      response.status === "success"
+        ? response.data.filter((item) => !(isVustb && item.localBackup))
+        : []
+    );
     if (response.status !== "success") {
       toast({
         title: response.details || response.message,
@@ -79,11 +85,26 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
     }
     setSelected(undefined);
     setIsLoading(false);
-  }, [isOpen, supported, toast, type]);
+  }, [isOpen, isVustb, supported, toast, type]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const container = previewContainerRef.current;
+    if (!container) return;
+    const updateWidth = () => {
+      setPreviewWidth(
+        Math.min(430, Math.floor(container.getBoundingClientRect().width))
+      );
+    };
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(container);
+    return () => observer.disconnect();
+  }, [isOpen]);
 
   const preview = useMemo(() => {
     if (selected?.type === "skin") {
@@ -168,19 +189,28 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
               }}
               gap={5}
             >
-              <Box overflow="hidden" rounded="lg">
-                <SkinPreview
-                  skinSrc={preview.skin}
-                  capeSrc={preview.cape}
-                  skinModel={
-                    preview.model === SkinModel.Slim
-                      ? SkinModel.Slim
-                      : SkinModel.Default
-                  }
-                  width={430}
-                  height={360}
-                  showControlBar
-                />
+              <Box
+                ref={previewContainerRef}
+                overflow="hidden"
+                rounded="lg"
+                width="100%"
+                display="flex"
+                justifyContent="center"
+              >
+                {previewWidth > 0 && (
+                  <SkinPreview
+                    skinSrc={preview.skin}
+                    capeSrc={preview.cape}
+                    skinModel={
+                      preview.model === SkinModel.Slim
+                        ? SkinModel.Slim
+                        : SkinModel.Default
+                    }
+                    width={previewWidth}
+                    height={360}
+                    showControlBar
+                  />
+                )}
               </Box>
               <VStack align="stretch" minH={0}>
                 <SegmentedControl
@@ -222,9 +252,16 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                         onClick={() => setSelected(item)}
                       >
                         <VskinTextureThumbnail texture={item} aspectRatio={1} />
-                        <Text p={2} fontSize="xs" noOfLines={1}>
-                          {item.name || "未命名"}
-                        </Text>
+                        <HStack p={2} spacing={1} minW={0}>
+                          <Text fontSize="xs" noOfLines={1} minW={0}>
+                            {item.name || "未命名"}
+                          </Text>
+                          {item.localBackup && (
+                            <Badge colorScheme="orange" flexShrink={0}>
+                              备份
+                            </Badge>
+                          )}
+                        </HStack>
                       </Box>
                     ))}
                     {items.length === 0 && (

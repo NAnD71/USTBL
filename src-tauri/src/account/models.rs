@@ -332,6 +332,10 @@ pub struct VustbTexture {
   pub url: String,
   #[serde(default)]
   pub collected: bool,
+  #[serde(default)]
+  pub local_backup: bool,
+  #[serde(default)]
+  pub local_backup_id: Option<String>,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Deserialize, Serialize)]
