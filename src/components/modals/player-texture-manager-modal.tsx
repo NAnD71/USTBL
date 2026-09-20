@@ -52,6 +52,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   const [wardrobePage, setWardrobePage] = useState(1);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewWidth, setPreviewWidth] = useState(430);
+  const [previewHeight, setPreviewHeight] = useState(360);
 
   const isVustb =
     player.playerType === PlayerType.ThirdParty &&
@@ -109,6 +110,16 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
     (wardrobePage - 1) * WARDROBE_PAGE_SIZE,
     wardrobePage * WARDROBE_PAGE_SIZE
   );
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const updateHeight = () => {
+      setPreviewHeight(Math.min(360, Math.max(240, window.innerHeight - 280)));
+    };
+    updateHeight();
+    window.addEventListener("resize", updateHeight);
+    return () => window.removeEventListener("resize", updateHeight);
+  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -192,10 +203,10 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="4xl" {...modalProps}>
       <ModalOverlay />
-      <ModalContent>
+      <ModalContent maxH="calc(100vh - 2rem)">
         <ModalHeader>更换 {player.name} 的皮肤与披风</ModalHeader>
         <ModalCloseButton />
-        <ModalBody>
+        <ModalBody overflowY="auto" minH={0}>
           {!supported ? (
             <Text py={16} textAlign="center" color="gray.500">
               当前第三方认证服务器不支持启动器内更换材质
@@ -203,10 +214,10 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
           ) : (
             <Grid
               templateColumns={{
-                base: "1fr",
-                lg: "minmax(300px, 1fr) minmax(280px, 1fr)",
+                base: "minmax(0, 1fr)",
+                md: "minmax(300px, 1fr) minmax(280px, 1fr)",
               }}
-              gap={5}
+              gap={{ base: 3, md: 5 }}
             >
               <Box
                 ref={previewContainerRef}
@@ -225,7 +236,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                       : SkinModel.Default
                   }
                   width={previewWidth}
-                  height={360}
+                  height={previewHeight}
                   showControlBar
                   isCapeVisible={isCapeVisible}
                   onCapeVisibilityChange={setIsCapeVisible}
