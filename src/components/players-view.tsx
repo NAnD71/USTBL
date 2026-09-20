@@ -164,7 +164,7 @@ const PlayersView: React.FC<PlayersViewProps> = ({
                             <PlayerMenu
                               player={player}
                               showSkinOperation={false}
-                              showTextureManager={isExpanded}
+                              showTextureManager
                             />
                           </Box>
                         </Box>

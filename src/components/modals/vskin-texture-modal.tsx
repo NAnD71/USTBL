@@ -37,7 +37,7 @@ export const canApplyVskinTexture = (
 interface VskinTextureModalProps extends Omit<ModalProps, "children"> {
   texture?: VustbTexture;
   player?: Player;
-  onCollected?: () => void;
+  onCollected?: (hash: string) => void;
 }
 
 const VskinTextureModal: React.FC<VskinTextureModalProps> = ({
@@ -59,8 +59,7 @@ const VskinTextureModal: React.FC<VskinTextureModalProps> = ({
     setIsCollecting(true);
     const response = await AccountService.collectVustbTexture(texture.hash);
     if (response.status === "success") {
-      texture.collected = true;
-      onCollected?.();
+      onCollected?.(texture.hash);
       toast({ title: "已收藏到衣柜", status: "success" });
     } else {
       toast({
@@ -84,6 +83,7 @@ const VskinTextureModal: React.FC<VskinTextureModalProps> = ({
         setIsApplying(false);
         return;
       }
+      onCollected?.(texture.hash);
     }
     const response = await AccountService.applyVustbTextureToPlayer(
       player.id,

@@ -63,6 +63,17 @@ const VskinLibraryView: React.FC<VskinLibraryViewProps> = ({
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
+  const handleCollected = useCallback((hash: string) => {
+    setItems((current) =>
+      current.map((item) =>
+        item.hash === hash ? { ...item, collected: true } : item
+      )
+    );
+    setSelectedTexture((current) =>
+      current?.hash === hash ? { ...current, collected: true } : current
+    );
+  }, []);
+
   return (
     <VStack align="stretch" spacing={4} h="100%" minH={0}>
       <HStack justify="space-between">
@@ -162,7 +173,7 @@ const VskinLibraryView: React.FC<VskinLibraryViewProps> = ({
         player={selectedPlayer}
         isOpen={modal.isOpen}
         onClose={modal.onClose}
-        onCollected={load}
+        onCollected={handleCollected}
       />
     </VStack>
   );

@@ -237,7 +237,7 @@ const AccountsPage = () => {
                     <HStack spacing={2} overflow="hidden">
                       <Icon as={LuShirt} />
                       <Text fontSize="sm" className="ellipsis-text">
-                        vSkin 皮肤库
+                        皮肤库
                       </Text>
                     </HStack>
                   </SelectableButton>
@@ -272,7 +272,7 @@ const AccountsPage = () => {
                 height="100%"
                 title={
                   playerTypeList.find((item) => item.key === selectedPlayerType)
-                    ?.label || (isLibraryMode ? "vSkin 皮肤库" : undefined)
+                    ?.label || (isLibraryMode ? "皮肤库" : undefined)
                 }
                 description={
                   !isLibraryMode &&
