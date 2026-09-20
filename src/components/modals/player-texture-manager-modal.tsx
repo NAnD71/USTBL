@@ -203,7 +203,14 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   return (
     <Modal isOpen={isOpen} onClose={onClose} size="4xl" {...modalProps}>
       <ModalOverlay />
-      <ModalContent maxH="calc(100vh - 2rem)">
+      <ModalContent
+        width={{
+          base: "calc(100vw - 2rem)",
+          md: "min(900px, calc(100vw - 4rem))",
+        }}
+        maxW="900px"
+        maxH="calc(100vh - 2rem)"
+      >
         <ModalHeader>更换 {player.name} 的皮肤与披风</ModalHeader>
         <ModalCloseButton />
         <ModalBody overflowY="auto" minH={0}>
@@ -242,7 +249,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                   onCapeVisibilityChange={setIsCapeVisible}
                 />
               </Box>
-              <VStack align="stretch" minH={0}>
+              <VStack align="stretch" minH={0} h="430px">
                 <SegmentedControl
                   size="sm"
                   selected={type}
@@ -267,8 +274,8 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                   <Grid
                     templateColumns="repeat(3, minmax(0, 1fr))"
                     gap={2}
-                    maxH="330px"
-                    overflowY="auto"
+                    h="330px"
+                    overflow="hidden"
                   >
                     {visibleItems.map((item) => (
                       <Box
