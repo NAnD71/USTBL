@@ -29,6 +29,7 @@ import { AccountService } from "@/services/account";
 import { base64ImgSrc } from "@/utils/string";
 
 const USTB_AUTH_SERVER_URL = "https://www.ustb.world/skinapi/";
+const WARDROBE_PAGE_SIZE = 6;
 
 interface PlayerTextureManagerModalProps extends Omit<ModalProps, "children"> {
   player: Player;
@@ -48,6 +49,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isCapeVisible, setIsCapeVisible] = useState(true);
+  const [wardrobePage, setWardrobePage] = useState(1);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewWidth, setPreviewWidth] = useState(430);
 
@@ -85,6 +87,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
       });
     }
     setSelected(undefined);
+    setWardrobePage(1);
     setIsLoading(false);
   }, [isOpen, isVustb, supported, toast, type]);
 
@@ -97,6 +100,15 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
       setIsCapeVisible(true);
     }
   }, [isOpen, player.id]);
+
+  const wardrobePageCount = Math.max(
+    1,
+    Math.ceil(items.length / WARDROBE_PAGE_SIZE)
+  );
+  const visibleItems = items.slice(
+    (wardrobePage - 1) * WARDROBE_PAGE_SIZE,
+    wardrobePage * WARDROBE_PAGE_SIZE
+  );
 
   useEffect(() => {
     if (!isOpen) return;
@@ -227,7 +239,10 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                     { value: "skin", label: "皮肤" },
                     { value: "cape", label: "披风" },
                   ]}
-                  onSelectItem={(value) => setType(value as "skin" | "cape")}
+                  onSelectItem={(value) => {
+                    setType(value as "skin" | "cape");
+                    setWardrobePage(1);
+                  }}
                 />
                 {!typeSupported ? (
                   <Text py={10} textAlign="center" color="gray.500">
@@ -244,7 +259,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                     maxH="330px"
                     overflowY="auto"
                   >
-                    {items.map((item) => (
+                    {visibleItems.map((item) => (
                       <Box
                         key={item.hash}
                         borderWidth="2px"
@@ -282,6 +297,29 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                       </Text>
                     )}
                   </Grid>
+                )}
+                {!isLoading && wardrobePageCount > 1 && (
+                  <HStack justify="center" spacing={2}>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      isDisabled={wardrobePage <= 1}
+                      onClick={() => setWardrobePage((page) => page - 1)}
+                    >
+                      上一页
+                    </Button>
+                    <Text fontSize="xs" color="gray.500">
+                      {wardrobePage} / {wardrobePageCount}
+                    </Text>
+                    <Button
+                      size="xs"
+                      variant="ghost"
+                      isDisabled={wardrobePage >= wardrobePageCount}
+                      onClick={() => setWardrobePage((page) => page + 1)}
+                    >
+                      下一页
+                    </Button>
+                  </HStack>
                 )}
                 <HStack mt="auto">
                   <Badge>{items.length} 个可选材质</Badge>
