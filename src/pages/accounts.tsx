@@ -367,7 +367,12 @@ const AccountsPage = () => {
                   ) : undefined
                 }
               >
-                <Box overflow="hidden" flexGrow={1} minH={0} rounded="md">
+                <Box
+                  overflowY={isLibraryMode ? "hidden" : "auto"}
+                  flexGrow={1}
+                  minH={0}
+                  rounded="md"
+                >
                   {isLibraryMode ? (
                     <VskinLibraryView selectedPlayer={selectedPlayer} />
                   ) : (
