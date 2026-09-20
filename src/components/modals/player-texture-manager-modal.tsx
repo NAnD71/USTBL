@@ -48,7 +48,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const previewContainerRef = useRef<HTMLDivElement>(null);
-  const [previewWidth, setPreviewWidth] = useState(0);
+  const [previewWidth, setPreviewWidth] = useState(430);
 
   const isVustb =
     player.playerType === PlayerType.ThirdParty &&
@@ -197,20 +197,18 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                 display="flex"
                 justifyContent="center"
               >
-                {previewWidth > 0 && (
-                  <SkinPreview
-                    skinSrc={preview.skin}
-                    capeSrc={preview.cape}
-                    skinModel={
-                      preview.model === SkinModel.Slim
-                        ? SkinModel.Slim
-                        : SkinModel.Default
-                    }
-                    width={previewWidth}
-                    height={360}
-                    showControlBar
-                  />
-                )}
+                <SkinPreview
+                  skinSrc={preview.skin}
+                  capeSrc={preview.cape}
+                  skinModel={
+                    preview.model === SkinModel.Slim
+                      ? SkinModel.Slim
+                      : SkinModel.Default
+                  }
+                  width={previewWidth}
+                  height={360}
+                  showControlBar
+                />
               </Box>
               <VStack align="stretch" minH={0}>
                 <SegmentedControl

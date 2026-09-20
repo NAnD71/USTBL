@@ -17,6 +17,7 @@ use crate::launcher_config::models::LauncherConfig;
 use crate::storage::Storage;
 use crate::utils::fs::get_app_resource_filepath;
 use crate::utils::web::normalize_url;
+use std::collections::HashSet;
 use std::path::Path;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager};
@@ -339,7 +340,11 @@ pub async fn retrieve_vustb_wardrobe(
     .is_none_or(|texture_type| texture_type.eq_ignore_ascii_case("skin"));
   let mut wardrobe = vustb::fetch_wardrobe(&app, texture_type).await?;
   if include_local_skins {
-    let mut local_backups = skin_backup::list_local_skin_backups()?;
+    let cloud_hashes = wardrobe
+      .iter()
+      .map(|texture| texture.hash.clone())
+      .collect::<HashSet<_>>();
+    let mut local_backups = skin_backup::list_local_skin_backups(&cloud_hashes)?;
     local_backups.append(&mut wardrobe);
     Ok(local_backups)
   } else {
@@ -415,7 +420,16 @@ pub async fn apply_vustb_texture_to_player(
       PlayerType::Offline | PlayerType::Microsoft
     )
   {
-    skin_backup::backup_current_skin(&player)?;
+    let cloud_hashes = vustb::fetch_wardrobe(&app, Some("skin".to_string()))
+      .await
+      .map(|textures| {
+        textures
+          .into_iter()
+          .map(|texture| texture.hash)
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default();
+    skin_backup::backup_current_skin(&player, &cloud_hashes)?;
   }
 
   match player.player_type {
@@ -463,6 +477,7 @@ pub async fn apply_vustb_texture_to_player(
       image,
       model,
       preset: None,
+      source_hash: (!texture.local_backup).then_some(texture.hash),
     }),
   )
 }
@@ -490,7 +505,16 @@ pub async fn clear_player_texture(
       PlayerType::Offline | PlayerType::Microsoft
     )
   {
-    skin_backup::backup_current_skin(&player)?;
+    let cloud_hashes = vustb::fetch_wardrobe(&app, Some("skin".to_string()))
+      .await
+      .map(|textures| {
+        textures
+          .into_iter()
+          .map(|texture| texture.hash)
+          .collect::<Vec<_>>()
+      })
+      .unwrap_or_default();
+    skin_backup::backup_current_skin(&player, &cloud_hashes)?;
   }
   match player.player_type {
     PlayerType::Offline => {}
@@ -796,7 +820,7 @@ pub fn update_player_skin_offline_preset(
   if current_player.player_type != PlayerType::Offline {
     return Err(AccountError::Invalid.into());
   }
-  skin_backup::backup_current_skin(&current_player)?;
+  skin_backup::backup_current_skin(&current_player, &[])?;
 
   let player = account_state
     .get_player_by_id_mut(player_id.clone())
@@ -838,7 +862,7 @@ pub fn update_player_skin_offline_local(
     return Err(AccountError::Invalid.into());
   }
   if texture_type == TextureType::Skin {
-    skin_backup::backup_current_skin(&current_player)?;
+    skin_backup::backup_current_skin(&current_player, &[])?;
   }
 
   let player = account_state
@@ -856,6 +880,7 @@ pub fn update_player_skin_offline_local(
     image: texture_img.into(),
     model: skin_model.clone(),
     preset: None,
+    source_hash: None,
   });
 
   account_state.save()?;
