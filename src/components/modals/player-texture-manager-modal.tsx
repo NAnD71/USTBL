@@ -47,6 +47,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   const [selected, setSelected] = useState<VustbTexture>();
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isCapeVisible, setIsCapeVisible] = useState(true);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [previewWidth, setPreviewWidth] = useState(430);
 
@@ -90,6 +91,12 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setIsCapeVisible(true);
+    }
+  }, [isOpen, player.id]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -208,6 +215,8 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
                   width={previewWidth}
                   height={360}
                   showControlBar
+                  isCapeVisible={isCapeVisible}
+                  onCapeVisibilityChange={setIsCapeVisible}
                 />
               </Box>
               <VStack align="stretch" minH={0}>
