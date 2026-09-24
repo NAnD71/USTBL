@@ -21,6 +21,7 @@ import { PlayerType, SkinModel } from "@/enums/account";
 import { Player } from "@/models/account";
 import { VustbTexture } from "@/models/vustb";
 import { AccountService } from "@/services/account";
+import { getVustbErrorNotification } from "@/utils/vustb-auth";
 
 const USTB_AUTH_SERVER_URL = "https://www.ustb.world/skinapi/";
 
@@ -62,10 +63,7 @@ const VskinTextureModal: React.FC<VskinTextureModalProps> = ({
       onCollected?.(texture.hash);
       toast({ title: "已收藏到衣柜", status: "success" });
     } else {
-      toast({
-        title: response.details || response.message,
-        status: "error",
-      });
+      toast(getVustbErrorNotification(response));
     }
     setIsCollecting(false);
   };
@@ -76,10 +74,7 @@ const VskinTextureModal: React.FC<VskinTextureModalProps> = ({
     if (!texture.collected) {
       const collected = await AccountService.collectVustbTexture(texture.hash);
       if (collected.status !== "success") {
-        toast({
-          title: collected.details || collected.message,
-          status: "error",
-        });
+        toast(getVustbErrorNotification(collected));
         setIsApplying(false);
         return;
       }
@@ -94,10 +89,7 @@ const VskinTextureModal: React.FC<VskinTextureModalProps> = ({
       toast({ title: `已应用到 ${player.name}`, status: "success" });
       onClose();
     } else {
-      toast({
-        title: response.details || response.message,
-        status: "error",
-      });
+      toast(getVustbErrorNotification(response));
     }
     setIsApplying(false);
   };

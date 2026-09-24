@@ -2,6 +2,7 @@ import { t } from "i18next";
 import { InvokeResponse } from "@/models/response";
 import { isDev } from "@/utils/env";
 import { logger } from "@/utils/logging";
+import { classifyVustbError } from "@/utils/vustb-auth";
 
 export function responseHandler(serviceDomain: string): MethodDecorator {
   return function (
@@ -48,7 +49,12 @@ export function responseHandler(serviceDomain: string): MethodDecorator {
           `Invoke ${String(propertyKey)} failed: ${message} - ${details}`
         );
 
-        return { status: "error", message, details, raw_error: error };
+        return {
+          status: "error",
+          message,
+          details,
+          raw_error: classifyVustbError(error),
+        };
       }
     };
 

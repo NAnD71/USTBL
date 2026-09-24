@@ -17,6 +17,7 @@ import { useToast } from "@/contexts/toast";
 import { Player } from "@/models/account";
 import { VustbTexture } from "@/models/vustb";
 import { AccountService } from "@/services/account";
+import { getVustbErrorNotification } from "@/utils/vustb-auth";
 
 const PAGE_SIZE = 20;
 
@@ -49,10 +50,7 @@ const VskinLibraryView: React.FC<VskinLibraryViewProps> = ({
     } else {
       setItems([]);
       setTotal(0);
-      toast({
-        title: response.details || response.message,
-        status: "error",
-      });
+      toast(getVustbErrorNotification(response));
     }
     setIsLoading(false);
   }, [filter, page, toast]);

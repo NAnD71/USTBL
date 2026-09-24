@@ -2021,6 +2021,10 @@
       }
     },
     "account": {
+      "authorizationOutdated": {
+        "title": "Authorization update required",
+        "description": "Please sign in to your Pixel USTB account again and retry."
+      },
       "retrieveVustbFriends": {
         "success": "Friend list updated",
         "error": {
