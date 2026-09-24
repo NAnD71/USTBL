@@ -2010,6 +2010,10 @@
       }
     },
     "account": {
+      "authorizationOutdated": {
+        "title": "認証の更新が必要です",
+        "description": "Pixel USTB アカウントに再ログインしてから再試行してください。"
+      },
       "retrieveVustbFriends": {
         "success": "フレンド一覧を更新しました",
         "error": {

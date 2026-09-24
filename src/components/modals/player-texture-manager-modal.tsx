@@ -32,6 +32,7 @@ import { AccountService } from "@/services/account";
 import { OutfitDraft, outfitPreview } from "@/utils/outfit-draft";
 import { PlayerCreationSource } from "@/utils/player-creation";
 import { base64ImgSrc } from "@/utils/string";
+import { getVustbErrorMessage } from "@/utils/vustb-auth";
 
 const USTB_AUTH_SERVER_URL = "https://www.ustb.world/skinapi/";
 const WARDROBE_PAGE_SIZE = 6;
@@ -123,7 +124,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
           response.data.filter((item) => !(isVustb && item.localBackup))
         );
       } else {
-        setError(response.details || response.message);
+        setError(getVustbErrorMessage(response));
       }
       setIsLoading(false);
     });
@@ -208,7 +209,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
           Object.values(draft).filter((item): item is VustbTexture => !!item)
         );
         if (response.status !== "success") {
-          setError(response.details || response.message);
+          setError(getVustbErrorMessage(response));
           return;
         }
         getPlayerList(true);
@@ -221,7 +222,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
           draft.cape?.hash
         );
         if (response.status !== "success") {
-          setError(response.details || response.message);
+          setError(getVustbErrorMessage(response));
           return;
         }
         // Do not confuse a successful paid creation with a subsequent sync failure.
@@ -248,7 +249,7 @@ const PlayerTextureManagerModal: React.FC<PlayerTextureManagerModalProps> = ({
           draft.cape === null
         );
         if (response.status !== "success") {
-          setError(response.details || response.message);
+          setError(getVustbErrorMessage(response));
           return;
         }
         getPlayerList(true);

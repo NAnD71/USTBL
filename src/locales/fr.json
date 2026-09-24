@@ -2010,6 +2010,10 @@
       }
     },
     "account": {
+      "authorizationOutdated": {
+        "title": "Mise à jour de l’autorisation requise",
+        "description": "Reconnectez-vous à votre compte Pixel USTB, puis réessayez."
+      },
       "retrieveVustbFriends": {
         "success": "Liste d’amis actualisée",
         "error": {

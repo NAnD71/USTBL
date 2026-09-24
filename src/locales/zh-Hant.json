@@ -2010,6 +2010,10 @@
       }
     },
     "account": {
+      "authorizationOutdated": {
+        "title": "需要更新授權",
+        "description": "請重新登入像素北科帳戶後重試。"
+      },
       "retrieveVustbFriends": {
         "success": "好友清單已更新",
         "error": {
