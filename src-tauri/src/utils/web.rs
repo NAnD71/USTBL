@@ -368,7 +368,9 @@ mod tests {
         loop {
           let mut line = String::new();
           reader.read_line(&mut line).unwrap();
-          if line == "\r\n" { break; }
+          if line == "\r\n" {
+            break;
+          }
         }
         write!(stream, "HTTP/1.1 200 OK\r\nContent-Encoding: gzip\r\nContent-Length: {}\r\nConnection: close\r\n\r\n", wire.len()).unwrap();
         stream.write_all(&wire).unwrap();
@@ -381,7 +383,9 @@ mod tests {
     let shared = shared_builder(ClientBuilder::new().no_proxy()).build().unwrap();
     for range in [false, true] {
       let mut request = shared.get(&url);
-      if range { request = request.header(reqwest::header::RANGE, "bytes=0-20"); }
+      if range {
+        request = request.header(reqwest::header::RANGE, "bytes=0-20");
+      }
       let response = request.send().await.unwrap();
       assert_eq!(response.content_length(), Some(compressed.len() as u64));
       assert_eq!(response.bytes().await.unwrap().as_ref(), compressed.as_slice());

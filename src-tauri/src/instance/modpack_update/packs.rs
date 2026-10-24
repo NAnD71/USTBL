@@ -221,7 +221,9 @@ impl PackSession {
     wanted.dedup();
     let mut state = self.state.lock().await;
     if state.located.is_some()
-      && wanted.iter().all(|sha1| state.wanted.binary_search(sha1).is_ok())
+      && wanted
+        .iter()
+        .all(|sha1| state.wanted.binary_search(sha1).is_ok())
     {
       return Ok(());
     }
@@ -229,7 +231,9 @@ impl PackSession {
     state.located = Some(self.plan(&wanted).await?);
     log::info!(
       "modpack pack locate request: version={}, sha1s={}, elapsed_ms={}",
-      self.version_id, wanted.len(), started.elapsed().as_millis()
+      self.version_id,
+      wanted.len(),
+      started.elapsed().as_millis()
     );
     state.wanted = wanted;
     state.generation += 1;

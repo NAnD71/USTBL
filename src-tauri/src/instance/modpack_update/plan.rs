@@ -1080,26 +1080,48 @@ mod tests {
     ]);
     let baseline = baseline(&[]);
     let mut remote = remote_with_rules(
-      &[("config/a.toml", "value = 2\n"), ("config/once.toml", "keep = 2\n"), ("mods/new.jar", "jar")],
+      &[
+        ("config/a.toml", "value = 2\n"),
+        ("config/once.toml", "keep = 2\n"),
+        ("mods/new.jar", "jar"),
+      ],
       vec![
         rule("cache", RuleKind::Dir, RuleState::Delete),
         rule("ignored", RuleKind::Dir, RuleState::Ignore),
       ],
     );
-    remote.files.iter_mut().find(|file| file.path == "config/once.toml").unwrap().once = true;
+    remote
+      .files
+      .iter_mut()
+      .find(|file| file.path == "config/once.toml")
+      .unwrap()
+      .once = true;
     let compared = compare(&root, &baseline, &remote).await.unwrap();
     let prepared = finish(compared, &root, &remote, &BTreeMap::new()).unwrap();
-    assert!(prepared.diff.conflicts.iter().all(|conflict| {
-      conflict.baseline.is_none() && conflict.hunks.is_empty()
-    }));
-    let choices = prepared.diff.conflicts.iter().map(|conflict| {
-      (conflict.path.clone(), ConflictChoice::TakeRemote)
-    }).collect();
+    assert!(prepared
+      .diff
+      .conflicts
+      .iter()
+      .all(|conflict| conflict.baseline.is_none() && conflict.hunks.is_empty()));
+    let choices = prepared
+      .diff
+      .conflicts
+      .iter()
+      .map(|conflict| (conflict.path.clone(), ConflictChoice::TakeRemote))
+      .collect();
     let operations = resolve(&prepared, &choices);
-    assert!(operations.iter().any(|op| op.path == "config/a.toml" && op.write == Some(key("value = 2\n"))));
-    assert!(operations.iter().any(|op| op.path == "mods/new.jar" && op.write.is_some()));
-    assert!(operations.iter().any(|op| op.path == "cache/old" && op.write.is_none()));
-    assert!(!operations.iter().any(|op| op.path == "config/once.toml" || op.path == "ignored/local"));
+    assert!(operations
+      .iter()
+      .any(|op| op.path == "config/a.toml" && op.write == Some(key("value = 2\n"))));
+    assert!(operations
+      .iter()
+      .any(|op| op.path == "mods/new.jar" && op.write.is_some()));
+    assert!(operations
+      .iter()
+      .any(|op| op.path == "cache/old" && op.write.is_none()));
+    assert!(!operations
+      .iter()
+      .any(|op| op.path == "config/once.toml" || op.path == "ignored/local"));
     let _ = fs::remove_dir_all(root);
   }
 
