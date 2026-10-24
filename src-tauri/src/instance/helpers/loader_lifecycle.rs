@@ -1,10 +1,8 @@
-use std::future::Future;
-
 use crate::error::USTBLResult;
 use crate::instance::models::misc::{Instance, InstanceError, ModLoaderStatus};
 
 /// Scans publish a whole instance map. Keep their read/modify/save/publish cycle
-/// together with processor completion, or a stale scan can undo Installing.
+/// serialized with loader claims and final state publication, but not processors.
 pub(crate) struct LoaderLifecycle(tokio::sync::Mutex<()>);
 
 impl LoaderLifecycle {
@@ -12,7 +10,7 @@ impl LoaderLifecycle {
     Self(tokio::sync::Mutex::const_new(()))
   }
 
-  pub async fn run<T>(&self, work: impl Future<Output = T>) -> T {
+  pub async fn run<T>(&self, work: impl std::future::Future<Output = T>) -> T {
     let _guard = self.0.lock().await;
     work.await
   }
@@ -59,17 +57,10 @@ pub(crate) struct InstallSteps {
   pub optifine: bool,
 }
 
-/// Called under LOADER_LIFECYCLE, with freshly loaded on-disk state. A duplicate
-/// callback sees Installed, never a second processor run. Failed work stays
-/// failed until the existing refresh/re-download path retries it.
-pub(crate) async fn finish_install_once<F, Fut>(
-  instance: &mut Instance,
-  process: F,
-) -> USTBLResult<()>
-where
-  F: FnOnce(Instance, InstallSteps) -> Fut,
-  Fut: Future<Output = USTBLResult<()>>,
-{
+/// Claim processor work while holding LOADER_LIFECYCLE. The Installing marker is
+/// persisted before the lock is released, so refreshes preserve it and duplicate
+/// callbacks cannot start another processor run.
+pub(crate) async fn claim_install(instance: &mut Instance) -> USTBLResult<Option<InstallSteps>> {
   let pending = |status: &ModLoaderStatus| -> USTBLResult<bool> {
     match status {
       ModLoaderStatus::Installed => Ok(false),
@@ -88,11 +79,20 @@ where
       .unwrap_or(false),
   };
   if !steps.loader && !steps.optifine {
-    return Ok(());
+    return Ok(None);
   }
   set_install_status(instance, steps, ModLoaderStatus::Installing);
   instance.save_json_cfg().await?;
-  let result = process(instance.clone(), steps).await;
+  Ok(Some(steps))
+}
+
+/// Persist the processor result while holding LOADER_LIFECYCLE. The processor
+/// itself deliberately runs outside the lock because it may take minutes.
+pub(crate) async fn complete_install(
+  instance: &mut Instance,
+  steps: InstallSteps,
+  result: USTBLResult<()>,
+) -> USTBLResult<()> {
   set_install_status(
     instance,
     steps,
@@ -208,30 +208,36 @@ mod tests {
     let fixture = Fixture::new(ModLoaderStatus::Downloading, false).await;
     let lifecycle = LoaderLifecycle::new();
     let runs = &AtomicUsize::new(0);
-    let finish = || {
-      lifecycle.run(async {
-        let mut instance = fixture.0.load_json_cfg().await.unwrap();
-        finish_install_once(&mut instance, |instance, steps| async move {
-          assert!(steps.loader);
-          assert_eq!(
-            instance.load_json_cfg().await.unwrap().mod_loader.status,
-            ModLoaderStatus::Installing
-          );
-          runs.fetch_add(1, Ordering::SeqCst);
-          tokio::task::yield_now().await;
-          Ok(())
-        })
-        .await
-        .unwrap();
-      })
-    };
+    let mut instance = fixture.0.load_json_cfg().await.unwrap();
+    let steps = lifecycle
+      .run(async { claim_install(&mut instance).await.unwrap().unwrap() })
+      .await;
+    assert!(steps.loader);
+    assert_eq!(instance.mod_loader.status, ModLoaderStatus::Installing);
     let refresh = lifecycle.run(async {
       let mut instance = fixture.0.load_json_cfg().await.unwrap();
       assert!(!claim_download(&mut instance, false).await.unwrap());
-      instance.save_json_cfg().await.unwrap();
     });
-    tokio::join!(finish(), refresh, finish());
-    finish().await;
+    let processor = async {
+      runs.fetch_add(1, Ordering::SeqCst);
+      tokio::time::sleep(std::time::Duration::from_millis(20)).await;
+      Ok(())
+    };
+    let ((), processor_result) = tokio::join!(refresh, processor);
+    lifecycle
+      .run(async {
+        complete_install(&mut instance, steps, processor_result)
+          .await
+          .unwrap();
+      })
+      .await;
+    let duplicate = lifecycle
+      .run(async {
+        let mut duplicate = fixture.0.load_json_cfg().await.unwrap();
+        claim_install(&mut duplicate).await
+      })
+      .await;
+    assert!(duplicate.unwrap().is_none());
     assert_eq!(runs.load(Ordering::SeqCst), 1);
     assert_eq!(
       fixture.0.load_json_cfg().await.unwrap().mod_loader.status,
@@ -245,7 +251,7 @@ mod tests {
     let mut instance = fixture.0.clone();
     let runs = &AtomicUsize::new(0);
     for _ in 0..2 {
-      finish_install_once(&mut instance, |_, steps| async move {
+      if let Some(steps) = claim_install(&mut instance).await.unwrap() {
         assert_eq!(
           steps,
           InstallSteps {
@@ -254,10 +260,10 @@ mod tests {
           }
         );
         runs.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-      })
-      .await
-      .unwrap();
+        complete_install(&mut instance, steps, Ok(()))
+          .await
+          .unwrap();
+      }
     }
     assert_eq!(runs.load(Ordering::SeqCst), 1);
     assert_eq!(
@@ -287,13 +293,13 @@ mod tests {
     instance.save_json_cfg().await.unwrap();
     let runs = &AtomicUsize::new(0);
     for _ in 0..2 {
-      finish_install_once(&mut instance, |_, steps| async move {
+      if let Some(steps) = claim_install(&mut instance).await.unwrap() {
         assert!(steps.loader && steps.optifine);
         runs.fetch_add(1, Ordering::SeqCst);
-        Ok(())
-      })
-      .await
-      .unwrap();
+        complete_install(&mut instance, steps, Ok(()))
+          .await
+          .unwrap();
+      }
     }
     assert_eq!(runs.load(Ordering::SeqCst), 1);
     let saved = instance.load_json_cfg().await.unwrap();
@@ -306,14 +312,16 @@ mod tests {
     let fixture = Fixture::new(ModLoaderStatus::Downloading, false).await;
     let mut instance = fixture.0.clone();
     let runs = AtomicUsize::new(0);
-    for _ in 0..2 {
-      assert!(finish_install_once(&mut instance, |_, _| async {
-        runs.fetch_add(1, Ordering::SeqCst);
-        Err(InstanceError::ProcessorExecutionFailed.into())
-      })
-      .await
-      .is_err());
-    }
+    let steps = claim_install(&mut instance).await.unwrap().unwrap();
+    runs.fetch_add(1, Ordering::SeqCst);
+    assert!(complete_install(
+      &mut instance,
+      steps,
+      Err(InstanceError::ProcessorExecutionFailed.into())
+    )
+    .await
+    .is_err());
+    assert!(claim_install(&mut instance).await.is_err());
     assert_eq!(runs.load(Ordering::SeqCst), 1);
     assert_eq!(
       instance.load_json_cfg().await.unwrap().mod_loader.status,
