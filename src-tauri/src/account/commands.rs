@@ -220,6 +220,7 @@ pub async fn login_vustb_account(
   app: AppHandle,
   auth_info: DeviceAuthResponseInfo,
 ) -> USTBLResult<VustbAccount> {
+  let refresh_guard = vustb::SESSION_REFRESH_LOCK.lock().await;
   let _ = check_authlib_jar(&app).await;
   let auth_server = AuthServer::from(get_auth_server_info_by_url(
     &app,
@@ -272,6 +273,7 @@ pub async fn login_vustb_account(
     }
   }
 
+  drop(refresh_guard);
   misc::check_full_login_availability(&app).await?;
   let sync_app = app.clone();
   tauri::async_runtime::spawn(async move {
