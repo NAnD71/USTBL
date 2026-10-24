@@ -283,6 +283,38 @@ pub async fn is_china_mainland_ip(app: &AppHandle) -> Option<bool> {
 ///
 /// A normalized URL string suitable for direct string comparison.
 /// If parsing fails, the original input string is returned unchanged.
+pub fn normalize_url(input: &str) -> String {
+  let url = match Url::parse(input) {
+    Ok(url) if !url.cannot_be_a_base() && url.host_str().is_some() => url,
+    _ => return input.to_string(),
+  };
+
+  // remove trailing slash except for root
+  let mut path = url.path().to_string();
+  if path != "/" {
+    path = path.trim_end_matches('/').to_string();
+  }
+
+  // remove default port(e.g. 80 for HTTP, 443 for HTTPS)
+  let port = match (url.port(), url.port_or_known_default()) {
+    (Some(p), Some(default)) if p == default => None,
+    (p, _) => p,
+  };
+
+  let mut normalized = match Url::parse(&format!("{}://{}", url.scheme(), url.host_str().unwrap()))
+  {
+    Ok(u) => u,
+    Err(_) => return input.to_string(),
+  };
+
+  let _ = normalized.set_port(port);
+  normalized.set_path(&path);
+  normalized.set_query(url.query());
+  normalized.set_fragment(url.fragment());
+
+  normalized.to_string()
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -392,36 +424,4 @@ mod tests {
     }
     server.join().unwrap();
   }
-}
-
-pub fn normalize_url(input: &str) -> String {
-  let url = match Url::parse(input) {
-    Ok(url) if !url.cannot_be_a_base() && url.host_str().is_some() => url,
-    _ => return input.to_string(),
-  };
-
-  // remove trailing slash except for root
-  let mut path = url.path().to_string();
-  if path != "/" {
-    path = path.trim_end_matches('/').to_string();
-  }
-
-  // remove default port(e.g. 80 for HTTP, 443 for HTTPS)
-  let port = match (url.port(), url.port_or_known_default()) {
-    (Some(p), Some(default)) if p == default => None,
-    (p, _) => p,
-  };
-
-  let mut normalized = match Url::parse(&format!("{}://{}", url.scheme(), url.host_str().unwrap()))
-  {
-    Ok(u) => u,
-    Err(_) => return input.to_string(),
-  };
-
-  let _ = normalized.set_port(port);
-  normalized.set_path(&path);
-  normalized.set_query(url.query());
-  normalized.set_fragment(url.fragment());
-
-  normalized.to_string()
 }
