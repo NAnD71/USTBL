@@ -3,6 +3,7 @@ pub mod client_jar;
 pub mod client_json;
 pub mod game_version;
 pub mod loader;
+pub(crate) mod loader_lifecycle;
 pub mod misc;
 pub mod modpack;
 pub mod mods;
