@@ -1,9 +1,9 @@
 //! Tauri commands for following a modpack: check, plan, apply, recover.
 
 use super::apply::{
-  apply, can_roll_back_last, ensure_unlink_safe, materialize_remote_file, prepare_packs,
-  recover_checked, roll_back_last_checked, Progress, Recovery, UpdateEnv, UpdateGuard,
-  UpdateRequest,
+  apply, can_roll_back_last, ensure_unlink_safe, materialize_remote_file, pack_wanted,
+  prepare_packs, recover_checked, roll_back_last_checked, wrap_locate, Progress, Recovery, Stage,
+  UpdateEnv, UpdateGuard, UpdateRequest,
 };
 use super::diff::{Conflict, ConflictChoice, Diff, FileChange};
 use super::merge::merge_with_choices;
@@ -234,6 +234,16 @@ struct AppEnv {
   /// The loader of the version being installed.
   loader: BaselineLoader,
   loader_install_pending: AtomicBool,
+}
+
+impl AppEnv {
+  fn progress(&self, stage: Stage) {
+    self.report(Progress {
+      stage,
+      done: 0,
+      total: 1,
+    });
+  }
 }
 
 #[async_trait]
@@ -1402,6 +1412,17 @@ pub async fn install_campus_modpack(
   ensure_not_running(&app, &instance_id)?;
   // From here until the answer this instance is busy, plan and apply alike.
   let _plan_guard = PlanGuard::acquire(&target.root)?;
+  let reporter = AppEnv {
+    app: app.clone(),
+    instance_id: instance_id.clone(),
+    label: String::new(),
+    loader: BaselineLoader {
+      loader_type: target.instance.mod_loader.loader_type,
+      version: target.instance.mod_loader.version.clone(),
+    },
+    loader_install_pending: AtomicBool::new(false),
+  };
+  reporter.progress(Stage::Preparing);
   if target.origin.platform != OriginPlatform::Campus || !is_fresh(&target.origin) {
     // The one-shot install only knows the fresh campus case; anything else
     // goes through plan and apply like the update dialog does.

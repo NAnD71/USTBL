@@ -112,6 +112,10 @@ struct Journal {
 #[derive(Debug, PartialEq, Eq, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum Stage {
+  /// Fetching the version detail and comparing it with the instance.
+  Preparing,
+  /// Asking the platform where the needed files sit in its packs.
+  Locating,
   Fetching,
   Applying,
   Finalizing,
