@@ -3,7 +3,6 @@ use std::path::{Path, PathBuf};
 use std::{env, fs};
 
 fn main() {
-  println!("cargo:rerun-if-env-changed=USTBL_INSTALL_TIMING");
   // Unit tests now exercise the download pipeline, which links Windows dialogs.
   // Tauri embeds this dependency in the application manifest, but not in Rust's
   // test harness; use the same common-controls version for the test harness.

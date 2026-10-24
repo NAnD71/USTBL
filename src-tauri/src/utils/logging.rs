@@ -73,14 +73,6 @@ pub fn setup_with_app(app: AppHandle) -> USTBLResult<()> {
           .any(|p| m.target().starts_with(p)))
     });
 
-  // Opt-in for the paired install timing builds only. The normal launcher
-  // keeps the upstream rotation policy.
-  let p = if option_env!("USTBL_INSTALL_TIMING").is_some() {
-    p.max_file_size(64 * 1024 * 1024)
-  } else {
-    p
-  };
-
   let time_format = format_description!("[[[year]-[month]-[day]][[[hour]:[minute]:[second]]");
 
   let formatter = move |out: FormatCallback, message: &Arguments, record: &log::Record| {
