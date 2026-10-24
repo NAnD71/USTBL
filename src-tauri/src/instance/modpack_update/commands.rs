@@ -932,8 +932,14 @@ struct InstallPlan {
 /// apply's plan in one pass. The baseline is empty, so every shipped file is
 /// an addition and every file in the way is answered with the remote side;
 /// the conflict and merge steps of `plan_prepared` can never fire, which is
-/// what makes one comparison enough.
-async fn plan_fresh_install(app: &AppHandle, target: &Target) -> USTBLResult<InstallPlan> {
+/// what makes one comparison enough. Locating the shipped files in the packs
+/// starts the moment the manifest arrives and runs while the instance is
+/// hashed; `apply` reuses what it located.
+async fn plan_fresh_install(
+  app: &AppHandle,
+  target: &Target,
+  reporter: &AppEnv,
+) -> USTBLResult<InstallPlan> {
   debug_assert!(is_fresh(&target.origin));
   // The listing answers first, so a line that disappeared between the
   // install click and here says so before the version detail is fetched.
@@ -990,7 +996,47 @@ async fn plan_fresh_install(app: &AppHandle, target: &Target) -> USTBLResult<Ins
       remote,
     });
   }
-  let compared = compare(&target.root, &baseline, &remote).await?;
+  // The manifest names every file the install writes; locating them can run
+  // while the instance is hashed and compared. The fetch reuses what the
+  // sessions located here. When the comparison wins, the wait for the locate
+  // is the locating stage.
+  let wanted = {
+    let shipped: Vec<&super::remote::RemoteFile> = remote
+      .files
+      .iter()
+      .chain(
+        remote
+          .component_pack
+          .as_ref()
+          .into_iter()
+          .flat_map(|pack| pack.files.iter()),
+      )
+      .collect();
+    pack_wanted(&shipped)
+  };
+  let locating = tokio::spawn(async move {
+    for (session, wanted) in wanted {
+      session.prepare(&wanted).await.map_err(wrap_locate)?;
+    }
+    Ok::<_, crate::error::USTBLError>(())
+  });
+  let compared = compare(&target.root, &baseline, &remote).await;
+  let compared = match compared {
+    Ok(compared) => compared,
+    Err(error) => {
+      locating.abort();
+      return Err(error);
+    }
+  };
+  let compared_ready = Instant::now();
+  let located = locating
+    .await
+    .map_err(|e| crate::error::USTBLError(e.to_string()))?;
+  let located_wait = compared_ready.elapsed();
+  if located.is_err() && located_wait.as_secs() > 0 {
+    reporter.progress(Stage::Locating);
+  }
+  located?;
   if !compared.both_variants.is_empty() {
     log::info!(
       "modpack install refused: instance={} both variants on disk: {}",
@@ -1447,7 +1493,7 @@ pub async fn install_campus_modpack(
     plan,
     prepared,
     remote,
-  } = plan_fresh_install(&app, &target).await?;
+  } = plan_fresh_install(&app, &target, &reporter).await?;
   if plan.reinstall_required {
     return Err(InstanceError::ModpackUpdateReinstallRequired.into());
   }
