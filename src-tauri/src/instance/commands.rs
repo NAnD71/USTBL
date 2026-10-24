@@ -6,9 +6,11 @@ use crate::instance::helpers::deletion::{delete_instance_files, InstanceDeletion
 use crate::instance::helpers::game_version::{build_game_version_cmp_fn, compare_game_versions};
 use crate::instance::helpers::loader::common::{execute_processors, install_mod_loader};
 use crate::instance::helpers::loader::forge::InstallProfile;
-use crate::instance::helpers::loader_lifecycle::{finish_install_once, LOADER_LIFECYCLE};
 use crate::instance::helpers::loader::optifine::{
   download_optifine_installer, finish_optifine_install,
+};
+use crate::instance::helpers::loader_lifecycle::{
+  claim_install, complete_install, LOADER_LIFECYCLE,
 };
 use crate::instance::helpers::misc::{
   get_instance_game_config, get_instance_subdir_path_by_id, get_instance_subdir_paths,
@@ -1400,48 +1402,65 @@ pub async fn create_instance(
 
 #[tauri::command]
 pub async fn finish_mod_loader_install(app: AppHandle, instance_id: String) -> USTBLResult<bool> {
-  LOADER_LIFECYCLE
-    .run(finish_mod_loader_install_inner(&app, &instance_id))
-    .await
+  finish_mod_loader_install_inner(&app, &instance_id).await
 }
 
 async fn finish_mod_loader_install_inner(app: &AppHandle, instance_id: &str) -> USTBLResult<bool> {
-  let snapshot = {
-    let binding = app.state::<Mutex<HashMap<String, Instance>>>();
-    let state = binding.lock()?;
-    state
-      .get(instance_id)
-      .ok_or(InstanceError::InstanceNotFoundByID)?
-      .clone()
+  // Keep only the claim under the lifecycle lock. The processors may run for
+  // minutes and must not block instance-list refreshes.
+  let claimed = LOADER_LIFECYCLE
+    .run(async {
+      let snapshot = {
+        let binding = app.state::<Mutex<HashMap<String, Instance>>>();
+        let state = binding.lock()?;
+        state
+          .get(instance_id)
+          .ok_or(InstanceError::InstanceNotFoundByID)?
+          .clone()
+      };
+      let mut instance = snapshot.load_json_cfg().await?;
+      {
+        use crate::tasks::events::GEventStatus;
+        use crate::tasks::monitor::TaskMonitor;
+        use std::pin::Pin;
+        let groups = app.state::<Pin<Box<TaskMonitor>>>().state_list();
+        if groups.iter().any(|group| {
+          let key = group
+            .task_group
+            .rsplit_once('@')
+            .map_or(group.task_group.as_str(), |(key, _)| key);
+          key.split_once('?').is_some_and(|(name, id)| {
+            id == instance_id
+              && matches!(
+                name,
+                "forge-libraries" | "neoforge-libraries" | "optifine-libraries"
+              )
+              && matches!(group.status, GEventStatus::Started | GEventStatus::Stopped)
+          })
+        }) {
+          return Ok::<
+            Option<(
+              Instance,
+              crate::instance::helpers::loader_lifecycle::InstallSteps,
+            )>,
+            crate::error::USTBLError,
+          >(None);
+        }
+      }
+      Ok(
+        claim_install(&mut instance)
+          .await?
+          .map(|steps| (instance, steps)),
+      )
+    })
+    .await?;
+  let Some((mut instance, steps)) = claimed else {
+    return Ok(false);
   };
-  // A scan may have just published newer config, or another callback may have
-  // finished while this one waited for the lifecycle lock.
-  let mut instance = snapshot.load_json_cfg().await?;
-  // Forge and OptiFine can have separate runtime groups. Do not run either
-  // processor while another runtime group of this instance is still active.
-  {
-    use crate::tasks::events::GEventStatus;
-    use crate::tasks::monitor::TaskMonitor;
-    use std::pin::Pin;
-    let groups = app.state::<Pin<Box<TaskMonitor>>>().state_list();
-    if groups.iter().any(|group| {
-      let key = group
-        .task_group
-        .rsplit_once('@')
-        .map_or(group.task_group.as_str(), |(key, _)| key);
-      key.split_once('?').is_some_and(|(name, id)| {
-        id == instance_id
-          && matches!(
-            name,
-            "forge-libraries" | "neoforge-libraries" | "optifine-libraries"
-          )
-          && matches!(group.status, GEventStatus::Started | GEventStatus::Stopped)
-      })
-    }) {
-      return Ok(false);
-    }
-  }
-  let result = finish_install_once(&mut instance, |instance, steps| async move {
+
+  // The marker is already durable; run the expensive work without the global
+  // lock. A concurrent refresh sees Installing and leaves it untouched.
+  let process_result = async {
     let client_info_dir = instance
       .version_path
       .join(format!("{}.json", instance.name));
@@ -1455,19 +1474,25 @@ async fn finish_mod_loader_install_inner(app: &AppHandle, instance_id: &str) -> 
       finish_optifine_install(app, &instance, &client_info).await?;
     }
     Ok(())
-  })
-  .await;
-  // Update only loader state; do not overwrite unrelated concurrent edits.
-  {
-    let binding = app.state::<Mutex<HashMap<String, Instance>>>();
-    let mut state = binding.lock()?;
-    let current = state
-      .get_mut(instance_id)
-      .ok_or(InstanceError::InstanceNotFoundByID)?;
-    current.mod_loader = instance.mod_loader;
-    current.optifine = instance.optifine;
   }
-  result.map(|()| true)
+  .await;
+
+  // Only the final status write and publication to the in-memory map are
+  // serialized. This also publishes DownloadFailed when processors fail.
+  LOADER_LIFECYCLE
+    .run(async {
+      let result = complete_install(&mut instance, steps, process_result).await;
+      let binding = app.state::<Mutex<HashMap<String, Instance>>>();
+      let mut state = binding.lock()?;
+      let current = state
+        .get_mut(instance_id)
+        .ok_or(InstanceError::InstanceNotFoundByID)?;
+      current.mod_loader = instance.mod_loader;
+      current.optifine = instance.optifine;
+      result
+    })
+    .await
+    .map(|()| true)
 }
 
 #[tauri::command]
