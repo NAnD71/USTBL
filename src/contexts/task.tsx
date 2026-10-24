@@ -13,7 +13,11 @@ import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { useToast } from "@/contexts/toast";
 import { OtherResourceType } from "@/enums/resource";
-import { CampusUnfinishedPublish } from "@/models/campus-modpack";
+import {
+  CampusInstallProgress,
+  CampusUnfinishedInstall,
+  CampusUnfinishedPublish,
+} from "@/models/campus-modpack";
 import {
   CreatedPTaskEventStatus,
   FailedPTaskEventStatus,
@@ -34,18 +38,18 @@ import { CampusModpackService } from "@/services/campus-modpack";
 import { ConfigService } from "@/services/config";
 import { InstanceService } from "@/services/instance";
 import { TaskService } from "@/services/task";
-import {
-  runCampusInstall,
-  takePendingCampusInstall,
-} from "@/utils/campus-install";
+import { localizeCampusInstallError } from "@/utils/campus-install-task";
 import { takePendingModpackOrigin } from "@/utils/modpack-origin";
 
 interface TaskContextType {
+  installProgress: Record<string, CampusInstallProgress>;
   tasks: TaskGroupDesc[];
   generalPercent: number | undefined; // General progress percentage for all tasks
   /** Publish records waiting on the user (§3.2.3); the nav-bar task button
    * counts these too, so it stays visible after a restart. */
   unfinishedPublishes: CampusUnfinishedPublish[];
+  unfinishedInstalls: CampusUnfinishedInstall[];
+  refreshUnfinishedInstalls: () => void;
   refreshUnfinishedPublishes: () => void;
   handleScheduleProgressiveTaskGroup: (
     taskGroup: string,
@@ -70,6 +74,12 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
   const { getJavaInfos } = useLauncherConfig();
   const { openSharedModal } = useSharedModals();
   const [tasks, setTasks] = useState<TaskGroupDesc[]>([]);
+  const [installProgress, setInstallProgress] = useState<
+    Record<string, CampusInstallProgress>
+  >({});
+  const [unfinishedInstalls, setUnfinishedInstalls] = useState<
+    CampusUnfinishedInstall[]
+  >([]);
   const [generalPercent, setGeneralPercent] = useState<number>();
   const { t } = useTranslation();
   const loadingToastRef = React.useRef<ToastId | null>(null);
@@ -448,8 +458,9 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
 
           const { name, version } = parseTaskGroup(payload.taskGroup);
 
-          // Publishing reports its own result when it ends.
-          if (name !== "modpack-publish")
+          // Publishing and campus installs report their own final result.
+          // The install's initial toast is emitted when it is submitted.
+          if (name !== "modpack-publish" && name !== "modpack-install")
             toast({
               status:
                 payload.event === GTaskEventStatusEnums.Failed
@@ -470,16 +481,6 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
               case "game-client":
               case "change-mod-loader": {
                 getInstanceList(true);
-                // A campus modpack install waits for its client to be ready
-                const campusInstall =
-                  name === "game-client" && version
-                    ? takePendingCampusInstall(version)
-                    : undefined;
-                if (campusInstall) {
-                  runCampusInstall(campusInstall, toast, t, () =>
-                    getInstanceList(true)
-                  );
-                }
                 break;
               }
               case "forge-libraries":
@@ -604,14 +605,57 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
     });
   }, []);
 
+  const refreshUnfinishedInstalls = useCallback(() => {
+    CampusModpackService.listCampusModpackInstallJobs().then((response) => {
+      if (response.status === "success") setUnfinishedInstalls(response.data);
+    });
+  }, []);
+
+  useEffect(
+    () =>
+      CampusModpackService.onInstallProgress((progress) => {
+        if (progress.group) {
+          setInstallProgress((previous) => ({
+            ...previous,
+            [progress.group!]: progress,
+          }));
+        }
+      }),
+    []
+  );
+
+  useEffect(
+    () =>
+      CampusModpackService.onInstallFinished((payload) => {
+        refreshUnfinishedInstalls();
+        if (!payload.error) getInstanceList(true);
+        toast({
+          title: t(
+            payload.error
+              ? "Services.instance.installCampusModpack.error.title"
+              : "Services.instance.installCampusModpack.success"
+          ),
+          description: payload.error
+            ? localizeCampusInstallError(t, payload.error)
+            : undefined,
+          status: payload.error ? "error" : "success",
+        });
+      }),
+    [getInstanceList, refreshUnfinishedInstalls, t, toast]
+  );
+
   // The records drive the nav-bar task button too, so they are fetched here
   // once, on every publish ending, and on a slow timer — the components
   // showing them never poll on their own (§3.2.2, 10-23 addition).
   useEffect(() => {
     refreshUnfinishedPublishes();
-    const timer = setInterval(refreshUnfinishedPublishes, 3000);
+    refreshUnfinishedInstalls();
+    const timer = setInterval(() => {
+      refreshUnfinishedPublishes();
+      refreshUnfinishedInstalls();
+    }, 3000);
     return () => clearInterval(timer);
-  }, [refreshUnfinishedPublishes]);
+  }, [refreshUnfinishedInstalls, refreshUnfinishedPublishes]);
 
   // A publish runs in the background; this is where its result is told.
   useEffect(() => {
@@ -668,9 +712,12 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
     <TaskContext.Provider
       value={{
         tasks,
+        installProgress,
         generalPercent,
         unfinishedPublishes,
         refreshUnfinishedPublishes,
+        unfinishedInstalls,
+        refreshUnfinishedInstalls,
         handleScheduleProgressiveTaskGroup,
         handleCancelProgressiveTaskGroup,
         handleStopProgressiveTaskGroup,

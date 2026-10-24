@@ -393,6 +393,16 @@ impl TaskMonitor {
 
   pub fn stop_progress(&self, id: u32) {
     if let Some(handle) = self.phs.read().unwrap().get(&id) {
+      if handle
+        .read()
+        .unwrap()
+        .desc
+        .task_group
+        .as_deref()
+        .is_some_and(|group| group.starts_with("modpack-install?"))
+      {
+        return;
+      }
       handle.write().unwrap().mark_stopped();
     }
   }
@@ -405,6 +415,18 @@ impl TaskMonitor {
 
   pub fn cancel_progress(&self, id: u32) {
     if let Some(p_handle) = self.phs.read().unwrap().get(&id) {
+      // Installation transactions include blocking file moves. They must
+      // finish or roll back normally, never be aborted mid-commit.
+      if p_handle
+        .read()
+        .unwrap()
+        .desc
+        .task_group
+        .as_deref()
+        .is_some_and(|group| group.starts_with("modpack-install?"))
+      {
+        return;
+      }
       p_handle.write().unwrap().mark_cancelled();
       if let Some(j_handle) = self.tasks.lock().unwrap().remove(&id) {
         j_handle.abort();
@@ -466,6 +488,9 @@ impl TaskMonitor {
   }
 
   pub fn cancel_progressive_task_group(&self, task_group: String) {
+    if task_group.starts_with("modpack-install?") {
+      return;
+    }
     if let Some(group) = self.group_map.write().unwrap().remove(&task_group) {
       for handle in group.phs.values() {
         handle.write().unwrap().mark_cancelled();
@@ -483,6 +508,9 @@ impl TaskMonitor {
   }
 
   pub fn stop_progressive_task_group(&self, task_group: String) {
+    if task_group.starts_with("modpack-install?") {
+      return;
+    }
     if let Some(group) = self.group_map.write().unwrap().get_mut(&task_group) {
       group.status = GEventStatus::Stopped;
       for handle in group.phs.values() {
@@ -558,6 +586,18 @@ impl TaskMonitor {
           .collect(),
         status: v.status.clone(),
       })
+      .collect()
+  }
+
+  /// Group queues drop completed handles, and cancelled/cleared groups can
+  /// disappear entirely. Pending installs still need every client file's state.
+  pub fn task_descriptors(&self) -> Vec<PTaskDesc> {
+    self
+      .phs
+      .read()
+      .unwrap()
+      .values()
+      .map(|handle| handle.read().unwrap().desc.clone())
       .collect()
   }
 

@@ -1317,7 +1317,7 @@ pub async fn create_instance(
     }
   }
 
-  schedule_progressive_task_group(
+  let client_group = schedule_progressive_task_group(
     app.clone(),
     format!("game-client?{}", name),
     task_params,
@@ -1387,6 +1387,10 @@ pub async fn create_instance(
     .map_err(|_| InstanceError::FileCreationFailed)?;
   }
 
+  crate::instance::modpack_update::commands::register_created_campus_instance(
+    &instance,
+    client_group.task_group,
+  )?;
   dir_guard.commit(); // disarm the cleanup guard on success
   Ok(())
 }
