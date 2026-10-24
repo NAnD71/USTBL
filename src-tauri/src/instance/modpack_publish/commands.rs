@@ -28,7 +28,9 @@ use crate::instance::modpack_update::commands::store_instance;
 use crate::instance::modpack_update::diff::FileKey;
 use crate::instance::modpack_update::plan::{compare, Compared};
 use crate::instance::modpack_update::remote::RemoteRule;
-use crate::instance::modpack_update::sources::{campus_base_remote, campus_client, loader_slug, CAMPUS_API};
+use crate::instance::modpack_update::sources::{
+  campus_base_remote, campus_client, loader_slug, CAMPUS_API,
+};
 use crate::utils::web::build_part_upload_client;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
