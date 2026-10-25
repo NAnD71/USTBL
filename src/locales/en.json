@@ -2245,6 +2245,7 @@
         "error": {
           "title": "Failed to select suitable JRE",
           "description": {
+            "LAUNCH_INSTANCE_INSTALLING": "This instance has an unfinished campus installation and cannot be launched. Complete the installation in Download & Upload Tasks first.",
             "INSTANCE_NOT_FOUND_BY_ID": "Instance ID does not exist",
             "NO_SUITABLE_JAVA": "No suitable Java version found",
             "SELECTED_JAVA_UNAVAILABLE": "The manually selected Java runtime has been removed or is unavailable"

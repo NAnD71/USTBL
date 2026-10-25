@@ -18,6 +18,7 @@ import CountTag from "@/components/common/count-tag";
 import Empty from "@/components/common/empty";
 import { OptionItem, OptionItemGroup } from "@/components/common/option-item";
 import { Section } from "@/components/common/section";
+import { InstanceLaunchIconButton } from "@/components/instance-launch-button";
 import AddGameServerModal from "@/components/modals/add-game-server-modal";
 import WorldLevelDataModal from "@/components/modals/world-level-data-modal";
 import { useLauncherConfig } from "@/contexts/config";
@@ -334,7 +335,8 @@ const InstanceWorldsPage = () => {
                 >
                   <HStack spacing={0}>
                     {worldItemMenuOperations(world).map((item, index) => (
-                      <CommonIconButton
+                      <InstanceLaunchIconButton
+                        instance={item.icon === "launch" ? summary : undefined}
                         key={index}
                         icon={item.icon}
                         label={item.label}
@@ -432,7 +434,8 @@ const InstanceWorldsPage = () => {
                     ))}
                   <HStack spacing={0}>
                     {serverItemMenuOperations(server).map((item, index) => (
-                      <CommonIconButton
+                      <InstanceLaunchIconButton
+                        instance={item.icon === "launch" ? summary : undefined}
                         key={index}
                         icon={item.icon}
                         label={item.label}

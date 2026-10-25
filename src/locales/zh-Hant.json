@@ -2246,6 +2246,7 @@
           "title": "選擇合適的 Java 執行時失敗",
           "description": {
             "INSTANCE_NOT_FOUND_BY_ID": "實例 ID 不存在",
+            "LAUNCH_INSTANCE_INSTALLING": "此實例的校內安裝尚未完成，暫時無法啟動。請先前往下載與上傳任務完成安裝。",
             "NO_SUITABLE_JAVA": "沒有合適的 Java 執行時可供選擇",
             "SELECTED_JAVA_UNAVAILABLE": "手動選擇的 Java 執行時已移除或不可用"
           }

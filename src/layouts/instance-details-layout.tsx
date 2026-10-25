@@ -22,6 +22,7 @@ import {
 import { CommonIconButton } from "@/components/common/common-icon-button";
 import NavMenu from "@/components/common/nav-menu";
 import { Section } from "@/components/common/section";
+import { InstanceLaunchButton } from "@/components/instance-launch-button";
 import { useLauncherConfig } from "@/contexts/config";
 import {
   InstanceContextProvider,
@@ -225,7 +226,8 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
               {t("InstanceDetailsLayout.button.viewInstall")}
             </Button>
           )}
-          <Button
+          <InstanceLaunchButton
+            instance={summary}
             leftIcon={<LuPlay />}
             size="xs"
             ml={1}
@@ -235,7 +237,7 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
             }}
           >
             {t("InstanceDetailsLayout.button.launch")}
-          </Button>
+          </InstanceLaunchButton>
         </HStack>
       }
       maxTitleLines={1}
