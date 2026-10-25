@@ -77,25 +77,6 @@ fn staging_meta_path(root: &Path) -> PathBuf {
   update_dir(root).join(format!("staging-{STAGING_META}"))
 }
 
-/// Existing-instance updates start over. Never remove data needed by recovery.
-pub(super) fn discard_update_staging(root: &Path) -> USTBLResult<()> {
-  if read_journal(root).map_err(io_error)?.is_some() {
-    return Ok(());
-  }
-  for path in [staging_dir(root), components_dir(root)] {
-    match fs::remove_dir_all(path) {
-      Ok(()) => {}
-      Err(error) if error.kind() == io::ErrorKind::NotFound => {}
-      Err(error) => return Err(io_error(error)),
-    }
-  }
-  match fs::remove_file(staging_meta_path(root)) {
-    Ok(()) => Ok(()),
-    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(()),
-    Err(error) => Err(io_error(error)),
-  }
-}
-
 fn read_staging_meta(root: &Path) -> io::Result<Option<StagingMeta>> {
   match fs::read(staging_meta_path(root)) {
     Ok(bytes) => {
@@ -1159,40 +1140,6 @@ mod tests {
   use crate::instance::modpack_update::diff::FileKey;
   use sha1::{Digest, Sha1};
   use std::io::Write;
-
-  #[test]
-  fn update_staging_cleanup_starts_over_but_never_removes_journal_recovery_inputs() {
-    let root = std::env::temp_dir().join(format!("ustbl-update-staging-{}", uuid::Uuid::new_v4()));
-    std::fs::create_dir_all(super::staging_dir(&root)).unwrap();
-    std::fs::create_dir_all(super::components_dir(&root)).unwrap();
-    std::fs::write(super::staging_dir(&root).join("file"), b"verified").unwrap();
-    super::write_staging_meta(
-      &root,
-      &super::StagingMeta {
-        version_id: "next".into(),
-        plan_hash: "hash".into(),
-      },
-    )
-    .unwrap();
-    super::discard_update_staging(&root).unwrap();
-    assert!(!super::staging_dir(&root).exists());
-    assert!(!super::components_dir(&root).exists());
-    assert!(!super::staging_meta_path(&root).exists());
-    for state in [super::JournalState::Committing, super::JournalState::Committed] {
-      let fixture = setup();
-      interrupted(&fixture, state);
-      fixture.write(".ustbl-update/staging/keep", "recovery input");
-      super::discard_update_staging(&fixture.0).unwrap();
-      assert!(super::staging_dir(&fixture.0).join("keep").exists());
-    }
-    std::fs::create_dir_all(super::staging_dir(&root)).unwrap();
-    // Even unreadable recovery data must prevent cleanup rather than guess.
-    std::fs::write(super::journal_path(&root), b"invalid journal").unwrap();
-    assert!(super::discard_update_staging(&root).is_err());
-    assert!(super::staging_dir(&root).exists());
-    std::fs::remove_dir_all(root).unwrap();
-  }
-
 
   fn sha1_of(content: &[u8]) -> FileKey {
     FileKey {

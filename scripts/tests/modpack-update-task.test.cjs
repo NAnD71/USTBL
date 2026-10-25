@@ -71,6 +71,86 @@ test("update failure and panic reasons are readable in all five locales", () => 
   }
 });
 
+test("launch busy errors are localized by the actual response handler and displayed by the launch dialog", async () => {
+  for (const locale of ["en", "fr", "ja", "zh-Hans", "zh-Hant"]) {
+    const messages = JSON.parse(
+      fs.readFileSync(
+        path.join(__dirname, "../../src/locales", `${locale}.json`),
+        "utf8"
+      )
+    );
+    const { responseHandler } = load("src/utils/response.ts", (name) => {
+      if (name === "i18next")
+        return {
+          t: (key, options) =>
+            key.split(".").reduce((v, part) => v?.[part], messages) ??
+            options?.defaultValue ??
+            key,
+        };
+      if (name === "@/utils/env") return { isDev: false };
+      if (name === "@/utils/logging") return { logger: { error: () => {} } };
+      return {};
+    });
+    const descriptor = {
+      value: async () => {
+        throw "MODPACK_UPDATE_BUSY";
+      },
+    };
+    responseHandler("launch")({}, "selectSuitableJRE", descriptor);
+    const result = await descriptor.value();
+    assert.equal(result.status, "error");
+    assert.equal(result.raw_error, "MODPACK_UPDATE_BUSY");
+    assert.equal(
+      result.details,
+      messages.Services.launch.selectSuitableJRE.error.description
+        .MODPACK_UPDATE_BUSY
+    );
+    assert.ok(result.details.length > 0);
+    assert.doesNotMatch(result.details, /MODPACK_|Services\./);
+  }
+  const modal = fs.readFileSync(
+    path.join(__dirname, "../../src/components/modals/launch-process-modal.tsx"),
+    "utf8"
+  );
+  assert.match(modal, /setErrorDesc\(response\.details\)/);
+  assert.match(modal, /\{errorDesc\}/);
+});
+
+test("launch checks registered update jobs inside UpdateGuard and updates retain engine staging reuse", () => {
+  const read = (file) =>
+    fs.readFileSync(path.join(__dirname, "../../", file), "utf8");
+  const launch = read("src-tauri/src/launch/commands.rs");
+  const step = launch.slice(
+    launch.indexOf("pub async fn select_suitable_jre"),
+    launch.indexOf("// Step 2:")
+  );
+  assert.ok(
+    step.indexOf("UpdateGuard::while_idle") <
+      step.indexOf(".while_no_modpack_update")
+  );
+  assert.ok(
+    step.indexOf(".while_no_modpack_update(&instance_id") <
+      step.indexOf("launching.push")
+  );
+  const commands = read("src-tauri/src/instance/modpack_update/commands.rs");
+  const apply = commands.slice(
+    commands.indexOf("pub async fn apply_modpack_update("),
+    commands.indexOf("/// The modpack version the launcher already announced")
+  );
+  assert.match(apply, /register_modpack_update_group\(\s*&instance_id,/);
+  assert.ok(
+    apply.indexOf("register_modpack_update_group") <
+      apply.indexOf("tauri::async_runtime::spawn")
+  );
+  assert.doesNotMatch(commands, /discard_update_staging/);
+  const engine = read("src-tauri/src/instance/modpack_update/apply.rs");
+  assert.doesNotMatch(engine, /discard_update_staging/);
+  assert.match(
+    engine,
+    /meta\.version_id == request\.remote\.version_id && meta\.plan_hash == request\.plan_hash/
+  );
+});
+
 test("global task context receives results with no update modal mounted", () => {
   const effects = [];
   const states = [];

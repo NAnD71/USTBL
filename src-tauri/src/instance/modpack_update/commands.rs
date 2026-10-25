@@ -1862,7 +1862,8 @@ pub async fn apply_modpack_update(
   ensure_not_running(&app, &instance_id)?;
   let tasks = CampusInstallTasks::register_kind(&app, &instance_id, &target.instance.name, true);
   let monitor = app.state::<Pin<Box<TaskMonitor>>>();
-  monitor.register_job_group(
+  monitor.register_modpack_update_group(
+    &instance_id,
     &tasks.group,
     &tasks.all().into_iter().cloned().collect::<Vec<_>>(),
   );
@@ -1895,10 +1896,6 @@ pub async fn apply_modpack_update(
         result = Err(error);
       }
       refresh_and_update_instances(&app_for_job, false).await;
-    }
-    // Updates deliberately do not reuse the install engine's staging cache.
-    if let Err(error) = super::apply::discard_update_staging(&target.root) {
-      log::warn!("cannot clear modpack update staging: {error:?}");
     }
     plan_cache::clear_plan_cache(&target.root);
     tasks.finish(result.as_ref().err().map(|error| error.0.as_str()));
@@ -1962,7 +1959,6 @@ async fn apply_modpack_update_inner(
   let mut reporter = AppEnv::preparing(&app, &target);
   reporter.tasks = Some(tasks);
   reporter.progress(Stage::Preparing);
-  super::apply::discard_update_staging(&target.root)?;
   let baseline = load_baseline(&target).await?;
   recover_checked(&target.root, || ensure_not_running(&app, &instance_id))?;
   let latest = latest_version(&app, &target.origin)
