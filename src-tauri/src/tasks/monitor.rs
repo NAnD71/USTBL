@@ -409,7 +409,7 @@ impl TaskMonitor {
         .desc
         .task_group
         .as_deref()
-        .is_some_and(|group| group.starts_with("modpack-install?"))
+        .is_some_and(is_modpack_transaction)
       {
         return;
       }
@@ -433,7 +433,7 @@ impl TaskMonitor {
         .desc
         .task_group
         .as_deref()
-        .is_some_and(|group| group.starts_with("modpack-install?"))
+        .is_some_and(is_modpack_transaction)
       {
         return;
       }
@@ -498,7 +498,7 @@ impl TaskMonitor {
   }
 
   pub fn cancel_progressive_task_group(&self, task_group: String) {
-    if task_group.starts_with("modpack-install?") {
+    if is_modpack_transaction(&task_group) {
       return;
     }
     if let Some(group) = self.group_map.write().unwrap().remove(&task_group) {
@@ -518,7 +518,7 @@ impl TaskMonitor {
   }
 
   pub fn stop_progressive_task_group(&self, task_group: String) {
-    if task_group.starts_with("modpack-install?") {
+    if is_modpack_transaction(&task_group) {
       return;
     }
     if let Some(group) = self.group_map.write().unwrap().get_mut(&task_group) {
@@ -534,6 +534,9 @@ impl TaskMonitor {
   }
 
   pub async fn resume_progressive_task_group(&self, task_group: String) {
+    if is_modpack_transaction(&task_group) {
+      return;
+    }
     if let Some(group) = self.group_map.write().unwrap().get_mut(&task_group) {
       group.status = GEventStatus::Started;
 
@@ -640,5 +643,22 @@ impl TaskMonitor {
       }
     }
     false
+  }
+}
+
+fn is_modpack_transaction(group: &str) -> bool {
+  group.starts_with("modpack-install?") || group.starts_with("modpack-update?")
+}
+
+#[cfg(test)]
+mod tests {
+  #[test]
+  fn install_and_update_transactions_cannot_be_paused_or_aborted() {
+    for group in ["modpack-install?pack@1", "modpack-update?pack@2"] {
+      assert!(super::is_modpack_transaction(group));
+    }
+    for group in ["modpack-publish?pack@1", "game-client?pack@1"] {
+      assert!(!super::is_modpack_transaction(group));
+    }
   }
 }
