@@ -18,13 +18,10 @@ export const InstanceLaunchButton = ({
 }: ButtonProps & InstanceLaunchProps) => {
   const { t } = useTranslation();
   const installing = isInstallingInstance(instance);
+  if (!installing) return <Button {...props} />;
   return (
-    <Tooltip
-      label={t(installingReasonKey)}
-      isDisabled={!installing}
-      shouldWrapChildren
-    >
-      <Button {...props} isDisabled={props.isDisabled || installing} />
+    <Tooltip label={t(installingReasonKey)} shouldWrapChildren>
+      <Button {...props} isDisabled />
     </Tooltip>
   );
 };
@@ -35,17 +32,10 @@ export const InstanceLaunchIconButton = ({
 }: ComponentProps<typeof CommonIconButton> & InstanceLaunchProps) => {
   const { t } = useTranslation();
   const installing = isInstallingInstance(instance);
+  if (!installing) return <CommonIconButton {...props} />;
   return (
-    <Tooltip
-      label={t(installingReasonKey)}
-      isDisabled={!installing}
-      shouldWrapChildren
-    >
-      <CommonIconButton
-        {...props}
-        withTooltip={!installing && props.withTooltip !== false}
-        isDisabled={props.isDisabled || installing}
-      />
+    <Tooltip label={t(installingReasonKey)} shouldWrapChildren>
+      <CommonIconButton {...props} withTooltip={false} isDisabled />
     </Tooltip>
   );
 };

@@ -41,7 +41,7 @@ for (const name of ["InstanceLaunchButton", "InstanceLaunchIconButton"]) {
     const pending = { campusInstallPending: true };
     const blocked = render(pending);
     assert.equal(blocked.props.children.props.isDisabled, true);
-    assert.equal(blocked.props.isDisabled, false);
+    assert.equal(blocked.type, "Tooltip");
     assert.equal(blocked.props.shouldWrapChildren, true);
     assert.match(blocked.props.label, /LAUNCH_INSTANCE_INSTALLING$/);
     assert.equal(blocked.props.children.props.onClick, onClick);
@@ -51,12 +51,26 @@ for (const name of ["InstanceLaunchButton", "InstanceLaunchIconButton"]) {
       { ...pending, campusInstallPending: false },
     ]) {
       const enabled = render(instance);
-      assert.equal(enabled.props.children.props.isDisabled, false);
-      assert.equal(enabled.props.isDisabled, true);
+      assert.equal(enabled.props.isDisabled, false);
     }
-    assert.equal(render({}, true).props.children.props.isDisabled, true);
+    assert.equal(render({}, true).props.isDisabled, true);
   });
 }
+
+test("non-installing launch controls render the original button without an extra tooltip wrapper", () => {
+  const onClick = () => {};
+  for (const [name, type] of [
+    ["InstanceLaunchButton", "Button"],
+    ["InstanceLaunchIconButton", "CommonIconButton"],
+  ]) {
+    for (const instance of [undefined, {}, { campusInstallPending: false }]) {
+      const props = { onClick, withTooltip: false, isDisabled: false };
+      const rendered = buttons[name]({ instance, ...props });
+      assert.equal(rendered.type, type);
+      assert.deepEqual(rendered.props, props);
+    }
+  }
+});
 
 const entryPoints = [
   ["src/pages/launch.tsx", "InstanceLaunchButton", "selectedInstance", 1],
@@ -76,7 +90,7 @@ const entryPoints = [
   [
     "src/pages/instances/details/[id]/worlds.tsx",
     "InstanceLaunchIconButton",
-    'item.icon === "launch" ? summary : undefined',
+    "summary",
     2,
   ],
 ];
@@ -113,6 +127,21 @@ for (const [file, button, instanceExpression, count] of entryPoints) {
         instance.initializer.expression.getText(source),
         instanceExpression
       );
+      if (button === "InstanceLaunchIconButton") {
+        const wrapped = control.parent;
+        assert.ok(ts.isParenthesizedExpression(wrapped));
+        const branch = wrapped.parent;
+        assert.ok(ts.isConditionalExpression(branch));
+        assert.equal(
+          branch.condition.getText(source),
+          'item.icon === "launch"'
+        );
+        assert.equal(branch.whenTrue.expression, control);
+        assert.equal(
+          branch.whenFalse.expression.tagName.getText(source),
+          "CommonIconButton"
+        );
+      }
     }
     if (button === "InstanceLaunchButton") {
       for (const call of launchCalls) {
