@@ -2676,6 +2676,7 @@
             "MODPACK_UPDATE_MERGE_INVALID": "按區塊選擇後設定檔的格式無效，請調整選擇後重試",
             "MODPACK_INSTALL_STAGING_MISMATCH": "已儲存的下載屬於其他安裝計畫，已清理",
             "MODPACK_INSTALL_INTERRUPTED": "安裝已中斷，請從任務頁繼續",
+            "MODPACK_INSTALL_TASK_FAILED": "安裝任務意外終止，詳情已記錄至啟動器日誌；可從任務頁繼續或放棄",
             "NETWORK_ERROR": "網路請求重試後仍失敗，請檢查網路後繼續安裝",
             "FILE_OPERATION_ERROR": "安裝時無法讀寫檔案，請檢查磁碟空間和權限後繼續",
             "UNKNOWN_ERROR": "安裝失敗，詳情已記錄到啟動器日誌；可以繼續重試或放棄"

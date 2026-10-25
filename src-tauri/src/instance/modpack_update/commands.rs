@@ -223,32 +223,68 @@ fn campus_install_records(app: &AppHandle) -> Vec<CampusUnfinishedInstall> {
   let instances = campus_instances_on_disk(app);
   instances
     .values()
-    .filter_map(|instance| {
-      let record = load_campus_install_record(&instance.version_path)?;
-      if active_plans().lock().ok()?.contains(&instance.version_path) {
-        return None;
-      }
-      let interrupted = record.phase == "installing";
-      Some(CampusUnfinishedInstall {
-        instance_id: instance.id.clone(),
-        instance_name: instance.name.clone(),
-        label: record.label,
-        resumable: true,
-        phase: if interrupted {
-          "failed".into()
-        } else {
-          record.phase
-        },
-        error: if interrupted {
-          Some(InstanceError::ModpackInstallInterrupted.to_string())
-        } else {
-          record.error
-        },
-        group: record.group,
-        progress: record.progress,
-      })
-    })
+    .filter_map(unfinished_campus_install)
     .collect()
+}
+
+fn unfinished_campus_install(instance: &Instance) -> Option<CampusUnfinishedInstall> {
+  let record = load_campus_install_record(&instance.version_path)?;
+  if active_plans().lock().ok()?.contains(&instance.version_path) {
+    return None;
+  }
+  let interrupted = record.phase == "installing";
+  Some(CampusUnfinishedInstall {
+    instance_id: instance.id.clone(),
+    instance_name: instance.name.clone(),
+    label: record.label,
+    resumable: true,
+    phase: if interrupted {
+      "failed".into()
+    } else {
+      record.phase
+    },
+    error: if interrupted {
+      Some(InstanceError::ModpackInstallInterrupted.to_string())
+    } else {
+      record.error
+    },
+    group: record.group,
+    progress: record.progress,
+  })
+}
+
+fn fail_campus_install_record(root: &Path, error: &str) -> USTBLResult<()> {
+  if let Some(mut record) = load_campus_install_record(root) {
+    record.phase = "failed".into();
+    record.error = Some(error.to_string());
+    save_campus_install_record(root, &record)?;
+  }
+  Ok(())
+}
+
+fn campus_install_group_belongs_to(group: &str, instance_id: &str) -> bool {
+  let suffix = format!(" [{}]", instance_id.replace(['?', '@', '\n', '\r'], " "));
+  group.starts_with("modpack-install?")
+    && group
+      .rsplit_once('@')
+      .is_some_and(|(name, _)| name.ends_with(&suffix))
+}
+
+fn remove_campus_install_groups(app: &AppHandle, instance_id: &str, recorded: Option<&str>) {
+  let monitor = app.state::<Pin<Box<TaskMonitor>>>();
+  let mut groups: Vec<String> = monitor
+    .state_list()
+    .into_iter()
+    .map(|group| group.task_group)
+    .filter(|group| campus_install_group_belongs_to(group, instance_id))
+    .collect();
+  if let Some(group) = recorded {
+    if !groups.iter().any(|name| name == group) {
+      groups.push(group.to_string());
+    }
+  }
+  monitor.remove_job_groups(&groups);
+  let _ = app.emit_to("main", "modpack-install:groups-removed", groups);
 }
 
 #[tauri::command]
@@ -292,9 +328,7 @@ pub async fn discard_campus_modpack_install(
   let instance = current_instance(&app, &instance_id)?;
   let root = instance.version_path;
   let _guard = PlanGuard::acquire(&root)?;
-  if load_campus_install_record(&root).is_none() {
-    return Err(InstanceError::ModpackUpdateUnsupported.into());
-  }
+  let record = load_campus_install_record(&root).ok_or(InstanceError::ModpackUpdateUnsupported)?;
   let recovery = recover_checked(&root, || ensure_not_running(&app, &instance_id))?;
   for name in ["staging", "components", "remote"] {
     match fs::remove_dir_all(root.join(super::remote::UPDATE_DIR).join(name)) {
@@ -316,6 +350,7 @@ pub async fn discard_campus_modpack_install(
     }
   }
   plan_cache::clear_plan_cache(&root);
+  remove_campus_install_groups(&app, &instance_id, record.group.as_deref());
   if recovery != Recovery::Nothing {
     refresh_and_update_instances(&app, false).await;
   }
@@ -1905,6 +1940,13 @@ async fn start_campus_modpack_install(
         .and_then(|record| record.client_group.clone()),
     },
   )?;
+  remove_campus_install_groups(
+    &app,
+    &instance_id,
+    old_record
+      .as_ref()
+      .and_then(|record| record.group.as_deref()),
+  );
   app.state::<Pin<Box<TaskMonitor>>>().register_job_group(
     &tasks.group,
     &tasks.all().into_iter().cloned().collect::<Vec<_>>(),
@@ -1913,6 +1955,7 @@ async fn start_campus_modpack_install(
   let group = tasks.group.clone();
   let anchor = tasks.applying.read().unwrap().desc.task_id;
   let app_for_job = app.clone();
+  let root_for_job = instance.version_path.clone();
   let instance_for_job = instance_id.clone();
   let instance_for_error = instance_for_job.clone();
   let group_for_job = group.clone();
@@ -1922,18 +1965,20 @@ async fn start_campus_modpack_install(
     if ready.await.is_err() {
       return;
     }
-    let result =
-      install_campus_modpack_inner(app_for_job.clone(), instance_for_job, tasks, retry_client)
-        .await;
+    // Keep the plan guard in the supervisor: unwinding the inner task must
+    // still persist the failure and publish the card's final result.
+    let result = run_campus_install_task(install_campus_modpack_inner(
+      app_for_job.clone(),
+      instance_for_job,
+      tasks,
+      retry_client,
+    ))
+    .await;
     if let Err(error) = &result {
       log::warn!("campus install failed: {error:?}");
       task_handles.fail(&error.0);
-      if let Ok(instance) = current_instance(&app_for_job, &instance_for_error) {
-        if let Some(mut record) = load_campus_install_record(&instance.version_path) {
-          record.phase = "failed".into();
-          record.error = Some(error.0.clone());
-          let _ = save_campus_install_record(&instance.version_path, &record);
-        }
+      if let Err(save_error) = fail_campus_install_record(&root_for_job, &error.0) {
+        log::warn!("cannot save campus install failure: {save_error:?}");
       }
       app_for_job
         .state::<Pin<Box<TaskMonitor>>>()
@@ -1942,9 +1987,7 @@ async fn start_campus_modpack_install(
       for handle in task_handles.all() {
         CampusInstallTasks::complete(handle);
       }
-      if let Ok(instance) = current_instance(&app_for_job, &instance_for_error) {
-        remove_campus_install_record(&instance.version_path);
-      }
+      remove_campus_install_record(&root_for_job);
       app_for_job
         .state::<Pin<Box<TaskMonitor>>>()
         .finish_job_group(&group_for_job, anchor, true);
@@ -1963,6 +2006,15 @@ async fn start_campus_modpack_install(
   app.state::<Pin<Box<TaskMonitor>>>().bind_job(anchor, job);
   let _ = start.send(());
   Ok(CampusInstallStarted { group })
+}
+
+async fn run_campus_install_task(
+  task: impl std::future::Future<Output = USTBLResult<UpdateOutcome>> + Send + 'static,
+) -> USTBLResult<UpdateOutcome> {
+  tokio::spawn(task).await.map_err(|error| {
+    log::warn!("campus install task terminated: {error:?}");
+    crate::error::USTBLError::from(InstanceError::ModpackInstallTaskFailed)
+  })?
 }
 
 /// History and cancelled groups may no longer be in the monitor's group queue.
@@ -2229,6 +2281,127 @@ pub async fn recover_modpack_update(app: AppHandle, instance_id: String) -> USTB
 mod tests {
   use super::*;
   use crate::instance::models::misc::InstanceError;
+
+  #[test]
+  fn install_group_cleanup_matches_the_instance_not_the_human_label() {
+    assert!(campus_install_group_belongs_to(
+      "modpack-install?航空学 [APP_DATA_SUBDIR:a]@1",
+      "APP_DATA_SUBDIR:a"
+    ));
+    assert!(campus_install_group_belongs_to(
+      "modpack-install?旧标题 [APP_DATA_SUBDIR:a]@2",
+      "APP_DATA_SUBDIR:a"
+    ));
+    assert!(!campus_install_group_belongs_to(
+      "modpack-install?航空学 [APP_DATA_SUBDIR:ab]@1",
+      "APP_DATA_SUBDIR:a"
+    ));
+    assert!(!campus_install_group_belongs_to(
+      "modpack-publish?航空学 [APP_DATA_SUBDIR:a]@1",
+      "APP_DATA_SUBDIR:a"
+    ));
+  }
+
+  #[tokio::test]
+  async fn an_install_panic_is_a_localized_failure_and_persists_as_failed() {
+    let root = std::env::temp_dir().join(format!("ustbl-panic-{}", uuid::Uuid::new_v4()));
+    let instance = Instance {
+      id: "games:panic".into(),
+      name: "panic".into(),
+      version_path: root.clone(),
+      ..Default::default()
+    };
+    let progress = Progress {
+      stage: Stage::Locating,
+      done: 0,
+      total: 1,
+      bytes_done: 0,
+      bytes_total: 0,
+    };
+    save_campus_install_record(
+      &root,
+      &CampusInstallRecord {
+        instance_id: instance.id.clone(),
+        instance_name: instance.name.clone(),
+        label: "测试安装".into(),
+        phase: "installing".into(),
+        error: None,
+        group: Some("modpack-install?panic@1".into()),
+        progress: Some(progress),
+        client_group: None,
+      },
+    )
+    .unwrap();
+    let guard = PlanGuard::acquire(&root).unwrap();
+    let result = run_campus_install_task(async {
+      panic!("simulated plan_groups panic");
+    })
+    .await;
+    let error = result.unwrap_err();
+    assert_eq!(error.0, "MODPACK_INSTALL_TASK_FAILED");
+    fail_campus_install_record(&root, &error.0).unwrap();
+    let record = load_campus_install_record(&root).unwrap();
+    assert_eq!(record.phase, "failed");
+    assert_eq!(record.error.as_deref(), Some("MODPACK_INSTALL_TASK_FAILED"));
+    assert_eq!(record.progress, Some(progress));
+    // The supervisor keeps the claim until failure handling has finished.
+    assert!(unfinished_campus_install(&instance).is_none());
+    drop(guard);
+    let listed = unfinished_campus_install(&instance).unwrap();
+    assert!(listed.resumable);
+    assert_eq!(listed.error, record.error);
+    assert!(PlanGuard::acquire(&root).is_ok());
+    fs::remove_dir_all(root).unwrap();
+  }
+
+  #[tokio::test]
+  async fn a_supervised_install_preserves_success_and_normal_errors() {
+    let outcome = run_campus_install_task(async {
+      Ok(UpdateOutcome {
+        version_id: "35".into(),
+        loader_install_pending: false,
+      })
+    })
+    .await
+    .unwrap();
+    assert_eq!(outcome.version_id, "35");
+    let error =
+      run_campus_install_task(async { Err(InstanceError::ModpackUpdateVerifyFailed.into()) })
+        .await
+        .unwrap_err();
+    assert_eq!(error.0, "MODPACK_UPDATE_VERIFY_FAILED");
+  }
+
+  #[test]
+  fn an_installing_record_without_a_live_task_is_listed_as_resumable_after_restart() {
+    let root = std::env::temp_dir().join(format!("ustbl-restart-{}", uuid::Uuid::new_v4()));
+    let instance = Instance {
+      id: "games:interrupted".into(),
+      name: "interrupted".into(),
+      version_path: root.clone(),
+      ..Default::default()
+    };
+    save_campus_install_record(
+      &root,
+      &CampusInstallRecord {
+        instance_id: instance.id.clone(),
+        instance_name: instance.name.clone(),
+        label: "测试安装".into(),
+        phase: "installing".into(),
+        error: None,
+        group: Some("modpack-install?interrupted@1".into()),
+        progress: None,
+        client_group: None,
+      },
+    )
+    .unwrap();
+    let listed = unfinished_campus_install(&instance).unwrap();
+    assert_eq!(listed.phase, "failed");
+    assert_eq!(listed.error.as_deref(), Some("MODPACK_INSTALL_INTERRUPTED"));
+    assert!(listed.resumable);
+    assert!(PlanGuard::acquire(&root).is_ok());
+    fs::remove_dir_all(root).unwrap();
+  }
 
   #[test]
   fn client_wait_uses_retained_descriptors_and_never_links_another_game_directory() {

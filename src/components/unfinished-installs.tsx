@@ -13,11 +13,10 @@ import {
 } from "@/utils/campus-install-task";
 import { formatByteSize } from "@/utils/string";
 
-export const UnfinishedInstalls: React.FC<{ group?: string }> = ({ group }) => {
+export const UnfinishedInstalls: React.FC = () => {
   const { t } = useTranslation();
   const toast = useToast();
-  const { tasks, unfinishedInstalls, refreshUnfinishedInstalls } =
-    useTaskContext();
+  const { unfinishedInstalls, refreshUnfinishedInstalls } = useTaskContext();
   const [busy, setBusy] = useState<string | null>(null);
   const running = useRef(false);
   const run = useCallback(
@@ -68,19 +67,13 @@ export const UnfinishedInstalls: React.FC<{ group?: string }> = ({ group }) => {
     [refreshUnfinishedInstalls, t, toast, unfinishedInstalls]
   );
 
-  const visible = visibleCampusInstalls(
-    unfinishedInstalls,
-    tasks.map((task) => task.taskGroup),
-    group
-  );
+  const visible = visibleCampusInstalls(unfinishedInstalls);
   if (visible.length === 0) return null;
   return (
     <VStack align="stretch" spacing={2}>
-      {!group && (
-        <Text fontSize="xs-sm" fontWeight="bold">
-          {t("DownloadTasksPage.unfinishedInstall.title")}
-        </Text>
-      )}
+      <Text fontSize="xs-sm" fontWeight="bold">
+        {t("DownloadTasksPage.unfinishedInstall.title")}
+      </Text>
       <OptionItemGroup
         items={visible.map((job) => {
           const progress = campusInstallProgressView(job.progress);
@@ -101,7 +94,7 @@ export const UnfinishedInstalls: React.FC<{ group?: string }> = ({ group }) => {
                         `DownloadTasksPage.unfinishedInstall.phase.${job.phase}`
                       )}
                 </Text>
-                {progress && !group && (
+                {progress && (
                   <Text fontSize="xs" className="secondary-text">
                     {t(`DownloadTasksPage.installStage.${progress.stage}`)}
                     {progress.total > 0 &&

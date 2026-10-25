@@ -2676,6 +2676,7 @@
             "MODPACK_UPDATE_MERGE_INVALID": "The selected blocks produce an invalid configuration. Adjust your choices and try again",
             "MODPACK_INSTALL_STAGING_MISMATCH": "The saved download belongs to another install plan and was cleared",
             "MODPACK_INSTALL_INTERRUPTED": "The installation was interrupted; continue it from the task page",
+            "MODPACK_INSTALL_TASK_FAILED": "The installation task ended unexpectedly. Details are in the launcher log; continue or discard it from the task page",
             "NETWORK_ERROR": "The network request failed after retries. Check your connection, then continue the installation",
             "FILE_OPERATION_ERROR": "The installation could not read or write its files. Check free space and permissions, then continue",
             "UNKNOWN_ERROR": "Installation failed; details are in the launcher log. Continue to retry or discard the installation"

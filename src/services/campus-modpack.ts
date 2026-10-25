@@ -111,6 +111,18 @@ export class CampusModpackService {
     };
   }
 
+  static onInstallGroupsRemoved(
+    callback: (groups: string[]) => void
+  ): () => void {
+    const unlisten = getCurrentWebview().listen<string[]>(
+      "modpack-install:groups-removed",
+      (event) => callback(event.payload)
+    );
+    return () => {
+      unlisten.then((removeListener) => removeListener());
+    };
+  }
+
   /**
    * Publishes to an existing project, or to a new one when `newProject` is
    * given (exactly one of the two).

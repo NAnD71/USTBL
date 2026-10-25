@@ -38,7 +38,12 @@ import { CampusModpackService } from "@/services/campus-modpack";
 import { ConfigService } from "@/services/config";
 import { InstanceService } from "@/services/instance";
 import { TaskService } from "@/services/task";
-import { localizeCampusInstallError } from "@/utils/campus-install-task";
+import {
+  compareCampusInstallStages,
+  isCampusInstallGroup,
+  localizeCampusInstallError,
+  removeCampusInstallGroups,
+} from "@/utils/campus-install-task";
 import { takeLoaderCompletions } from "@/utils/loader-completion";
 import { takePendingModpackOrigin } from "@/utils/modpack-origin";
 
@@ -170,6 +175,9 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
       t.progress = t.total ? (t.current * 100) / t.total : 0;
     });
     group.taskDescs.sort((a, b) => {
+      if (isCampusInstallGroup(group.taskGroup)) {
+        return compareCampusInstallStages(a, b);
+      }
       let level = (desc: TaskDesc) => {
         switch (desc.status) {
           case TaskDescStatusEnums.Failed:
@@ -630,6 +638,21 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
       if (response.status === "success") setUnfinishedInstalls(response.data);
     });
   }, []);
+
+  useEffect(
+    () =>
+      CampusModpackService.onInstallGroupsRemoved((groups) => {
+        setTasks((previous) => removeCampusInstallGroups(previous, groups));
+        setInstallProgress((previous) =>
+          Object.fromEntries(
+            Object.entries(previous).filter(
+              ([group]) => !groups.includes(group)
+            )
+          )
+        );
+      }),
+    []
+  );
 
   useEffect(
     () =>

@@ -599,6 +599,22 @@ impl TaskMonitor {
       .collect()
   }
 
+  /// The owner must hold its instance claim and ensure the old jobs have ended.
+  /// Remove descriptors too, so retrying a job does not accumulate stale tasks.
+  pub fn remove_job_groups(&self, task_groups: &[String]) {
+    let mut groups = self.group_map.write().unwrap();
+    let mut handles = self.phs.write().unwrap();
+    let mut jobs = self.tasks.lock().unwrap();
+    for name in task_groups {
+      if let Some(group) = groups.remove(name) {
+        for id in group.phs.keys() {
+          handles.remove(id);
+          jobs.remove(id);
+        }
+      }
+    }
+  }
+
   /// Group queues drop completed handles, and cancelled/cleared groups can
   /// disappear entirely. Pending installs still need every client file's state.
   pub fn task_descriptors(&self) -> Vec<PTaskDesc> {

@@ -2676,6 +2676,7 @@
             "MODPACK_UPDATE_MERGE_INVALID": "Les blocs sélectionnés produisent une configuration invalide. Modifiez vos choix et réessayez",
             "MODPACK_INSTALL_STAGING_MISMATCH": "Le téléchargement enregistré appartient à un autre plan d'installation et a été supprimé",
             "MODPACK_INSTALL_INTERRUPTED": "L'installation a été interrompue ; continuez-la depuis la page des tâches",
+            "MODPACK_INSTALL_TASK_FAILED": "La tâche d'installation s'est arrêtée de façon inattendue. Consultez le journal du lanceur, puis continuez ou abandonnez depuis la page des tâches",
             "NETWORK_ERROR": "La requête réseau a échoué après plusieurs tentatives. Vérifiez la connexion, puis continuez",
             "FILE_OPERATION_ERROR": "Impossible de lire ou écrire les fichiers. Vérifiez l'espace libre et les permissions, puis continuez",
             "UNKNOWN_ERROR": "L'installation a échoué ; les détails figurent dans le journal du lanceur. Réessayez ou abandonnez l'installation"

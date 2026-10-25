@@ -65,6 +65,7 @@ export enum InstanceError {
   ModpackUpdateLocateLocating = "MODPACK_UPDATE_LOCATE_LOCATING",
   ModpackInstallStagingMismatch = "MODPACK_INSTALL_STAGING_MISMATCH",
   ModpackInstallInterrupted = "MODPACK_INSTALL_INTERRUPTED",
+  ModpackInstallTaskFailed = "MODPACK_INSTALL_TASK_FAILED",
   ModpackUploadRestarted = "MODPACK_UPLOAD_RESTARTED",
   ModpackUploadCloudUnavailable = "MODPACK_UPLOAD_CLOUD_UNAVAILABLE",
   ModpackUploadVerifyFailed = "MODPACK_UPLOAD_VERIFY_FAILED",

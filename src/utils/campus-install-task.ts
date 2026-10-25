@@ -3,7 +3,11 @@ import type {
   CampusInstallProgress,
   CampusUnfinishedInstall,
 } from "@/models/campus-modpack";
-import type { GTaskEventStatusEnums } from "@/models/task";
+import type {
+  GTaskEventStatusEnums,
+  TaskDesc,
+  TaskGroupDesc,
+} from "@/models/task";
 
 export type CampusInstallCardState =
   | "active-install"
@@ -44,14 +48,39 @@ export const campusInstallProgressView = (
       }
     : null;
 
-export const visibleCampusInstalls = (
-  jobs: CampusUnfinishedInstall[],
-  groups: string[],
-  group?: string
-) =>
-  jobs.filter((job) =>
-    group ? job.group === group : !job.group || !groups.includes(job.group)
+// The backend only lists idle installs. Always show their actions at the top,
+// even when the failed task group is still visible below.
+export const visibleCampusInstalls = (jobs: CampusUnfinishedInstall[]) => jobs;
+
+export const removeCampusInstallGroups = (
+  tasks: TaskGroupDesc[],
+  groups: string[]
+) => tasks.filter((task) => !groups.includes(task.taskGroup));
+
+export const campusInstallGroupLabel = (group: string): string => {
+  const end = group.lastIndexOf("@");
+  const name = group.slice(
+    "modpack-install?".length,
+    end < 0 ? undefined : end
   );
+  const identity = name.lastIndexOf(" [");
+  return identity < 0 ? name : name.slice(0, identity);
+};
+
+const installStages = [
+  "waitingclient",
+  "preparing",
+  "locating",
+  "fetching",
+  "applying",
+];
+
+export const compareCampusInstallStages = (a: TaskDesc, b: TaskDesc): number =>
+  installStages.indexOf(campusInstallStageKey(a.payload.filename)) -
+  installStages.indexOf(campusInstallStageKey(b.payload.filename));
+
+export const campusInstallTaskIndeterminate = (task: TaskDesc): boolean =>
+  task.status === "InProgress" && !task.total;
 
 export const isCampusInstallGroup = (group: string): boolean =>
   group.startsWith("modpack-install?");

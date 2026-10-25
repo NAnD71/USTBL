@@ -37,8 +37,10 @@ import {
 } from "@/models/task";
 import {
   campusInstallCardState,
+  campusInstallGroupLabel,
   campusInstallProgressView,
   campusInstallStageKey,
+  campusInstallTaskIndeterminate,
   isCampusInstallGroup,
   localizeCampusInstallError,
 } from "@/utils/campus-install-task";
@@ -110,7 +112,9 @@ export const DownloadTasksPage = () => {
     return `${isRetry ? `${t(`DownloadTasksPage.task.retry`)} ` : ""}${t(
       `DownloadTasksPage.task.${name}`,
       {
-        param: version || "",
+        param: isCampusInstallGroup(taskGroup)
+          ? campusInstallGroupLabel(taskGroup)
+          : version || "",
       }
     )}`;
   };
@@ -361,9 +365,6 @@ export const DownloadTasksPage = () => {
                 )}
                 {isCampusInstallGroup(group.taskGroup) &&
                   showInstallProgress(group.taskGroup)}
-                {isCampusInstallGroup(group.taskGroup) && (
-                  <UnfinishedInstalls group={group.taskGroup} />
-                )}
               </VStack>,
 
               ...(expanded
@@ -397,9 +398,12 @@ export const DownloadTasksPage = () => {
                             // In progress without a total (e.g. the platform
                             // stage of a publish) is indeterminate too.
                             isIndeterminate={
-                              task.status === TaskDescStatusEnums.Waiting ||
-                              (task.status === TaskDescStatusEnums.InProgress &&
-                                !task.total)
+                              isCampusInstallGroup(group.taskGroup)
+                                ? campusInstallTaskIndeterminate(task)
+                                : task.status === TaskDescStatusEnums.Waiting ||
+                                  (task.status ===
+                                    TaskDescStatusEnums.InProgress &&
+                                    !task.total)
                             }
                             borderRadius="sm"
                           />

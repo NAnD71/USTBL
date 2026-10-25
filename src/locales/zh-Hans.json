@@ -2676,6 +2676,7 @@
             "MODPACK_UPDATE_MERGE_INVALID": "按块选择后配置文件的格式无效，请调整选择后重试",
             "MODPACK_INSTALL_STAGING_MISMATCH": "已保存的下载属于其他安装计划，已清理",
             "MODPACK_INSTALL_INTERRUPTED": "安装已中断，请从任务页继续",
+            "MODPACK_INSTALL_TASK_FAILED": "安装任务意外终止，详情已记录到启动器日志；可从任务页继续或放弃",
             "NETWORK_ERROR": "网络请求重试后仍失败，请检查网络后继续安装",
             "FILE_OPERATION_ERROR": "安装时无法读写文件，请检查磁盘空间和权限后继续",
             "UNKNOWN_ERROR": "安装失败，详情已记录到启动器日志；可以继续重试或放弃"
