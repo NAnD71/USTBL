@@ -258,6 +258,7 @@
     }
   },
   "AllInstancesPage": {
+    "installing": "Installation en cours",
     "button": {
       "addAndImport": "Ajouter et importer",
       "installCampusModpack": "Installer le modpack USTB",
@@ -1319,7 +1320,8 @@
       "settings": "Paramètres"
     },
     "button": {
-      "launch": "Lancer l'instance"
+      "launch": "Lancer l'instance",
+      "viewInstall": "Voir l'installation"
     }
   },
   "InstanceIconSelector": {
@@ -3379,6 +3381,7 @@
         "paused": "En pause",
         "needsRepair": "À réparer",
         "waitingLoader": "En attente du chargeur",
+        "installing": "En attente d'installation",
         "unknown": "Échec de la vérification",
         "notChecked": "Non vérifié",
         "unlinked": "Suivi annulé"
