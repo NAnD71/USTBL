@@ -40,6 +40,7 @@ use crate::tasks::monitor::TaskMonitor;
 use crate::tasks::streams::desc::PDesc;
 use crate::tasks::upload::upload_handle;
 use crate::tasks::{PTaskHandle, PTaskParam};
+use crate::utils::fs::validate_sha1;
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap};
@@ -51,7 +52,6 @@ use std::sync::{Arc, Mutex, OnceLock, RwLock};
 use std::time::Instant;
 use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::reveal_item_in_dir;
-use crate::utils::fs::validate_sha1;
 
 const PROGRESS_EVENT: &str = "modpack-update:progress";
 
@@ -2311,7 +2311,10 @@ async fn install_campus_modpack_inner(
   })
 }
 
-async fn resume_campus_client(app: &AppHandle, instance: &Instance) -> USTBLResult<Option<String>> {
+async fn resume_campus_client(
+  app: &AppHandle,
+  instance: &Instance,
+) -> USTBLResult<Option<String>> {
   let json_path = instance.version_path.join(format!("{}.json", instance.name));
   let client: McClientInfo = crate::storage::load_json_async(&json_path).await?;
   let priority = {
@@ -2358,12 +2361,22 @@ async fn resume_campus_client(app: &AppHandle, instance: &Instance) -> USTBLResu
   }
   let group = crate::tasks::commands::schedule_progressive_task_group(
     app.clone(),
-    format!("resume-game-client?{}", instance.name),
+    format!("retry-game-client?{}", instance.name),
     params,
     true,
   )
   .await?;
   Ok(Some(group.task_group))
+}
+
+#[cfg(test)]
+mod resume_tests {
+  #[test]
+  fn resumed_client_uses_the_existing_retry_task_name() {
+    let group = format!("retry-game-client?{}", "campus:航空学");
+    assert!(group.starts_with("retry-game-client?"));
+    assert!(!group.starts_with("resume-"));
+  }
 }
 
 /// Undo or finish an update that was interrupted. Returns whether anything

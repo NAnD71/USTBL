@@ -1,8 +1,9 @@
 use crate::error::USTBLResult;
 use crate::instance::helpers::client_json::{ArgumentsItem, LaunchArgumentTemplate};
 use crate::instance::helpers::client_json::{LibrariesValue, McClientInfo};
-use crate::instance::helpers::loader::common::add_library_entry;
-use crate::instance::helpers::loader::common::is_valid_installer;
+use crate::instance::helpers::loader::common::{
+  add_library_entry, installer_task_group, is_valid_installer,
+};
 use crate::instance::helpers::misc::{get_instance_game_config, get_instance_subdir_paths};
 use crate::instance::models::misc::{Instance, InstanceError, InstanceSubdirType, ModLoaderType};
 use crate::launch::helpers::file_validator::convert_library_name_to_path;
@@ -107,7 +108,7 @@ pub async fn download_optifine_libraries(
     .await?;
     schedule_progressive_task_group(
       app.clone(),
-      format!("optifine-libraries?{}", instance.id),
+      installer_task_group(&instance.id),
       installer_tasks,
       true,
     )

@@ -30,9 +30,13 @@ pub fn is_valid_installer(path: &Path) -> bool {
   ZipArchive::new(file).is_ok()
 }
 
+pub(crate) fn installer_task_group(instance_id: &str) -> String {
+  format!("loader-installer?{instance_id}")
+}
+
 #[cfg(test)]
 mod installer_tests {
-  use super::is_valid_installer;
+  use super::{installer_task_group, is_valid_installer};
   use std::io::Write;
 
   #[test]
@@ -42,6 +46,12 @@ mod installer_tests {
     file.write_all(b"PK\x03\x04truncated").unwrap();
     assert!(!is_valid_installer(&path));
     std::fs::remove_file(path).unwrap();
+  }
+
+  #[test]
+  fn installer_group_is_not_a_runtime_group() {
+    assert_eq!(installer_task_group("local:pack"), "loader-installer?local:pack");
+    assert!(!installer_task_group("local:pack").contains("libraries"));
   }
 }
 

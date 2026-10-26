@@ -6,6 +6,9 @@ use crate::instance::helpers::deletion::{delete_instance_files, InstanceDeletion
 use crate::instance::helpers::game_version::{build_game_version_cmp_fn, compare_game_versions};
 use crate::instance::helpers::loader::common::{execute_processors, install_mod_loader};
 use crate::instance::helpers::loader::forge::InstallProfile;
+use crate::instance::helpers::loader::forge::download_forge_libraries;
+use crate::instance::helpers::loader::neoforge::download_neoforge_libraries;
+use crate::instance::helpers::loader::optifine::download_optifine_libraries;
 use crate::instance::helpers::loader::optifine::{
   download_optifine_installer, finish_optifine_install,
 };
@@ -1412,6 +1415,54 @@ pub async fn finish_mod_loader_install(app: AppHandle, instance_id: String) -> U
   finish_mod_loader_install_inner(&app, &instance_id).await
 }
 
+#[tauri::command]
+pub async fn prepare_mod_loader_install(app: AppHandle, instance_id: String) -> USTBLResult<bool> {
+  let instance = {
+    let state = app.state::<Mutex<HashMap<String, Instance>>>();
+    let instance = state
+      .lock()?
+      .get(&instance_id)
+      .cloned()
+      .ok_or(InstanceError::InstanceNotFoundByID)?;
+    instance
+  };
+  let priority = {
+    let state = app.state::<Mutex<LauncherConfig>>();
+    let config = state.lock()?;
+    get_source_priority_list(&config)
+  };
+  let mut client = load_json_async::<McClientInfo>(
+    &instance.version_path.join(format!("{}.json", instance.name)),
+  )
+  .await?;
+  let result = async {
+    match instance.mod_loader.loader_type {
+      ModLoaderType::Forge => {
+        download_forge_libraries(&app, &priority, &instance, &mut client).await?
+      }
+      ModLoaderType::NeoForge => {
+        download_neoforge_libraries(&app, &priority, &instance, &mut client).await?
+      }
+      _ => {}
+    }
+    if instance.optifine.is_some() {
+      download_optifine_libraries(&app, &priority, &instance, &mut client).await?;
+    }
+    Ok::<(), crate::error::USTBLError>(())
+  }
+  .await;
+  if let Err(error) = result {
+    let mut failed = instance.load_json_cfg().await?;
+    failed.mod_loader.status = ModLoaderStatus::DownloadFailed;
+    if let Some(optifine) = &mut failed.optifine {
+      optifine.status = ModLoaderStatus::DownloadFailed;
+    }
+    failed.save_json_cfg().await?;
+    return Err(error);
+  }
+  Ok(true)
+}
+
 async fn finish_mod_loader_install_inner(app: &AppHandle, instance_id: &str) -> USTBLResult<bool> {
   // Keep only the claim under the lifecycle lock. The processors may run for
   // minutes and must not block instance-list refreshes.
@@ -1473,7 +1524,10 @@ async fn finish_mod_loader_install_inner(app: &AppHandle, instance_id: &str) -> 
       .join(format!("{}.json", instance.name));
     let client_info = load_json_async::<McClientInfo>(&client_info_dir).await?;
     let install_profile_dir = instance.version_path.join("install_profile.json");
-    if steps.loader && install_profile_dir.exists() {
+    if steps.loader {
+      if !install_profile_dir.exists() {
+        return Err(InstanceError::InstallProfileParseError.into());
+      }
       let install_profile = load_json_async::<InstallProfile>(&install_profile_dir).await?;
       execute_processors(app, &instance, &client_info, &install_profile).await?;
     }

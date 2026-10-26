@@ -458,6 +458,13 @@ export class InstanceService {
     });
   }
 
+  @responseHandler("instance")
+  static async prepareModLoaderInstall(
+    instanceId: string
+  ): Promise<InvokeResponse<boolean>> {
+    return await invoke("prepare_mod_loader_install", { instanceId });
+  }
+
   /**
    * CHECK whether the given instance supports mod loader change.
    * @param {string} instanceId - The instance ID to check.
