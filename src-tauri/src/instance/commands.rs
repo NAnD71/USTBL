@@ -5,16 +5,16 @@ use crate::instance::helpers::client_json::{replace_native_libraries, McClientIn
 use crate::instance::helpers::deletion::{delete_instance_files, InstanceDeletionProgress};
 use crate::instance::helpers::game_version::{build_game_version_cmp_fn, compare_game_versions};
 use crate::instance::helpers::loader::common::{execute_processors, install_mod_loader};
-use crate::instance::helpers::loader::forge::InstallProfile;
 use crate::instance::helpers::loader::forge::download_forge_libraries;
+use crate::instance::helpers::loader::forge::InstallProfile;
 use crate::instance::helpers::loader::neoforge::download_neoforge_libraries;
 use crate::instance::helpers::loader::optifine::download_optifine_libraries;
 use crate::instance::helpers::loader::optifine::{
   download_optifine_installer, finish_optifine_install,
 };
 use crate::instance::helpers::loader_lifecycle::{
-  claim_install, complete_install, loader_patch_ready, optifine_patch_ready,
-  preparation_allowed, LOADER_LIFECYCLE,
+  claim_install, complete_install, loader_patch_ready, optifine_patch_ready, preparation_allowed,
+  LOADER_LIFECYCLE,
 };
 use crate::instance::helpers::misc::{
   get_instance_game_config, get_instance_subdir_path_by_id, get_instance_subdir_paths,
@@ -1454,7 +1454,9 @@ pub async fn prepare_mod_loader_install(
           get_source_priority_list(&config)
         };
         let mut client = load_json_async::<McClientInfo>(
-          &instance.version_path.join(format!("{}.json", instance.name)),
+          &instance
+            .version_path
+            .join(format!("{}.json", instance.name)),
         )
         .await?;
         if optifine {

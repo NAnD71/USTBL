@@ -52,7 +52,6 @@ mod installer_tests {
     assert!(!is_valid_installer(&path));
     std::fs::remove_file(path).unwrap();
   }
-
 }
 
 pub fn add_library_entry(

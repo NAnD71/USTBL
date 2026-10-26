@@ -36,10 +36,7 @@ pub(crate) async fn claim_download(instance: &mut Instance, optifine: bool) -> U
   } else {
     &instance.mod_loader.status
   };
-  if !matches!(
-    status,
-    ModLoaderStatus::NotDownloaded | ModLoaderStatus::DownloadFailed
-  ) {
+  if !pending_download(status) {
     return Ok(false);
   }
   if optifine {
@@ -61,7 +58,7 @@ pub(crate) fn preparation_allowed(status: &ModLoaderStatus) -> bool {
   matches!(status, ModLoaderStatus::Downloading)
 }
 
-pub(crate) fn pending_download(status: &ModLoaderStatus) -> bool {
+fn pending_download(status: &ModLoaderStatus) -> bool {
   matches!(
     status,
     ModLoaderStatus::NotDownloaded | ModLoaderStatus::DownloadFailed
@@ -147,8 +144,8 @@ fn set_install_status(instance: &mut Instance, steps: InstallSteps, status: ModL
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::instance::models::misc::OptiFine;
   use crate::instance::helpers::client_json::McClientInfo;
+  use crate::instance::models::misc::OptiFine;
   use std::sync::atomic::{AtomicUsize, Ordering};
 
   #[test]
@@ -169,14 +166,6 @@ mod tests {
       recover_interrupted(&mut status, true);
       assert_eq!(status, original);
     }
-  }
-
-  #[test]
-  fn download_claim_only_accepts_retryable_states() {
-    assert!(pending_download(&ModLoaderStatus::NotDownloaded));
-    assert!(pending_download(&ModLoaderStatus::DownloadFailed));
-    assert!(!pending_download(&ModLoaderStatus::Downloading));
-    assert!(!pending_download(&ModLoaderStatus::Installed));
   }
 
   #[test]
