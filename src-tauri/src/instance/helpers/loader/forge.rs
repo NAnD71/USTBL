@@ -147,7 +147,7 @@ pub async fn download_forge_libraries(
     .await?;
     schedule_progressive_task_group(
       app.clone(),
-      installer_task_group(&instance.id),
+      installer_task_group(&instance.id, false),
       installer_tasks,
       true,
     )

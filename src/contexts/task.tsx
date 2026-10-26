@@ -90,7 +90,7 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
   const { t } = useTranslation();
   const loaderCompletionClaims = React.useRef(new Map<string, Set<string>>());
   const loaderInstallsInFlight = React.useRef(new Set<string>());
-  const loaderPreparationsInFlight = React.useRef(new Set<string>());
+  const loaderPreparationsClaimed = React.useRef(new Set<string>());
   const [loaderCompletionTick, setLoaderCompletionTick] = useState(0);
 
   useEffect(() => {
@@ -511,14 +511,16 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
           const { name, version } = parseTaskGroup(payload.taskGroup);
 
           if (
-            name === "loader-installer" &&
+            (name === "loader-installer" || name === "optifine-installer") &&
             payload.event === GTaskEventStatusEnums.Completed &&
             version &&
-            !loaderPreparationsInFlight.current.has(version)
+            !loaderPreparationsClaimed.current.has(payload.taskGroup)
           ) {
             const instanceId = version;
-            loaderPreparationsInFlight.current.add(instanceId);
-            InstanceService.prepareModLoaderInstall(instanceId)
+            const component =
+              name === "optifine-installer" ? "optifine" : "loader";
+            loaderPreparationsClaimed.current.add(payload.taskGroup);
+            InstanceService.prepareModLoaderInstall(instanceId, component)
               .then((response) => {
                 if (response.status !== "success") {
                   toast({
@@ -526,6 +528,7 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
                     title: response.message,
                     description: response.details,
                   });
+                  getInstanceList(true);
                 }
               })
               .catch((error) => {
@@ -533,9 +536,7 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
                   "Failed to prepare mod loader after installer download:",
                   error
                 );
-              })
-              .finally(() => {
-                loaderPreparationsInFlight.current.delete(instanceId);
+                getInstanceList(true);
               });
           }
 
@@ -560,7 +561,8 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
           if (
             name !== "modpack-publish" &&
             name !== "modpack-install" &&
-            name !== "loader-installer"
+            name !== "loader-installer" &&
+            name !== "optifine-installer"
           )
             toast({
               status:

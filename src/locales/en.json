@@ -1401,7 +1401,7 @@
       "title": "Basic Info",
       "gameVersion": "Version",
       "playTime": "Playtime",
-      "loaderDownloadFailed": "Loader download failed. Open Downloads to retry."
+      "loaderDownloadFailed": "Loader download failed. Refresh the instance list to retry."
     },
     "screenshots": {
       "title": "Screenshots"

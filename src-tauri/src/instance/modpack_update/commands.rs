@@ -2369,16 +2369,6 @@ async fn resume_campus_client(
   Ok(Some(group.task_group))
 }
 
-#[cfg(test)]
-mod resume_tests {
-  #[test]
-  fn resumed_client_uses_the_existing_retry_task_name() {
-    let group = format!("retry-game-client?{}", "campus:航空学");
-    assert!(group.starts_with("retry-game-client?"));
-    assert!(!group.starts_with("resume-"));
-  }
-}
-
 /// Undo or finish an update that was interrupted. Returns whether anything
 /// had to be done.
 #[tauri::command]

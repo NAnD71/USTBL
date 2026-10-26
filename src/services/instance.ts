@@ -460,9 +460,13 @@ export class InstanceService {
 
   @responseHandler("instance")
   static async prepareModLoaderInstall(
-    instanceId: string
+    instanceId: string,
+    component: "loader" | "optifine"
   ): Promise<InvokeResponse<boolean>> {
-    return await invoke("prepare_mod_loader_install", { instanceId });
+    return await invoke("prepare_mod_loader_install", {
+      instanceId,
+      component,
+    });
   }
 
   /**

@@ -1401,7 +1401,7 @@
       "title": "基本資訊",
       "gameVersion": "遊戲版本",
       "playTime": "遊戲時長",
-      "loaderDownloadFailed": "載入器下載失敗，請開啟下載頁重試"
+      "loaderDownloadFailed": "載入器下載失敗，重新整理實例列表後將自動重試"
     },
     "screenshots": {
       "title": "截圖"
