@@ -10,6 +10,7 @@ import {
   LuEarth,
   LuFullscreen,
   LuHaze,
+  LuHistory,
   LuHouse,
   LuPackage,
   LuPackagePlus,
@@ -230,6 +231,20 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
               {t("InstanceDetailsLayout.button.viewInstall")}
             </Button>
           )}
+          <Button
+            size="xs"
+            variant="outline"
+            leftIcon={<LuHistory />}
+            onClick={() => {
+              if (summary) {
+                openSharedModal("config-tracking", {
+                  instanceId: summary.id,
+                });
+              }
+            }}
+          >
+            {t("InstanceDetailsLayout.secMenu.configHistory")}
+          </Button>
           <InstanceLaunchButton
             instance={summary}
             leftIcon={<LuPlay />}
