@@ -1311,7 +1311,8 @@
       "exportModPack": "匯出為模組包",
       "star": "星標此實例",
       "unstar": "取消星標",
-      "publishModPack": "發佈到校園整合包"
+      "publishModPack": "發佈到校園整合包",
+      "configHistory": "配置歷史"
     },
     "instanceTabList": {
       "overview": "概覽",
@@ -1330,6 +1331,63 @@
   },
   "InstanceIconSelector": {
     "customize": "自訂圖像"
+  },
+  "ConfigTrackingModal": {
+    "title": "配置歷史",
+    "gameRoot": "遊戲根目錄",
+    "sharedRoot": "此實例未開啟版本隔離，歷史與其他未隔離實例共用",
+    "stats": {
+      "entries": "條目數：{{count}}",
+      "storage": "佔用空間：{{size}}"
+    },
+    "diagnostics": "部分歷史記錄無法讀取（{{count}} 條）",
+    "note": "這些標籤只表示變化發生在哪個時間段，不代表是玩家修改還是模組生成。",
+    "loadFailed": "配置歷史載入失敗",
+    "loading": "正在載入配置歷史…",
+    "scanFailed": "建立檢查點失敗",
+    "empty": "尚無記錄，啟動一次遊戲或點擊建立檢查點",
+    "scanning": "正在建立檢查點…",
+    "scan": "建立檢查點",
+    "changesTitle": "相對上一條記錄的檔案變化",
+    "selectEntry": "選擇一條記錄查看檔案變化",
+    "changesFailed": "檔案變化載入失敗",
+    "loadingChanges": "正在載入檔案變化…",
+    "noFiles": "沒有檔案變化",
+    "unavailable": "無法讀取：{{reason}}",
+    "uncertain": "掃描時檔案不穩定或無法讀取",
+    "normalizedEqual": "僅換行、編碼或時間戳標頭不同",
+    "snapshotMissing": "無法比較（快照缺失）",
+    "incomplete": "部分檔案無法穩定讀取",
+    "exitCode": "退出碼：{{code}}",
+    "unknown": "未知",
+    "triggeredBy": "觸發實例：{{instance}}",
+    "binary": { "old": "舊檔案", "new": "新檔案", "missing": "不存在" },
+    "fileKind": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "刪除",
+      "uncertain": "無法比較"
+    },
+    "checkpoint": {
+      "before_launch": "啟動前",
+      "launcher_ready": "啟動器就緒",
+      "after_exit": "退出後",
+      "manual_scan": "手動檢查點"
+    },
+    "semantic": {
+      "initial_observation": "首次記錄",
+      "during_loading": "啟動早期（就緒訊號前）",
+      "during_runtime": "就緒訊號後至退出",
+      "between_sessions": "兩次啟動之間",
+      "interrupted_or_unknown": "中斷或無法判斷",
+      "ambiguous": "多個工作階段重疊，無法區分"
+    },
+    "counts": {
+      "added": "增 {{count}}",
+      "modified": "改 {{count}}",
+      "deleted": "刪 {{count}}",
+      "uncertain": "無法比較 {{count}}"
+    }
   },
   "InstanceMenu": {
     "label": {

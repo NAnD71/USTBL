@@ -1311,7 +1311,8 @@
       "exportModPack": "Exporter en tant que modpack",
       "star": "Mettre en favori cette instance",
       "unstar": "Retirer des favoris",
-      "publishModPack": "Publier dans les modpacks du campus"
+      "publishModPack": "Publier dans les modpacks du campus",
+      "configHistory": "Historique de configuration"
     },
     "instanceTabList": {
       "overview": "Aperçu",
@@ -1330,6 +1331,67 @@
   },
   "InstanceIconSelector": {
     "customize": "Personnaliser les images"
+  },
+  "ConfigTrackingModal": {
+    "title": "Historique de configuration",
+    "gameRoot": "Racine du jeu",
+    "sharedRoot": "L’isolation de version est désactivée pour cette instance ; l’historique est partagé avec les autres instances non isolées.",
+    "stats": {
+      "entries": "Entrées : {{count}}",
+      "storage": "Espace utilisé : {{size}}"
+    },
+    "diagnostics": "Certains historiques sont illisibles ({{count}})",
+    "note": "Ces étiquettes indiquent seulement quand un changement a eu lieu, et non s’il vient d’un joueur ou d’un mod.",
+    "loadFailed": "Échec du chargement de l’historique",
+    "loading": "Chargement de l’historique…",
+    "scanFailed": "Échec de la création du point de contrôle",
+    "empty": "Aucun enregistrement. Lancez le jeu ou créez un point de contrôle.",
+    "scanning": "Création du point de contrôle…",
+    "scan": "Créer un point de contrôle",
+    "changesTitle": "Fichiers modifiés depuis l’enregistrement précédent",
+    "selectEntry": "Sélectionnez un enregistrement pour voir les changements",
+    "changesFailed": "Échec du chargement des changements",
+    "loadingChanges": "Chargement des changements…",
+    "noFiles": "Aucun changement de fichier",
+    "unavailable": "Illisible : {{reason}}",
+    "uncertain": "Le fichier était instable ou illisible lors de l’analyse",
+    "normalizedEqual": "Seuls les fins de ligne, l’encodage ou les en-têtes d’horodatage diffèrent",
+    "snapshotMissing": "Comparaison impossible (instantané manquant)",
+    "incomplete": "Certains fichiers n’ont pas pu être lus de façon stable",
+    "exitCode": "Code de sortie : {{code}}",
+    "unknown": "inconnu",
+    "triggeredBy": "Déclenché par l’instance : {{instance}}",
+    "binary": {
+      "old": "Ancien fichier",
+      "new": "Nouveau fichier",
+      "missing": "absent"
+    },
+    "fileKind": {
+      "added": "Ajouté",
+      "modified": "Modifié",
+      "deleted": "Supprimé",
+      "uncertain": "Comparaison impossible"
+    },
+    "checkpoint": {
+      "before_launch": "Avant le lancement",
+      "launcher_ready": "Lanceur prêt",
+      "after_exit": "Après la sortie",
+      "manual_scan": "Point manuel"
+    },
+    "semantic": {
+      "initial_observation": "Première observation",
+      "during_loading": "Début du lancement (avant le signal prêt)",
+      "during_runtime": "Après le signal prêt jusqu’à la sortie",
+      "between_sessions": "Entre deux sessions",
+      "interrupted_or_unknown": "Interrompu ou indéterminé",
+      "ambiguous": "Sessions superposées, distinction impossible"
+    },
+    "counts": {
+      "added": "Ajoutés {{count}}",
+      "modified": "Modifiés {{count}}",
+      "deleted": "Supprimés {{count}}",
+      "uncertain": "Comparaison impossible {{count}}"
+    }
   },
   "InstanceMenu": {
     "label": {

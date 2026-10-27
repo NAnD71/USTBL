@@ -1311,7 +1311,8 @@
       "exportModPack": "モッドパックエクスポート",
       "star": "このインスタンスをスター",
       "unstar": "このインスタンスを非スター",
-      "publishModPack": "キャンパスModパックに公開"
+      "publishModPack": "キャンパスModパックに公開",
+      "configHistory": "設定履歴"
     },
     "instanceTabList": {
       "overview": "概要",
@@ -1330,6 +1331,63 @@
   },
   "InstanceIconSelector": {
     "customize": "アイコンをカスタマイズ"
+  },
+  "ConfigTrackingModal": {
+    "title": "設定履歴",
+    "gameRoot": "ゲームルート",
+    "sharedRoot": "このインスタンスではバージョン分離が無効です。履歴は他の未分離インスタンスと共有されます。",
+    "stats": {
+      "entries": "エントリ数：{{count}}",
+      "storage": "使用容量：{{size}}"
+    },
+    "diagnostics": "一部の履歴を読み取れません（{{count}} 件）",
+    "note": "これらのラベルは変更が発生した時間帯だけを示し、プレイヤーによる変更かModによる生成かは示しません。",
+    "loadFailed": "設定履歴の読み込みに失敗しました",
+    "loading": "設定履歴を読み込んでいます…",
+    "scanFailed": "チェックポイントの作成に失敗しました",
+    "empty": "記録はありません。ゲームを一度起動するか、チェックポイントを作成してください。",
+    "scanning": "チェックポイントを作成しています…",
+    "scan": "チェックポイントを作成",
+    "changesTitle": "前回の記録からのファイル変更",
+    "selectEntry": "記録を選択してファイル変更を表示",
+    "changesFailed": "ファイル変更の読み込みに失敗しました",
+    "loadingChanges": "ファイル変更を読み込んでいます…",
+    "noFiles": "ファイル変更はありません",
+    "unavailable": "読み取り不可：{{reason}}",
+    "uncertain": "スキャン中にファイルが不安定または読み取り不能でした",
+    "normalizedEqual": "改行、エンコード、またはタイムスタンプヘッダーのみが異なります",
+    "snapshotMissing": "比較できません（スナップショットがありません）",
+    "incomplete": "安定して読み取れないファイルがあります",
+    "exitCode": "終了コード：{{code}}",
+    "unknown": "不明",
+    "triggeredBy": "トリガーしたインスタンス：{{instance}}",
+    "binary": { "old": "旧ファイル", "new": "新ファイル", "missing": "なし" },
+    "fileKind": {
+      "added": "追加",
+      "modified": "変更",
+      "deleted": "削除",
+      "uncertain": "比較不可"
+    },
+    "checkpoint": {
+      "before_launch": "起動前",
+      "launcher_ready": "ランチャー準備完了",
+      "after_exit": "終了後",
+      "manual_scan": "手動チェックポイント"
+    },
+    "semantic": {
+      "initial_observation": "初回記録",
+      "during_loading": "起動初期（準備完了シグナル前）",
+      "during_runtime": "準備完了シグナル後から終了まで",
+      "between_sessions": "セッション間",
+      "interrupted_or_unknown": "中断または不明",
+      "ambiguous": "複数セッションが重複し区別不可"
+    },
+    "counts": {
+      "added": "追加 {{count}}",
+      "modified": "変更 {{count}}",
+      "deleted": "削除 {{count}}",
+      "uncertain": "比較不可 {{count}}"
+    }
   },
   "InstanceMenu": {
     "label": {

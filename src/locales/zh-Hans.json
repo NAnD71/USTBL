@@ -1311,7 +1311,8 @@
       "exportModPack": "导出为整合包",
       "star": "星标此实例",
       "unstar": "取消星标",
-      "publishModPack": "发布到校园整合包"
+      "publishModPack": "发布到校园整合包",
+      "configHistory": "配置历史"
     },
     "instanceTabList": {
       "overview": "概览",
@@ -1330,6 +1331,67 @@
   },
   "InstanceIconSelector": {
     "customize": "自定义图像"
+  },
+  "ConfigTrackingModal": {
+    "title": "配置历史",
+    "gameRoot": "游戏根目录",
+    "sharedRoot": "此实例未开启版本隔离，历史与其他未隔离实例共用",
+    "stats": {
+      "entries": "条目数：{{count}}",
+      "storage": "占用空间：{{size}}"
+    },
+    "diagnostics": "部分历史记录无法读取（{{count}} 条）",
+    "note": "这些标签只表示变化发生在哪个时间段，不代表是玩家修改还是模组生成。",
+    "loadFailed": "配置历史加载失败",
+    "loading": "正在加载配置历史…",
+    "scanFailed": "建立检查点失败",
+    "empty": "尚无记录，启动一次游戏或点击建立检查点",
+    "scanning": "正在建立检查点…",
+    "scan": "建立检查点",
+    "changesTitle": "相对上一条记录的文件变化",
+    "selectEntry": "选择一条记录查看文件变化",
+    "changesFailed": "文件变化加载失败",
+    "loadingChanges": "正在加载文件变化…",
+    "noFiles": "没有文件变化",
+    "unavailable": "无法读取：{{reason}}",
+    "uncertain": "扫描时文件不稳定或无法读取",
+    "normalizedEqual": "仅换行、编码或时间戳头不同",
+    "snapshotMissing": "无法比较（快照缺失）",
+    "incomplete": "部分文件无法稳定读取",
+    "exitCode": "退出码：{{code}}",
+    "unknown": "未知",
+    "triggeredBy": "触发实例：{{instance}}",
+    "binary": {
+      "old": "旧文件",
+      "new": "新文件",
+      "missing": "不存在"
+    },
+    "fileKind": {
+      "added": "新增",
+      "modified": "修改",
+      "deleted": "删除",
+      "uncertain": "无法比较"
+    },
+    "checkpoint": {
+      "before_launch": "启动前",
+      "launcher_ready": "启动器就绪",
+      "after_exit": "退出后",
+      "manual_scan": "手动检查点"
+    },
+    "semantic": {
+      "initial_observation": "首次记录",
+      "during_loading": "启动早期（就绪信号前）",
+      "during_runtime": "就绪信号后至退出",
+      "between_sessions": "两次启动之间",
+      "interrupted_or_unknown": "中断或无法判断",
+      "ambiguous": "多个会话重叠，无法区分"
+    },
+    "counts": {
+      "added": "增 {{count}}",
+      "modified": "改 {{count}}",
+      "deleted": "删 {{count}}",
+      "uncertain": "无法比较 {{count}}"
+    }
   },
   "InstanceMenu": {
     "label": {
