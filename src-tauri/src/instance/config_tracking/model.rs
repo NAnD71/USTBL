@@ -78,6 +78,7 @@ pub struct ChangeSummary {
   pub unstable: Vec<String>,
 }
 
+#[allow(dead_code)]
 impl ChangeSummary {
   pub fn is_empty(&self) -> bool {
     self.added.is_empty()
@@ -105,6 +106,9 @@ pub struct ConfigCommit {
   pub instance_id: Option<String>,
   pub session_id: Option<String>,
   pub checkpoint: Checkpoint,
+  /// Preserve lifecycle evidence when the displayed checkpoint is ambiguous.
+  #[serde(default)]
+  pub requested_checkpoint: Option<Checkpoint>,
   pub semantic: Semantic,
   pub process_exit: Option<ProcessExit>,
   pub changed: ChangeSummary,
@@ -117,6 +121,8 @@ pub struct ActiveSession {
   pub session_id: String,
   pub instance_id: Option<String>,
   pub started_at: String,
+  #[serde(default)]
+  pub ambiguous: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -126,6 +132,8 @@ pub struct HistoryState {
   pub head: Option<String>,
   pub next_sequence: u64,
   pub commit_count: u64,
+  #[serde(default)]
+  pub revision: u64,
   #[serde(default)]
   pub active_sessions: BTreeMap<String, ActiveSession>,
 }
@@ -137,6 +145,7 @@ impl Default for HistoryState {
       head: None,
       next_sequence: 0,
       commit_count: 0,
+      revision: 0,
       active_sessions: BTreeMap::new(),
     }
   }
@@ -150,6 +159,7 @@ pub struct CheckpointRequest {
   pub process_exit: Option<ProcessExit>,
 }
 
+#[allow(dead_code)]
 impl CheckpointRequest {
   pub fn new(checkpoint: Checkpoint) -> Self {
     Self {

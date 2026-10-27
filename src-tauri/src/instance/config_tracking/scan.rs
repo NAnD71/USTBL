@@ -1,6 +1,7 @@
 use super::model::{ConfigFile, ConfigFileType, ConfigTree, ReadState};
 use sha1::{Digest, Sha1};
 use std::collections::BTreeMap;
+use std::ffi::OsString;
 use std::fs;
 use std::io;
 use std::path::{Component, Path, PathBuf};
@@ -12,6 +13,7 @@ pub(crate) struct ScannedTree {
   pub objects: BTreeMap<String, Vec<u8>>,
 }
 
+#[allow(dead_code)]
 pub fn scan_config(game_root: &Path, config_dir: &Path) -> io::Result<ConfigTree> {
   Ok(scan_config_with_objects(game_root, config_dir)?.tree)
 }
@@ -106,6 +108,7 @@ fn validate_paths(game_root: &Path, config_dir: &Path) -> io::Result<(PathBuf, P
       "config path escapes game root",
     ));
   }
+  ensure_no_symlink_components(&root, &config)?;
   Ok((root, config))
 }
 
@@ -117,6 +120,23 @@ fn scan_directory(
   objects: &mut BTreeMap<String, Vec<u8>>,
   errors: &mut Vec<String>,
 ) -> io::Result<()> {
+  let directory_before = match fs::symlink_metadata(directory) {
+    Ok(metadata) => metadata,
+    Err(error) => {
+      errors.push(format!("{}: {}", display_path(directory), error));
+      return Ok(());
+    }
+  };
+  if directory_before.file_type().is_symlink()
+    || !directory_before.is_dir()
+    || !canonical_inside(root, directory)
+  {
+    errors.push(format!(
+      "{}: directory changed during scan",
+      display_path(directory)
+    ));
+    return Ok(());
+  }
   let entries = match fs::read_dir(directory) {
     Ok(entries) => entries,
     Err(error) => {
@@ -124,6 +144,7 @@ fn scan_directory(
       return Ok(());
     }
   };
+  let mut before_entries = BTreeMap::new();
   for entry in entries {
     let entry = match entry {
       Ok(entry) => entry,
@@ -133,6 +154,10 @@ fn scan_directory(
       }
     };
     let path = entry.path();
+    if !path.starts_with(directory) || !path.starts_with(root) {
+      errors.push(format!("{}: path escaped scan root", display_path(&path)));
+      continue;
+    }
     let file_type = match entry.file_type() {
       Ok(file_type) => file_type,
       Err(error) => {
@@ -140,6 +165,7 @@ fn scan_directory(
         continue;
       }
     };
+    before_entries.insert(entry.file_name(), file_type_code(&file_type));
     if file_type.is_symlink() {
       continue;
     }
@@ -176,7 +202,7 @@ fn scan_directory(
     } else {
       format!("{prefix}/{name}")
     };
-    let (file, bytes) = read_file_stably(&path, relative_path.clone());
+    let (file, bytes) = read_file_stably(&path, relative_path.clone(), root);
     if let (Some(file), Some(bytes)) = (&file, &bytes) {
       objects.insert(file.sha1.clone(), bytes.clone());
     }
@@ -196,11 +222,40 @@ fn scan_directory(
       }
     }));
   }
+  let directory_changed = match fs::symlink_metadata(directory) {
+    Ok(directory_after) => {
+      directory_after.file_type().is_symlink()
+        || !directory_after.is_dir()
+        || !canonical_inside(root, directory)
+        || directory_before.modified().ok() != directory_after.modified().ok()
+    }
+    Err(error) => {
+      errors.push(format!("{}: {}", display_path(directory), error));
+      true
+    }
+  };
+  let listing_changed = match directory_signature(directory) {
+    Ok(after_entries) => before_entries != after_entries,
+    Err(error) => {
+      errors.push(format!("{}: {}", display_path(directory), error));
+      true
+    }
+  };
+  if directory_changed || listing_changed {
+    errors.push(format!(
+      "{}: directory changed during scan",
+      display_path(directory)
+    ));
+  }
   Ok(())
 }
 
-fn read_file_stably(path: &Path, relative_path: String) -> (Option<ConfigFile>, Option<Vec<u8>>) {
-  read_file_stably_with_hook(path, relative_path, None)
+fn read_file_stably(
+  path: &Path,
+  relative_path: String,
+  scan_root: &Path,
+) -> (Option<ConfigFile>, Option<Vec<u8>>) {
+  read_file_stably_with_hook(path, relative_path, scan_root, None)
 }
 
 #[cfg(test)]
@@ -209,35 +264,58 @@ pub(crate) fn read_file_stably_for_test(
   relative_path: String,
   hook: &mut dyn FnMut(),
 ) -> (Option<ConfigFile>, Option<Vec<u8>>) {
-  read_file_stably_with_hook(path, relative_path, Some(hook))
+  read_file_stably_with_hook(
+    path,
+    relative_path,
+    path.parent().unwrap_or(path),
+    Some(hook),
+  )
 }
 
 fn read_file_stably_with_hook(
   path: &Path,
   relative_path: String,
+  scan_root: &Path,
   mut hook: Option<&mut dyn FnMut()>,
 ) -> (Option<ConfigFile>, Option<Vec<u8>>) {
   let mut saw_change = false;
   for _ in 0..READ_RETRIES {
-    let before = match fs::metadata(path) {
+    if !path.starts_with(scan_root) || !canonical_inside(scan_root, path) {
+      return (Some(unstable_file(relative_path)), None);
+    }
+    let before = match fs::symlink_metadata(path) {
       Ok(metadata) => metadata,
+      Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        return (Some(unstable_file(relative_path)), None)
+      }
       Err(_) => return (Some(unreadable_file(relative_path)), None),
     };
+    if before.file_type().is_symlink() || !before.is_file() {
+      return (Some(unstable_file(relative_path)), None);
+    }
     let first = match fs::read(path) {
       Ok(bytes) => bytes,
+      Err(error) if error.kind() == io::ErrorKind::NotFound => {
+        return (Some(unstable_file(relative_path)), None)
+      }
       Err(_) => return (Some(unreadable_file(relative_path)), None),
     };
     if let Some(hook) = hook.as_deref_mut() {
       hook();
     }
-    let after = match fs::metadata(path) {
+    let after = match fs::symlink_metadata(path) {
       Ok(metadata) => metadata,
-      Err(_) => {
+      Err(error) if error.kind() == io::ErrorKind::NotFound => {
         saw_change = true;
         continue;
       }
+      Err(_) => return (Some(unreadable_file(relative_path)), None),
     };
-    if !same_file_state(&before, &after) {
+    if after.file_type().is_symlink()
+      || !after.is_file()
+      || !canonical_inside(scan_root, path)
+      || !same_file_state(&before, &after)
+    {
       saw_change = true;
       continue;
     }
@@ -265,7 +343,7 @@ fn read_file_stably_with_hook(
       Some(first),
     );
   }
-  let size = fs::metadata(path)
+  let size = fs::symlink_metadata(path)
     .map(|metadata| metadata.len())
     .unwrap_or(0);
   (
@@ -285,6 +363,53 @@ fn read_file_stably_with_hook(
   )
 }
 
+fn ensure_no_symlink_components(root: &Path, path: &Path) -> io::Result<()> {
+  let relative = path
+    .strip_prefix(root)
+    .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "path escapes game root"))?;
+  let mut current = root.to_path_buf();
+  for component in relative.components() {
+    let Component::Normal(name) = component else {
+      continue;
+    };
+    current.push(name);
+    match fs::symlink_metadata(&current) {
+      Ok(metadata) if metadata.file_type().is_symlink() => {
+        return Err(io::Error::new(
+          io::ErrorKind::InvalidInput,
+          "config path contains a symbolic link",
+        ));
+      }
+      Ok(_) => {}
+      Err(error) if error.kind() == io::ErrorKind::NotFound => break,
+      Err(error) => return Err(error),
+    }
+  }
+  Ok(())
+}
+
+fn directory_signature(directory: &Path) -> io::Result<BTreeMap<OsString, u8>> {
+  let mut signature = BTreeMap::new();
+  for entry in fs::read_dir(directory)? {
+    let entry = entry?;
+    let file_type = entry.file_type()?;
+    signature.insert(entry.file_name(), file_type_code(&file_type));
+  }
+  Ok(signature)
+}
+
+fn file_type_code(file_type: &fs::FileType) -> u8 {
+  if file_type.is_symlink() {
+    1
+  } else if file_type.is_dir() {
+    2
+  } else if file_type.is_file() {
+    3
+  } else {
+    4
+  }
+}
+
 fn unreadable_file(path: String) -> ConfigFile {
   ConfigFile {
     path,
@@ -293,6 +418,27 @@ fn unreadable_file(path: String) -> ConfigFile {
     object: None,
     file_type: ConfigFileType::Regular,
     read_state: ReadState::Unreadable,
+  }
+}
+
+fn canonical_inside(root: &Path, path: &Path) -> bool {
+  let Ok(canonical_root) = root.canonicalize() else {
+    return false;
+  };
+  path
+    .canonicalize()
+    .map(|canonical_path| canonical_path.starts_with(canonical_root))
+    .unwrap_or(false)
+}
+
+fn unstable_file(path: String) -> ConfigFile {
+  ConfigFile {
+    path,
+    sha1: String::new(),
+    size: 0,
+    object: None,
+    file_type: ConfigFileType::Regular,
+    read_state: ReadState::Unstable,
   }
 }
 
@@ -306,15 +452,23 @@ pub(crate) fn make_tree(
   scan_errors: Vec<String>,
 ) -> ConfigTree {
   files.sort_by(|left, right| left.path.cmp(&right.path));
-  let payload = serde_json::to_vec(&(&files, incomplete, &scan_errors))
-    .expect("config tree metadata must serialize");
-  let id = hex::encode(Sha1::digest(payload));
+  let id = tree_id_for_parts(&files, incomplete, &scan_errors);
   ConfigTree {
     id,
     files,
     incomplete,
     scan_errors,
   }
+}
+
+pub(crate) fn tree_id_for(tree: &ConfigTree) -> String {
+  tree_id_for_parts(&tree.files, tree.incomplete, &tree.scan_errors)
+}
+
+fn tree_id_for_parts(files: &[ConfigFile], incomplete: bool, scan_errors: &[String]) -> String {
+  let payload = serde_json::to_vec(&(files, incomplete, scan_errors))
+    .expect("config tree metadata must serialize");
+  hex::encode(Sha1::digest(payload))
 }
 
 fn path_to_slash(path: &Path) -> io::Result<String> {

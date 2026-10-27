@@ -2,7 +2,7 @@ use super::model::{
   ChangeSummary, Checkpoint, ConfigCommit, ConfigTree, Semantic, SemanticContext,
 };
 use crate::instance::helpers::modpack::text::normalize_text;
-use crate::instance::modpack_update::text_diff::{lines_of, unified_diff, DiffHunk};
+use crate::instance::modpack_update::text_diff::{lines_of, unified_diff_hiding, DiffHunk};
 use std::collections::BTreeSet;
 
 pub fn diff_trees(old: Option<&ConfigTree>, new: &ConfigTree) -> ChangeSummary {
@@ -46,6 +46,7 @@ pub fn diff_trees(old: Option<&ConfigTree>, new: &ConfigTree) -> ChangeSummary {
 pub fn derive_semantic(
   previous: Option<&ConfigCommit>,
   checkpoint: Checkpoint,
+  session_id: Option<&str>,
   context: SemanticContext,
 ) -> Semantic {
   if context.overlapping_sessions || context.scan_incomplete || checkpoint == Checkpoint::Ambiguous
@@ -55,9 +56,17 @@ pub fn derive_semantic(
   let Some(previous) = previous else {
     return Semantic::InitialObservation;
   };
+  let same_session = session_id.is_some() && previous.session_id.as_deref() == session_id;
+  if previous.incomplete {
+    return Semantic::Ambiguous;
+  }
   match (previous.checkpoint, checkpoint) {
-    (Checkpoint::BeforeLaunch, Checkpoint::LauncherReady) => Semantic::DuringLoading,
-    (Checkpoint::LauncherReady, Checkpoint::AfterExit) => Semantic::DuringRuntime,
+    (Checkpoint::BeforeLaunch, Checkpoint::LauncherReady) if same_session => {
+      Semantic::DuringLoading
+    }
+    (Checkpoint::LauncherReady, Checkpoint::AfterExit) if same_session => Semantic::DuringRuntime,
+    (Checkpoint::BeforeLaunch, Checkpoint::LauncherReady)
+    | (Checkpoint::LauncherReady, Checkpoint::AfterExit) => Semantic::Ambiguous,
     (Checkpoint::AfterExit, Checkpoint::BeforeLaunch | Checkpoint::ManualScan) => {
       Semantic::BetweenSessions
     }
@@ -72,12 +81,19 @@ pub fn derive_semantic(
   }
 }
 
+#[allow(dead_code)]
 pub fn normalized_text_equal(path: &str, old: &[u8], new: &[u8]) -> Option<bool> {
   Some(normalize_text(path, old)? == normalize_text(path, new)?)
 }
 
+#[allow(dead_code)]
 pub fn normalized_text_diff(path: &str, old: &[u8], new: &[u8]) -> Option<Vec<DiffHunk>> {
   let old = normalize_text(path, old)?;
   let new = normalize_text(path, new)?;
-  Some(unified_diff(&lines_of(&old), &lines_of(&new), 3))
+  Some(unified_diff_hiding(
+    &lines_of(&old),
+    &lines_of(&new),
+    3,
+    &|_| false,
+  ))
 }

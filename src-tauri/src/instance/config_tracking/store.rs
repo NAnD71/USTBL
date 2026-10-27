@@ -3,7 +3,7 @@ use super::model::{
   ActiveSession, ChangeSummary, Checkpoint, CheckpointRequest, ConfigCommit, ConfigTree,
   HistoryState, SemanticContext,
 };
-use super::scan::scan_config_with_objects;
+use super::scan::{scan_config_with_objects, tree_id_for};
 use chrono::Utc;
 use serde::de::DeserializeOwned;
 use serde::Serialize;
@@ -17,7 +17,7 @@ use uuid::Uuid;
 
 pub const HISTORY_DIR_NAME: &str = "config-history";
 
-static HISTORY_LOCKS: OnceLock<Mutex<HashMap<PathBuf, Arc<Mutex<()>>>>> = OnceLock::new();
+static HISTORY_LOCKS: OnceLock<Mutex<HashMap<String, Arc<Mutex<()>>>>> = OnceLock::new();
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HistoryStats {
@@ -51,33 +51,42 @@ impl HistoryStore {
   }
 
   pub fn load_state(&self) -> io::Result<HistoryState> {
-    match read_json::<HistoryState>(&self.state_path()) {
-      Ok(state) => Ok(state),
-      Err(error) if error.kind() == io::ErrorKind::NotFound => self.recover_state(),
-      Err(error) => Err(error),
-    }
+    Ok(self.load_state_recovering()?.0)
   }
 
   /// Read state while retaining a usable view of valid commit files after a
   /// missing or malformed state file. The warning is intentionally returned to
   /// the caller so lifecycle integration can log it without blocking launch.
   pub fn load_state_recovering(&self) -> io::Result<(HistoryState, Option<String>)> {
-    match read_json::<HistoryState>(&self.state_path()) {
-      Ok(state) => Ok((state, None)),
+    let stored = match read_json::<HistoryState>(&self.state_path()) {
+      Ok(state) => Some(state),
       Err(error)
         if matches!(
           error.kind(),
           io::ErrorKind::NotFound | io::ErrorKind::InvalidData
         ) =>
       {
-        Ok((self.recover_state()?, Some(error.to_string())))
+        None
       }
-      Err(error) => Err(error),
-    }
+      Err(error) => return Err(error),
+    };
+    let reconciled = self.reconcile_state(stored.as_ref())?;
+    let changed = stored.as_ref() != Some(&reconciled);
+    let warning = changed || stored.is_none();
+    Ok((
+      reconciled,
+      warning.then(|| "configuration history state was recovered or reconciled".into()),
+    ))
   }
 
   pub fn load_commit(&self, id: &str) -> io::Result<ConfigCommit> {
-    read_json(&self.commit_path(id))
+    validate_commit_id(id)?;
+    let commit: ConfigCommit = read_json(&self.commit_path(id))?;
+    validate_commit(&commit)?;
+    if commit.id != id {
+      return Err(invalid_data("commit id does not match its path"));
+    }
+    Ok(commit)
   }
 
   pub fn list_commits(&self) -> io::Result<Vec<ConfigCommit>> {
@@ -93,7 +102,12 @@ impl HistoryStore {
           .extension()
           .is_some_and(|extension| extension == "json")
       {
-        commits.push(read_json(&entry.path())?);
+        let entry_path = entry.path();
+        let file_id = entry_path
+          .file_stem()
+          .and_then(|value| value.to_str())
+          .ok_or_else(|| invalid_data("commit file has an invalid name"))?;
+        commits.push(self.load_commit(file_id)?);
       }
     }
     commits.sort_by(|left: &ConfigCommit, right| {
@@ -106,7 +120,20 @@ impl HistoryStore {
   }
 
   pub fn load_tree(&self, id: &str) -> io::Result<ConfigTree> {
-    read_json(&self.tree_path(id))
+    validate_tree_id(id)?;
+    let tree: ConfigTree = read_json(&self.tree_path(id))?;
+    validate_tree(&tree)?;
+    for file in &tree.files {
+      if file.read_state == super::model::ReadState::Stable
+        && self.load_object(&file.sha1)?.is_none()
+      {
+        return Err(invalid_data("tree references a missing object"));
+      }
+    }
+    if tree.id != id {
+      return Err(invalid_data("tree id does not match its path"));
+    }
+    Ok(tree)
   }
 
   pub fn diff_commits(&self, old_id: Option<&str>, new_id: &str) -> io::Result<ChangeSummary> {
@@ -123,7 +150,12 @@ impl HistoryStore {
   pub fn load_object(&self, sha1: &str) -> io::Result<Option<Vec<u8>>> {
     validate_sha1(sha1)?;
     match fs::read(self.object_path(sha1)) {
-      Ok(bytes) => Ok(Some(bytes)),
+      Ok(bytes) => {
+        if hex::encode(Sha1::digest(&bytes)) != sha1 {
+          return Err(invalid_data("object SHA-1 does not match its path"));
+        }
+        Ok(Some(bytes))
+      }
       Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
       Err(error) => Err(error),
     }
@@ -149,11 +181,22 @@ impl HistoryStore {
       .map(|commit| self.load_tree(&commit.tree_id))
       .transpose()?;
     let changed = diff_trees(old_tree.as_ref(), &scanned.tree);
-    let overlap = request.checkpoint != Checkpoint::Recovered
-      && state
+    let overlap = if request.checkpoint == Checkpoint::Recovered {
+      state
         .active_sessions
-        .keys()
-        .any(|id| request.session_id.as_deref() != Some(id.as_str()));
+        .values()
+        .any(|session| session.ambiguous)
+        || state.active_sessions.len() > 1
+    } else {
+      state.active_sessions.iter().any(|(id, session)| {
+        session.ambiguous || request.session_id.as_deref() != Some(id.as_str())
+      })
+    };
+    if overlap {
+      for session in state.active_sessions.values_mut() {
+        session.ambiguous = true;
+      }
+    }
     let checkpoint = if overlap {
       Checkpoint::Ambiguous
     } else {
@@ -162,6 +205,7 @@ impl HistoryStore {
     let semantic = derive_semantic(
       parent.as_ref(),
       checkpoint,
+      request.session_id.as_deref(),
       SemanticContext {
         overlapping_sessions: overlap,
         scan_incomplete: scanned.tree.incomplete || !changed.unstable.is_empty(),
@@ -181,6 +225,7 @@ impl HistoryStore {
       instance_id: request.instance_id,
       session_id: request.session_id.clone(),
       checkpoint,
+      requested_checkpoint: Some(request.checkpoint),
       semantic,
       process_exit: request.process_exit,
       changed,
@@ -196,6 +241,7 @@ impl HistoryStore {
     state.head = Some(commit.id.clone());
     state.next_sequence = state.next_sequence.saturating_add(1);
     state.commit_count = state.commit_count.saturating_add(1);
+    state.revision = state.revision.saturating_add(1);
     match (request.checkpoint, request.session_id) {
       (Checkpoint::BeforeLaunch, Some(session_id)) => {
         state.active_sessions.insert(
@@ -204,6 +250,7 @@ impl HistoryStore {
             session_id,
             instance_id: commit.instance_id.clone(),
             started_at: commit.created_at.clone(),
+            ambiguous: overlap,
           },
         );
       }
@@ -222,6 +269,12 @@ impl HistoryStore {
     let _guard = lock.lock().expect("config history lock poisoned");
     self.validate_history_location()?;
     let mut state = self.load_state()?;
+    let overlapping = !state.active_sessions.is_empty();
+    if overlapping {
+      for session in state.active_sessions.values_mut() {
+        session.ambiguous = true;
+      }
+    }
     let now = Utc::now().to_rfc3339();
     state.active_sessions.insert(
       session_id.to_string(),
@@ -229,8 +282,10 @@ impl HistoryStore {
         session_id: session_id.to_string(),
         instance_id,
         started_at: now,
+        ambiguous: overlapping,
       },
     );
+    state.revision = state.revision.saturating_add(1);
     self.ensure_layout()?;
     self.write_json_atomic(&self.state_path(), &state)
   }
@@ -238,8 +293,10 @@ impl HistoryStore {
   pub fn finish_session(&self, session_id: &str) -> io::Result<()> {
     let lock = lock_for(&self.history_dir);
     let _guard = lock.lock().expect("config history lock poisoned");
+    self.validate_history_location()?;
     let mut state = self.load_state()?;
     state.active_sessions.remove(session_id);
+    state.revision = state.revision.saturating_add(1);
     self.ensure_layout()?;
     self.write_json_atomic(&self.state_path(), &state)
   }
@@ -266,24 +323,13 @@ impl HistoryStore {
   }
 
   fn validate_history_location(&self) -> io::Result<()> {
-    let config = self
-      .config_dir
-      .canonicalize()
-      .unwrap_or_else(|_| self.config_dir.clone());
-    let history_input = if self.history_dir.is_absolute() {
-      self.history_dir.clone()
+    let config_input = if self.config_dir.is_absolute() {
+      self.config_dir.clone()
     } else {
-      std::env::current_dir()?.join(&self.history_dir)
+      self.game_root.join(&self.config_dir)
     };
-    let history = if history_input.exists() {
-      history_input.canonicalize().unwrap_or(history_input)
-    } else {
-      let parent = history_input.parent().unwrap_or(Path::new("."));
-      parent
-        .canonicalize()
-        .unwrap_or_else(|_| parent.to_path_buf())
-        .join(history_input.file_name().unwrap_or_default())
-    };
+    let config = normalize_path_key(&config_input)?;
+    let history = normalize_path_key(&self.history_dir)?;
     if history == config || history.starts_with(&config) {
       return Err(io::Error::new(
         io::ErrorKind::InvalidInput,
@@ -294,6 +340,63 @@ impl HistoryStore {
   }
 
   fn recover_state(&self) -> io::Result<HistoryState> {
+    self.reconcile_state(None)
+  }
+
+  fn reconcile_state(&self, stored: Option<&HistoryState>) -> io::Result<HistoryState> {
+    let commits = self.valid_commits()?;
+    let by_id: HashMap<_, _> = commits
+      .iter()
+      .map(|commit| (commit.id.as_str(), commit))
+      .collect();
+    let mut tips = Vec::new();
+    for commit in &commits {
+      if !commits
+        .iter()
+        .any(|child| child.parent_id.as_deref() == Some(commit.id.as_str()))
+        && chain_depth(commit, &by_id).is_some()
+      {
+        tips.push(commit);
+      }
+    }
+    tips.sort_by(|left, right| {
+      chain_depth(left, &by_id)
+        .unwrap_or(0)
+        .cmp(&chain_depth(right, &by_id).unwrap_or(0))
+        .then_with(|| left.created_at.cmp(&right.created_at))
+        .then_with(|| left.id.cmp(&right.id))
+    });
+    let chain = tips
+      .last()
+      .map(|tip| collect_chain(tip, &by_id))
+      .unwrap_or_default();
+    let stored_head_index = stored
+      .and_then(|state| state.head.as_deref())
+      .and_then(|head| chain.iter().position(|commit| commit.id == head));
+    let mut active_sessions = if let Some(state) = stored {
+      if stored_head_index.is_some() || (state.head.is_none() && chain.is_empty()) {
+        state.active_sessions.clone()
+      } else {
+        Default::default()
+      }
+    } else {
+      Default::default()
+    };
+    let replay_from = stored_head_index.map_or(0, |index| index.saturating_add(1));
+    for commit in chain.iter().skip(replay_from) {
+      replay_session_state(&mut active_sessions, commit);
+    }
+    Ok(HistoryState {
+      schema: 1,
+      head: chain.last().map(|commit| commit.id.clone()),
+      next_sequence: chain.len() as u64,
+      commit_count: chain.len() as u64,
+      revision: stored.map_or(chain.len() as u64, |state| state.revision),
+      active_sessions,
+    })
+  }
+
+  fn valid_commits(&self) -> io::Result<Vec<ConfigCommit>> {
     let mut commits = Vec::new();
     if self.commits_dir().exists() {
       for entry in fs::read_dir(self.commits_dir())? {
@@ -305,24 +408,20 @@ impl HistoryStore {
             .is_some_and(|extension| extension == "json")
         {
           if let Ok(commit) = read_json::<ConfigCommit>(&entry.path()) {
+            let entry_path = entry.path();
+            let file_id = entry_path.file_stem().and_then(|name| name.to_str());
+            if file_id != Some(commit.id.as_str())
+              || validate_commit(&commit).is_err()
+              || self.load_tree(&commit.tree_id).is_err()
+            {
+              continue;
+            }
             commits.push(commit);
           }
         }
       }
     }
-    commits.sort_by(|left, right| {
-      left
-        .created_at
-        .cmp(&right.created_at)
-        .then_with(|| left.id.cmp(&right.id))
-    });
-    Ok(HistoryState {
-      schema: 1,
-      head: commits.last().map(|commit| commit.id.clone()),
-      next_sequence: commits.len() as u64,
-      commit_count: commits.len() as u64,
-      active_sessions: Default::default(),
-    })
+    Ok(commits)
   }
 
   fn store_object(&self, sha1: &str, bytes: &[u8]) -> io::Result<()> {
@@ -401,20 +500,188 @@ fn read_json<T: DeserializeOwned>(path: &Path) -> io::Result<T> {
   serde_json::from_slice(&bytes).map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
 }
 
+fn invalid_data(message: &str) -> io::Error {
+  io::Error::new(io::ErrorKind::InvalidData, message)
+}
+
+fn validate_commit_id(value: &str) -> io::Result<()> {
+  validate_hex_id(value, 32, "commit")
+}
+
+fn validate_tree_id(value: &str) -> io::Result<()> {
+  validate_hex_id(value, 40, "tree")
+}
+
+fn validate_hex_id(value: &str, length: usize, kind: &str) -> io::Result<()> {
+  if value.len() != length
+    || !value
+      .bytes()
+      .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+  {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      format!("invalid {kind} id"),
+    ));
+  }
+  Ok(())
+}
+
+fn validate_commit(commit: &ConfigCommit) -> io::Result<()> {
+  validate_commit_id(&commit.id)?;
+  if let Some(parent_id) = &commit.parent_id {
+    validate_commit_id(parent_id)?;
+  }
+  validate_tree_id(&commit.tree_id)
+}
+
+fn validate_tree(tree: &ConfigTree) -> io::Result<()> {
+  validate_tree_id(&tree.id)?;
+  if tree_id_for(tree) != tree.id {
+    return Err(invalid_data("tree id does not match tree contents"));
+  }
+  for file in &tree.files {
+    validate_relative_path(&file.path)?;
+    match file.read_state {
+      super::model::ReadState::Stable => {
+        validate_sha1(&file.sha1)?;
+        if file.object.as_deref() != Some(file.sha1.as_str()) {
+          return Err(invalid_data("stable file object does not match SHA-1"));
+        }
+      }
+      super::model::ReadState::Unstable | super::model::ReadState::Unreadable => {
+        if !file.sha1.is_empty() || file.object.is_some() {
+          return Err(invalid_data("unstable file has a content object"));
+        }
+      }
+    }
+    if file.file_type != super::model::ConfigFileType::Regular {
+      return Err(invalid_data("unsupported config file type"));
+    }
+  }
+  Ok(())
+}
+
+fn validate_relative_path(value: &str) -> io::Result<()> {
+  if value.is_empty() || value.contains('\\') || value.starts_with('/') || value.ends_with('/') {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "invalid config file path",
+    ));
+  }
+  let path = Path::new(value);
+  if path.is_absolute()
+    || path.components().any(|component| {
+      matches!(
+        component,
+        std::path::Component::ParentDir
+          | std::path::Component::RootDir
+          | std::path::Component::Prefix(_)
+          | std::path::Component::CurDir
+      )
+    })
+  {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidInput,
+      "unsafe config file path",
+    ));
+  }
+  Ok(())
+}
+
 fn validate_sha1(value: &str) -> io::Result<()> {
-  if value.len() != 40 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+  if value.len() != 40
+    || !value
+      .bytes()
+      .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
+  {
     return Err(io::Error::new(io::ErrorKind::InvalidInput, "invalid SHA-1"));
   }
   Ok(())
 }
 
+fn replay_session_state(
+  sessions: &mut std::collections::BTreeMap<String, ActiveSession>,
+  commit: &ConfigCommit,
+) {
+  let requested = commit.requested_checkpoint.unwrap_or(commit.checkpoint);
+  match (requested, commit.session_id.as_deref()) {
+    (Checkpoint::BeforeLaunch, Some(session_id)) => {
+      sessions.insert(
+        session_id.to_string(),
+        ActiveSession {
+          session_id: session_id.to_string(),
+          instance_id: commit.instance_id.clone(),
+          started_at: commit.created_at.clone(),
+          ambiguous: commit.checkpoint == Checkpoint::Ambiguous
+            || commit.semantic == super::model::Semantic::Ambiguous,
+        },
+      );
+    }
+    (Checkpoint::AfterExit, Some(session_id)) => {
+      sessions.remove(session_id);
+    }
+    (Checkpoint::Recovered, _) => sessions.clear(),
+    _ => {}
+  }
+}
+
+fn chain_depth(tip: &ConfigCommit, by_id: &HashMap<&str, &ConfigCommit>) -> Option<usize> {
+  let mut current = tip;
+  let mut depth = 1;
+  let mut visited = std::collections::BTreeSet::new();
+  loop {
+    if !visited.insert(current.id.as_str()) {
+      return None;
+    }
+    let Some(parent_id) = current.parent_id.as_deref() else {
+      return Some(depth);
+    };
+    current = by_id.get(parent_id).copied()?;
+    depth += 1;
+  }
+}
+
+fn collect_chain<'a>(
+  tip: &'a ConfigCommit,
+  by_id: &HashMap<&str, &'a ConfigCommit>,
+) -> Vec<&'a ConfigCommit> {
+  let mut result = Vec::new();
+  let mut current = tip;
+  result.push(current);
+  while let Some(parent_id) = current.parent_id.as_deref() {
+    current = by_id[parent_id];
+    result.push(current);
+  }
+  result.reverse();
+  result
+}
+
+fn normalize_path_key(path: &Path) -> io::Result<PathBuf> {
+  let input = if path.is_absolute() {
+    path.to_path_buf()
+  } else {
+    std::env::current_dir()?.join(path)
+  };
+  let mut result = PathBuf::new();
+  for component in input.components() {
+    match component {
+      std::path::Component::Prefix(prefix) => result.push(prefix.as_os_str()),
+      std::path::Component::RootDir => result.push(std::path::MAIN_SEPARATOR_STR),
+      std::path::Component::CurDir => {}
+      std::path::Component::ParentDir => {
+        result.pop();
+      }
+      std::path::Component::Normal(name) => result.push(name),
+    }
+  }
+  Ok(result)
+}
+
 fn lock_for(path: &Path) -> Arc<Mutex<()>> {
-  let key = path
-    .canonicalize()
+  let key = normalize_path_key(path)
     .unwrap_or_else(|_| path.to_path_buf())
     .to_string_lossy()
-    .replace('\\', "/")
-    .into();
+    .replace('\\', "/");
   let locks = HISTORY_LOCKS.get_or_init(|| Mutex::new(HashMap::new()));
   let mut locks = locks.lock().expect("config history locks poisoned");
   locks

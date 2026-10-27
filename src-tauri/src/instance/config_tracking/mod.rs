@@ -10,6 +10,7 @@ pub use model::{
   ActiveSession, ChangeSummary, Checkpoint, CheckpointRequest, ConfigCommit, ConfigFile,
   ConfigFileType, ConfigTree, HistoryState, ProcessExit, ReadState, Semantic, SemanticContext,
 };
+#[allow(unused_imports)]
 pub use scan::scan_config;
 #[allow(unused_imports)]
 pub use store::{HistoryStats, HistoryStore, HISTORY_DIR_NAME};
@@ -128,8 +129,9 @@ mod tests {
       created_at: String::new(),
       game_root_key: String::new(),
       instance_id: None,
-      session_id: None,
+      session_id: Some("session".into()),
       checkpoint: previous,
+      requested_checkpoint: Some(previous),
       semantic: Semantic::InitialObservation,
       process_exit: None,
       changed: ChangeSummary::default(),
@@ -167,26 +169,45 @@ mod tests {
         Semantic::Ambiguous,
       ),
     ];
-    for (previous, current, expected) in cases {
-      let previous = previous.map(|value| make(current, value));
+    for (previous_checkpoint, current, expected) in cases {
+      let previous = previous_checkpoint.map(|value| make(current, value));
       let context = if expected == Semantic::Ambiguous {
         SemanticContext {
           overlapping_sessions: true,
           scan_incomplete: false,
         }
+      } else if matches!(
+        (previous_checkpoint, current),
+        (Some(Checkpoint::BeforeLaunch), Checkpoint::LauncherReady)
+          | (Some(Checkpoint::LauncherReady), Checkpoint::AfterExit)
+      ) {
+        SemanticContext {
+          overlapping_sessions: false,
+          scan_incomplete: false,
+        }
       } else {
         SemanticContext::default()
       };
-      let actual = derive_semantic(previous.as_ref(), current, context);
+      let session_id = if matches!(
+        (previous_checkpoint, current),
+        (Some(Checkpoint::BeforeLaunch), Checkpoint::LauncherReady)
+          | (Some(Checkpoint::LauncherReady), Checkpoint::AfterExit)
+      ) {
+        Some("session")
+      } else {
+        None
+      };
+      let actual = derive_semantic(previous.as_ref(), current, session_id, context);
       assert_eq!(actual, expected);
     }
     assert_eq!(
       derive_semantic(
         None,
         Checkpoint::ManualScan,
+        None,
         SemanticContext {
           overlapping_sessions: false,
-          scan_incomplete: true
+          scan_incomplete: true,
         }
       ),
       Semantic::Ambiguous
@@ -223,6 +244,43 @@ mod tests {
     let recovered = checkpoint(&store, Checkpoint::Recovered);
     assert_eq!(recovered.semantic, Semantic::InterruptedOrUnknown);
     assert!(store.load_state().unwrap().active_sessions.is_empty());
+  }
+
+  fn checkpoint_request(store: &HistoryStore, request: CheckpointRequest) -> ConfigCommit {
+    store.checkpoint(request).unwrap()
+  }
+
+  #[test]
+  fn different_sessions_cannot_produce_loading_or_runtime_semantics() {
+    let (_temp, store) = fixture();
+    let mut request = CheckpointRequest::new(Checkpoint::BeforeLaunch);
+    request.session_id = Some("a".into());
+    checkpoint_request(&store, request);
+    let mut request = CheckpointRequest::new(Checkpoint::LauncherReady);
+    request.session_id = Some("b".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
+  }
+
+  #[test]
+  fn overlap_remains_ambiguous_after_one_session_exits() {
+    let (_temp, store) = fixture();
+    store.start_session("a", None).unwrap();
+    store.start_session("b", None).unwrap();
+    let mut request = CheckpointRequest::new(Checkpoint::AfterExit);
+    request.session_id = Some("a".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
+    let mut request = CheckpointRequest::new(Checkpoint::LauncherReady);
+    request.session_id = Some("b".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
   }
 
   #[test]
@@ -311,6 +369,68 @@ mod tests {
     let (recovered, warning) = store.load_state_recovering().unwrap();
     assert_eq!(recovered.head, Some(commit.id));
     assert!(warning.is_some());
+  }
+
+  #[test]
+  fn corrupt_state_can_continue_writing_and_replays_active_sessions() {
+    let (_temp, store) = fixture();
+    let mut request = CheckpointRequest::new(Checkpoint::BeforeLaunch);
+    request.session_id = Some("old".into());
+    checkpoint_request(&store, request);
+    fs::write(store.history_dir.join("state.json"), b"broken").unwrap();
+    store.start_session("new", None).unwrap();
+    let state = store.load_state().unwrap();
+    assert!(state.active_sessions.contains_key("old"));
+    assert!(state.active_sessions.contains_key("new"));
+    store.finish_session("old").unwrap();
+    assert!(store
+      .load_state()
+      .unwrap()
+      .active_sessions
+      .contains_key("new"));
+  }
+
+  #[test]
+  fn orphan_commit_is_reconciled_into_the_head_chain() {
+    let (_temp, store) = fixture();
+    let first = checkpoint(&store, Checkpoint::FirstObserved);
+    let tree = store.load_tree(&first.tree_id).unwrap();
+    let orphan = ConfigCommit {
+      id: "0123456789abcdef0123456789abcdef".into(),
+      parent_id: Some(first.id.clone()),
+      tree_id: tree.id.clone(),
+      created_at: "9999-01-01T00:00:00Z".into(),
+      game_root_key: first.game_root_key.clone(),
+      instance_id: None,
+      session_id: None,
+      checkpoint: Checkpoint::ManualScan,
+      requested_checkpoint: Some(Checkpoint::ManualScan),
+      semantic: Semantic::InterruptedOrUnknown,
+      process_exit: None,
+      changed: ChangeSummary::default(),
+      incomplete: false,
+    };
+    fs::write(
+      store
+        .history_dir
+        .join("commits")
+        .join(format!("{}.json", orphan.id)),
+      serde_json::to_vec_pretty(&orphan).unwrap(),
+    )
+    .unwrap();
+    fs::remove_file(store.history_dir.join("state.json")).unwrap();
+    assert_eq!(store.load_state().unwrap().head, Some(orphan.id));
+  }
+
+  #[test]
+  fn malformed_ids_and_objects_are_rejected() {
+    let (_temp, store) = fixture();
+    assert!(store.load_commit("../escape").is_err());
+    assert!(store.load_tree("/absolute").is_err());
+    let sha1 = hex::encode(sha1::Sha1::digest(b"data"));
+    fs::create_dir_all(store.history_dir.join("objects")).unwrap();
+    fs::write(store.history_dir.join("objects").join(&sha1), b"wrong").unwrap();
+    assert!(store.load_object(&sha1).is_err());
   }
 
   #[test]
