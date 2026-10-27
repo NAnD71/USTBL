@@ -1,4 +1,5 @@
 pub mod commands;
+pub mod config_tracking;
 pub mod constants;
 pub mod helpers;
 pub mod models;
