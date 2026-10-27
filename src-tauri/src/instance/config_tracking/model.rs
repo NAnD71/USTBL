@@ -115,6 +115,22 @@ pub struct ConfigCommit {
   pub incomplete: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum CommitListStatus {
+  Expandable,
+  Corrupt,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CommitListEntry {
+  pub id: String,
+  pub commit: Option<ConfigCommit>,
+  pub status: CommitListStatus,
+  pub diagnostic: Option<String>,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveSession {
@@ -175,6 +191,7 @@ impl CheckpointRequest {
 pub struct SemanticContext {
   pub overlapping_sessions: bool,
   pub scan_incomplete: bool,
+  pub session_active: bool,
 }
 
 impl Default for SemanticContext {
@@ -182,6 +199,7 @@ impl Default for SemanticContext {
     Self {
       overlapping_sessions: false,
       scan_incomplete: false,
+      session_active: false,
     }
   }
 }

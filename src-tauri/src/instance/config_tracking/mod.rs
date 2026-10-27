@@ -7,8 +7,9 @@ mod store;
 pub use diff::{derive_semantic, diff_trees, normalized_text_diff, normalized_text_equal};
 #[allow(unused_imports)]
 pub use model::{
-  ActiveSession, ChangeSummary, Checkpoint, CheckpointRequest, ConfigCommit, ConfigFile,
-  ConfigFileType, ConfigTree, HistoryState, ProcessExit, ReadState, Semantic, SemanticContext,
+  ActiveSession, ChangeSummary, Checkpoint, CheckpointRequest, CommitListEntry, CommitListStatus,
+  ConfigCommit, ConfigFile, ConfigFileType, ConfigTree, HistoryState, ProcessExit, ReadState,
+  Semantic, SemanticContext,
 };
 #[allow(unused_imports)]
 pub use scan::scan_config;
@@ -20,6 +21,8 @@ mod tests {
   use super::*;
   use sha1::Digest;
   use std::fs;
+  #[cfg(windows)]
+  use std::path::PathBuf;
   use std::sync::Arc;
   use std::thread;
 
@@ -175,6 +178,7 @@ mod tests {
         SemanticContext {
           overlapping_sessions: true,
           scan_incomplete: false,
+          session_active: false,
         }
       } else if matches!(
         (previous_checkpoint, current),
@@ -184,6 +188,7 @@ mod tests {
         SemanticContext {
           overlapping_sessions: false,
           scan_incomplete: false,
+          session_active: true,
         }
       } else {
         SemanticContext::default()
@@ -208,6 +213,7 @@ mod tests {
         SemanticContext {
           overlapping_sessions: false,
           scan_incomplete: true,
+          session_active: false,
         }
       ),
       Semantic::Ambiguous
@@ -277,6 +283,55 @@ mod tests {
     );
     let mut request = CheckpointRequest::new(Checkpoint::LauncherReady);
     request.session_id = Some("b".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
+  }
+
+  #[test]
+  fn replay_propagates_overlap_to_a_session_that_started_first() {
+    let (_temp, store) = fixture();
+    let mut request = CheckpointRequest::new(Checkpoint::BeforeLaunch);
+    request.session_id = Some("a".into());
+    store.checkpoint(request).unwrap();
+    let mut request = CheckpointRequest::new(Checkpoint::BeforeLaunch);
+    request.session_id = Some("b".into());
+    store.checkpoint(request).unwrap();
+    let mut request = CheckpointRequest::new(Checkpoint::AfterExit);
+    request.session_id = Some("b".into());
+    store.checkpoint(request).unwrap();
+    fs::write(store.history_dir.join("state.json"), b"broken").unwrap();
+
+    let mut request = CheckpointRequest::new(Checkpoint::LauncherReady);
+    request.session_id = Some("a".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
+    let mut request = CheckpointRequest::new(Checkpoint::AfterExit);
+    request.session_id = Some("a".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
+  }
+
+  #[test]
+  fn finished_session_cannot_resume_lifecycle_semantics() {
+    let (_temp, store) = fixture();
+    let mut request = CheckpointRequest::new(Checkpoint::BeforeLaunch);
+    request.session_id = Some("s".into());
+    store.checkpoint(request).unwrap();
+    store.finish_session("s").unwrap();
+    let mut request = CheckpointRequest::new(Checkpoint::LauncherReady);
+    request.session_id = Some("s".into());
+    assert_eq!(
+      store.checkpoint(request).unwrap().semantic,
+      Semantic::Ambiguous
+    );
+    let mut request = CheckpointRequest::new(Checkpoint::AfterExit);
+    request.session_id = Some("s".into());
     assert_eq!(
       store.checkpoint(request).unwrap().semantic,
       Semantic::Ambiguous
@@ -434,6 +489,27 @@ mod tests {
   }
 
   #[test]
+  fn damaged_commit_is_listed_with_a_diagnostic_and_excluded_from_recovery() {
+    let (_temp, store) = fixture();
+    let commit = checkpoint(&store, Checkpoint::FirstObserved);
+    fs::remove_file(
+      store
+        .history_dir
+        .join("trees")
+        .join(format!("{}.json", commit.tree_id)),
+    )
+    .unwrap();
+    let entries = store.list_commits().unwrap();
+    assert_eq!(entries.len(), 1);
+    assert_eq!(entries[0].status, CommitListStatus::Corrupt);
+    assert!(!entries[0].diagnostic.as_deref().unwrap().is_empty());
+    fs::write(store.history_dir.join("state.json"), b"broken").unwrap();
+    let (state, warning) = store.load_state_recovering().unwrap();
+    assert!(state.head.is_none());
+    assert!(warning.unwrap().contains("not trusted"));
+  }
+
+  #[test]
   fn an_outside_config_path_is_rejected() {
     let (_temp, store) = fixture();
     let outside = store.game_root.parent().unwrap().join("outside-config");
@@ -450,6 +526,63 @@ mod tests {
       .is_err());
   }
 
+  #[cfg(unix)]
+  #[test]
+  fn history_alias_into_config_is_rejected_by_actual_path() {
+    let (_temp, mut store) = fixture();
+    let alias = store.game_root.join("history-alias");
+    std::os::unix::fs::symlink(&store.config_dir, &alias).unwrap();
+    store.history_dir = alias;
+    assert!(store
+      .checkpoint(CheckpointRequest::new(Checkpoint::FirstObserved))
+      .is_err());
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn history_aliases_share_one_lock() {
+    let (_temp, store) = fixture();
+    checkpoint(&store, Checkpoint::FirstObserved);
+    let alias = store.game_root.join("history-alias");
+    std::os::unix::fs::symlink(&store.history_dir, &alias).unwrap();
+    let alias_store = HistoryStore::new(&store.game_root, &store.config_dir, alias);
+    let first = Arc::new(store);
+    let second = Arc::new(alias_store);
+    let left = {
+      let store = Arc::clone(&first);
+      thread::spawn(move || checkpoint(&store, Checkpoint::ManualScan))
+    };
+    let right = {
+      let store = Arc::clone(&second);
+      thread::spawn(move || checkpoint(&store, Checkpoint::ManualScan))
+    };
+    left.join().unwrap();
+    right.join().unwrap();
+    assert_eq!(first.load_state().unwrap().commit_count, 3);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn history_case_aliases_share_one_lock() {
+    let (_temp, store) = fixture();
+    checkpoint(&store, Checkpoint::FirstObserved);
+    let alias = PathBuf::from(store.history_dir.to_string_lossy().to_ascii_uppercase());
+    let alias_store = HistoryStore::new(&store.game_root, &store.config_dir, alias);
+    let first = Arc::new(store);
+    let second = Arc::new(alias_store);
+    let left = {
+      let store = Arc::clone(&first);
+      thread::spawn(move || checkpoint(&store, Checkpoint::ManualScan))
+    };
+    let right = {
+      let store = Arc::clone(&second);
+      thread::spawn(move || checkpoint(&store, Checkpoint::ManualScan))
+    };
+    left.join().unwrap();
+    right.join().unwrap();
+    assert_eq!(first.load_state().unwrap().commit_count, 3);
+  }
+
   #[test]
   fn a_file_that_changes_during_every_read_is_unstable() {
     let (_temp, store) = fixture();
@@ -460,6 +593,23 @@ mod tests {
       super::scan::read_file_stably_for_test(&path, "config/changing.txt".into(), &mut || {
         value = value.saturating_add(1);
         fs::write(&path, vec![value; value as usize + 1]).unwrap();
+      });
+    assert_eq!(object, None);
+    assert_eq!(file.unwrap().read_state, ReadState::Unstable);
+  }
+
+  #[cfg(unix)]
+  #[test]
+  fn replacing_a_file_with_a_symlink_during_read_is_unstable() {
+    let (_temp, store) = fixture();
+    let path = store.config_dir.join("changing.txt");
+    let outside = store.game_root.parent().unwrap().join("outside.txt");
+    fs::write(&path, b"initial").unwrap();
+    fs::write(&outside, b"outside").unwrap();
+    let (file, object) =
+      super::scan::read_file_stably_for_test(&path, "config/changing.txt".into(), &mut || {
+        fs::remove_file(&path).unwrap();
+        std::os::unix::fs::symlink(&outside, &path).unwrap();
       });
     assert_eq!(object, None);
     assert_eq!(file.unwrap().read_state, ReadState::Unstable);

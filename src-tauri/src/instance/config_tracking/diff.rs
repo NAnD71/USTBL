@@ -56,7 +56,8 @@ pub fn derive_semantic(
   let Some(previous) = previous else {
     return Semantic::InitialObservation;
   };
-  let same_session = session_id.is_some() && previous.session_id.as_deref() == session_id;
+  let same_session =
+    context.session_active && session_id.is_some() && previous.session_id.as_deref() == session_id;
   if previous.incomplete {
     return Semantic::Ambiguous;
   }

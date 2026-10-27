@@ -4,9 +4,28 @@ use std::collections::BTreeMap;
 use std::ffi::OsString;
 use std::fs;
 use std::io;
+use std::io::Read;
 use std::path::{Component, Path, PathBuf};
+use std::time::SystemTime;
+
+#[cfg(unix)]
+use std::os::unix::fs::MetadataExt;
 
 const READ_RETRIES: usize = 3;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct FileIdentity {
+  volume: u64,
+  index: u64,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct EntrySignature {
+  file_type: u8,
+  identity: Option<FileIdentity>,
+  size: u64,
+  modified: Option<SystemTime>,
+}
 
 pub(crate) struct ScannedTree {
   pub tree: ConfigTree,
@@ -62,7 +81,10 @@ pub(crate) fn scan_config_with_objects(
   })
 }
 
-fn validate_paths(game_root: &Path, config_dir: &Path) -> io::Result<(PathBuf, PathBuf)> {
+pub(crate) fn validate_paths(
+  game_root: &Path,
+  config_dir: &Path,
+) -> io::Result<(PathBuf, PathBuf)> {
   let root = game_root.canonicalize()?;
   if !root.is_dir() {
     return Err(io::Error::new(
@@ -137,6 +159,13 @@ fn scan_directory(
     ));
     return Ok(());
   }
+  let directory_identity = match identity_for_path(directory) {
+    Ok(identity) => identity,
+    Err(error) => {
+      errors.push(format!("{}: {}", display_path(directory), error));
+      return Ok(());
+    }
+  };
   let entries = match fs::read_dir(directory) {
     Ok(entries) => entries,
     Err(error) => {
@@ -165,7 +194,21 @@ fn scan_directory(
         continue;
       }
     };
-    before_entries.insert(entry.file_name(), file_type_code(&file_type));
+    let entry_metadata = match fs::symlink_metadata(&path) {
+      Ok(metadata) => metadata,
+      Err(error) => {
+        errors.push(format!("{}: {}", display_path(&path), error));
+        continue;
+      }
+    };
+    let signature = match entry_signature(&path, &entry_metadata) {
+      Ok(signature) => signature,
+      Err(error) => {
+        errors.push(format!("{}: {}", display_path(&path), error));
+        continue;
+      }
+    };
+    before_entries.insert(entry.file_name(), signature);
     if file_type.is_symlink() {
       continue;
     }
@@ -224,9 +267,13 @@ fn scan_directory(
   }
   let directory_changed = match fs::symlink_metadata(directory) {
     Ok(directory_after) => {
+      let same_identity = identity_for_path(directory)
+        .map(|identity| identity == directory_identity)
+        .unwrap_or(false);
       directory_after.file_type().is_symlink()
         || !directory_after.is_dir()
         || !canonical_inside(root, directory)
+        || !same_identity
         || directory_before.modified().ok() != directory_after.modified().ok()
     }
     Err(error) => {
@@ -293,13 +340,21 @@ fn read_file_stably_with_hook(
     if before.file_type().is_symlink() || !before.is_file() {
       return (Some(unstable_file(relative_path)), None);
     }
-    let first = match fs::read(path) {
-      Ok(bytes) => bytes,
+    let before_identity = match identity_for_path(path) {
+      Ok(identity) => identity,
+      Err(_) => return (Some(unstable_file(relative_path)), None),
+    };
+    let (first, first_handle_metadata, first_identity) = match read_file_no_follow(path) {
+      Ok(value) => value,
       Err(error) if error.kind() == io::ErrorKind::NotFound => {
         return (Some(unstable_file(relative_path)), None)
       }
       Err(_) => return (Some(unreadable_file(relative_path)), None),
     };
+    if !same_file_state(&before, &first_handle_metadata) || before_identity != first_identity {
+      saw_change = true;
+      continue;
+    }
     if let Some(hook) = hook.as_deref_mut() {
       hook();
     }
@@ -319,14 +374,32 @@ fn read_file_stably_with_hook(
       saw_change = true;
       continue;
     }
-    let second = match fs::read(path) {
-      Ok(bytes) => bytes,
+    let (second, second_handle_metadata, second_identity) = match read_file_no_follow(path) {
+      Ok(value) => value,
       Err(_) => {
         saw_change = true;
         continue;
       }
     };
-    if first != second {
+    if first_identity != second_identity
+      || !same_file_state(&before, &second_handle_metadata)
+      || first != second
+    {
+      saw_change = true;
+      continue;
+    }
+    let after_second = match fs::symlink_metadata(path) {
+      Ok(metadata) => metadata,
+      Err(_) => {
+        saw_change = true;
+        continue;
+      }
+    };
+    if after_second.file_type().is_symlink()
+      || !after_second.is_file()
+      || !canonical_inside(scan_root, path)
+      || !same_file_state(&before, &after_second)
+    {
       saw_change = true;
       continue;
     }
@@ -388,14 +461,94 @@ fn ensure_no_symlink_components(root: &Path, path: &Path) -> io::Result<()> {
   Ok(())
 }
 
-fn directory_signature(directory: &Path) -> io::Result<BTreeMap<OsString, u8>> {
+fn directory_signature(directory: &Path) -> io::Result<BTreeMap<OsString, EntrySignature>> {
   let mut signature = BTreeMap::new();
   for entry in fs::read_dir(directory)? {
     let entry = entry?;
-    let file_type = entry.file_type()?;
-    signature.insert(entry.file_name(), file_type_code(&file_type));
+    let path = entry.path();
+    let metadata = fs::symlink_metadata(&path)?;
+    signature.insert(entry.file_name(), entry_signature(&path, &metadata)?);
   }
   Ok(signature)
+}
+
+fn read_file_no_follow(path: &Path) -> io::Result<(Vec<u8>, fs::Metadata, FileIdentity)> {
+  let mut file = open_file_no_follow(path)?;
+  let metadata = file.metadata()?;
+  if metadata.file_type().is_symlink() || !metadata.is_file() {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      "config entry is not a regular file",
+    ));
+  }
+  let mut bytes = Vec::new();
+  file.read_to_end(&mut bytes)?;
+  let identity = handle_identity(&file, &metadata)?;
+  Ok((bytes, metadata, identity))
+}
+
+#[cfg(windows)]
+fn open_file_no_follow(path: &Path) -> io::Result<fs::File> {
+  use std::os::windows::ffi::OsStrExt;
+  use std::os::windows::io::FromRawHandle;
+  use winapi::shared::minwindef::DWORD;
+  use winapi::um::fileapi::{CreateFileW, OPEN_EXISTING};
+  use winapi::um::handleapi::INVALID_HANDLE_VALUE;
+  use winapi::um::winnt::{FILE_ATTRIBUTE_NORMAL, FILE_SHARE_READ, FILE_SHARE_WRITE, GENERIC_READ};
+
+  let path: Vec<u16> = path.as_os_str().encode_wide().chain(Some(0)).collect();
+  let handle = unsafe {
+    CreateFileW(
+      path.as_ptr(),
+      GENERIC_READ,
+      FILE_SHARE_READ | FILE_SHARE_WRITE,
+      std::ptr::null_mut(),
+      OPEN_EXISTING,
+      FILE_ATTRIBUTE_NORMAL | 0x00200000 as DWORD | 0x02000000 as DWORD,
+      std::ptr::null_mut(),
+    )
+  };
+  if handle == INVALID_HANDLE_VALUE {
+    return Err(io::Error::last_os_error());
+  }
+  Ok(unsafe { fs::File::from_raw_handle(handle as _) })
+}
+
+#[cfg(unix)]
+fn open_file_no_follow(path: &Path) -> io::Result<fs::File> {
+  use std::os::unix::fs::OpenOptionsExt;
+  let mut options = fs::OpenOptions::new();
+  options.read(true);
+  #[cfg(target_os = "linux")]
+  options.custom_flags(0x20000);
+  #[cfg(any(target_os = "macos", target_os = "freebsd", target_os = "openbsd"))]
+  options.custom_flags(0x100);
+  options.open(path)
+}
+
+#[cfg(not(any(unix, windows)))]
+fn open_file_no_follow(path: &Path) -> io::Result<fs::File> {
+  fs::File::open(path)
+}
+
+fn entry_signature(path: &Path, metadata: &fs::Metadata) -> io::Result<EntrySignature> {
+  let identity = if metadata.file_type().is_symlink() {
+    None
+  } else {
+    Some(identity_for_path(path)?)
+  };
+  Ok(EntrySignature {
+    file_type: file_type_code(&metadata.file_type()),
+    identity,
+    size: metadata.len(),
+    modified: metadata.modified().ok(),
+  })
+}
+
+fn identity_for_path(path: &Path) -> io::Result<FileIdentity> {
+  let file = open_file_no_follow(path)?;
+  let metadata = file.metadata()?;
+  handle_identity(&file, &metadata)
 }
 
 fn file_type_code(file_type: &fs::FileType) -> u8 {
@@ -443,7 +596,62 @@ fn unstable_file(path: String) -> ConfigFile {
 }
 
 fn same_file_state(left: &fs::Metadata, right: &fs::Metadata) -> bool {
-  left.len() == right.len() && left.modified().ok() == right.modified().ok()
+  same_file_identity(left, right)
+    && left.len() == right.len()
+    && left.modified().ok() == right.modified().ok()
+}
+
+#[cfg(unix)]
+fn file_identity(metadata: &fs::Metadata) -> Option<FileIdentity> {
+  Some(FileIdentity {
+    volume: metadata.dev(),
+    index: metadata.ino(),
+  })
+}
+
+#[cfg(windows)]
+fn file_identity(metadata: &fs::Metadata) -> Option<FileIdentity> {
+  let _ = metadata;
+  None
+}
+
+#[cfg(not(any(unix, windows)))]
+fn file_identity(_metadata: &fs::Metadata) -> Option<FileIdentity> {
+  None
+}
+
+fn same_file_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+  file_identity(left)
+    .zip(file_identity(right))
+    .is_none_or(|(left, right)| left == right)
+}
+
+#[cfg(unix)]
+fn handle_identity(_file: &fs::File, metadata: &fs::Metadata) -> io::Result<FileIdentity> {
+  file_identity(metadata)
+    .ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "file identity unavailable"))
+}
+
+#[cfg(windows)]
+fn handle_identity(file: &fs::File, _metadata: &fs::Metadata) -> io::Result<FileIdentity> {
+  use std::os::windows::io::AsRawHandle;
+  use winapi::um::fileapi::{GetFileInformationByHandle, BY_HANDLE_FILE_INFORMATION};
+  let mut information: BY_HANDLE_FILE_INFORMATION = unsafe { std::mem::zeroed() };
+  if unsafe { GetFileInformationByHandle(file.as_raw_handle() as _, &mut information) } == 0 {
+    return Err(io::Error::last_os_error());
+  }
+  Ok(FileIdentity {
+    volume: u64::from(information.dwVolumeSerialNumber),
+    index: (u64::from(information.nFileIndexHigh) << 32) | u64::from(information.nFileIndexLow),
+  })
+}
+
+#[cfg(not(any(unix, windows)))]
+fn handle_identity(_file: &fs::File, _metadata: &fs::Metadata) -> io::Result<FileIdentity> {
+  Err(io::Error::new(
+    io::ErrorKind::Unsupported,
+    "file identity unavailable",
+  ))
 }
 
 pub(crate) fn make_tree(
