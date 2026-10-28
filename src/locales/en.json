@@ -1348,7 +1348,9 @@
   "VersionIsolationConfirmDialog": {
     "title": "Change Version Isolation",
     "body": "The instance will switch from “{{from}}” to “{{to}}”. Existing worlds, mods, and configurations will not be moved.",
-    "globalBody": "The following instances will switch game directories. Existing worlds, mods, and configurations will not be moved:\n{{instances}}"
+    "globalBody": "The following instances will switch game directories. Existing worlds, mods, and configurations will not be moved:\n{{instances}}",
+    "lockWarning": "This instance has a loader or comes from a modpack. Switching to isolation will lock it, and it cannot be switched back to a shared directory.",
+    "willLockSuffix": " (will be locked)"
   },
   "InstanceSettingsPage": {
     "name": "Instance Name",

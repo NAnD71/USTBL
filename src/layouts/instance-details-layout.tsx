@@ -112,7 +112,6 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
     {
       icon: "openFolder",
       danger: false,
-      disabled: false,
       onClick: () => {
         openPath(summary?.versionPath || "");
       },
@@ -121,7 +120,6 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
       icon: LuSquarePlus,
       label: t("InstanceDetailsLayout.secMenu.createShortcut"),
       danger: false,
-      disabled: false,
       onClick: () => {
         if (instanceId) handleCreateLaunchDesktopShortcut(instanceId);
       },
@@ -149,7 +147,6 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
             icon: LuUpload,
             label: t("InstanceDetailsLayout.secMenu.publishModPack"),
             danger: false,
-            disabled: false,
             onClick: () => {
               if (summary) {
                 openSharedModal("publish-modpack", {
@@ -165,7 +162,6 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
       icon: "delete",
       label: t("InstanceMenu.label.delete"),
       danger: true,
-      disabled: false,
       onClick: () => {
         if (summary)
           openSharedModal("delete-instance-alert", { instance: summary });

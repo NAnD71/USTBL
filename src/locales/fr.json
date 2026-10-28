@@ -1348,7 +1348,9 @@
   "VersionIsolationConfirmDialog": {
     "title": "Modifier l'isolation des versions",
     "body": "L'instance passera de « {{from}} » à « {{to}} ». Les mondes, mods et configurations existants ne seront pas déplacés.",
-    "globalBody": "Les instances suivantes changeront de répertoire de jeu. Les mondes, mods et configurations existants ne seront pas déplacés :\n{{instances}}"
+    "globalBody": "Les instances suivantes changeront de répertoire de jeu. Les mondes, mods et configurations existants ne seront pas déplacés :\n{{instances}}",
+    "lockWarning": "Cette instance possède un chargeur ou provient d'un modpack. Le passage en isolation la verrouillera et elle ne pourra plus revenir à un répertoire partagé.",
+    "willLockSuffix": " (sera verrouillée)"
   },
   "InstanceSettingsPage": {
     "name": "Nom de l'instance",

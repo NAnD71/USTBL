@@ -1010,6 +1010,12 @@ fn should_lock_on_create(instance: &Instance, component_import: bool) -> bool {
   component_import || owns_files(instance)
 }
 
+fn apply_creation_isolation(instance: &mut Instance, component_import: bool) {
+  if should_lock_on_create(instance, component_import) {
+    instance.isolation_locked = true;
+  }
+}
+
 #[tauri::command]
 pub async fn create_instance(
   app: AppHandle,
@@ -1110,9 +1116,7 @@ pub async fn create_instance(
   if component_import.is_some() {
     instance.mod_loader.status = ModLoaderStatus::Installed;
   }
-  if should_lock_on_create(&instance, component_import.is_some()) {
-    instance.isolation_locked = true;
-  }
+  apply_creation_isolation(&mut instance, component_import.is_some());
 
   // Download version info, retrying through both official and mirror routes.
   let official_version_url =
@@ -1881,8 +1885,10 @@ mod isolation_tests {
   }
 
   #[test]
-  fn create_instance_does_not_enable_specific_game_settings() {
-    let instance = Instance::default();
+  fn creation_isolation_does_not_enable_specific_game_settings() {
+    let mut instance = Instance::default();
+    apply_creation_isolation(&mut instance, true);
+    assert!(instance.isolation_locked);
     assert!(!instance.use_spec_game_config);
     assert!(instance.spec_game_config.is_none());
   }

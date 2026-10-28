@@ -24,7 +24,11 @@ import { useInstanceSharedData } from "@/contexts/instance";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { useToast } from "@/contexts/toast";
 import { InstanceService } from "@/services/instance";
-import { getInstanceIconSrc, isInstanceNameInvalid } from "@/utils/instance";
+import {
+  getInstanceIconSrc,
+  isInstanceNameInvalid,
+  ownsInstanceFiles,
+} from "@/utils/instance";
 
 const getSharedGameDirectory = (versionPath: string) =>
   versionPath.replace(/[\\/][^\\/]+[\\/][^\\/]+$/, "");
@@ -62,10 +66,18 @@ const InstanceSettingsPage = () => {
     nextIsolated: boolean,
     onConfirm: () => void
   ) => {
+    if (summary?.isolationSource === "locked") {
+      onConfirm();
+      return;
+    }
     const { from, to } = getDirectoryChange(nextIsolated);
+    const lockWarning =
+      nextIsolated && summary && ownsInstanceFiles(summary)
+        ? ` ${t("VersionIsolationConfirmDialog.lockWarning")}`
+        : "";
     openGenericConfirmDialog({
       title: t("VersionIsolationConfirmDialog.title"),
-      body: t("VersionIsolationConfirmDialog.body", { from, to }),
+      body: `${t("VersionIsolationConfirmDialog.body", { from, to })}${lockWarning}`,
       onOKCallback: onConfirm,
     });
   };
@@ -167,13 +179,21 @@ const InstanceSettingsPage = () => {
               isChecked={useSpecGameConfig}
               onChange={(event) => {
                 const nextUseSpec = event.target.checked;
-                const nextIsolated = nextUseSpec
-                  ? (instanceGameConfig?.versionIsolation ??
-                    config.globalGameConfig.versionIsolation)
-                  : config.globalGameConfig.versionIsolation;
+                const isLocked = summary?.isolationSource === "locked";
+                const nextIsolated = isLocked
+                  ? undefined
+                  : nextUseSpec
+                    ? (summary?.specVersionIsolation ??
+                      config.globalGameConfig.versionIsolation)
+                    : config.globalGameConfig.versionIsolation;
                 const update = () =>
                   handleUpdateInstanceConfig("useSpecGameConfig", nextUseSpec);
-                if (summary && nextIsolated !== summary.isVersionIsolated) {
+                if (
+                  !isLocked &&
+                  summary &&
+                  nextIsolated !== undefined &&
+                  nextIsolated !== summary.isVersionIsolated
+                ) {
                   confirmIsolationChange(nextIsolated, update);
                 } else {
                   update();
