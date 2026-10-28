@@ -41,3 +41,27 @@ export const formatHistoryBytes = (bytes: number): string => {
   const index = Math.min(Math.floor(Math.log(value) / Math.log(1024)), 3);
   return `${(value / 1024 ** index).toFixed(2)} ${units[index]}`;
 };
+
+export interface LatestRequestGate {
+  begin: () => number;
+  isCurrent: (requestId: number) => boolean;
+  dispose: () => void;
+}
+
+/** Accepts results only from the newest request while the owner is mounted. */
+export const createLatestRequestGate = (): LatestRequestGate => {
+  let latestRequestId = 0;
+  let disposed = false;
+
+  return {
+    begin: () => {
+      latestRequestId += 1;
+      return latestRequestId;
+    },
+    isCurrent: (requestId) => !disposed && requestId === latestRequestId,
+    dispose: () => {
+      disposed = true;
+      latestRequestId += 1;
+    },
+  };
+};

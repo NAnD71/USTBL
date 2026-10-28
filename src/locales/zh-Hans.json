@@ -1364,7 +1364,8 @@
     "binary": {
       "old": "旧文件",
       "new": "新文件",
-      "missing": "不存在"
+      "missing": "不存在",
+      "metadata": "{{label}}：{{sha1}}（{{size}}）"
     },
     "fileKind": {
       "added": "新增",

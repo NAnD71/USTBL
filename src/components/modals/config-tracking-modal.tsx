@@ -20,7 +20,7 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { DiffFile, DiffHunks } from "@/components/common/diff-view";
 import {
@@ -35,6 +35,7 @@ import {
 import { ConfigTrackingService } from "@/services/config-tracking";
 import {
   checkpointLabelKey,
+  createLatestRequestGate,
   formatChangeCounts,
   formatHistoryBytes,
   semanticLabelKey,
@@ -66,14 +67,20 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [entryChanges, setEntryChanges] = useState<EntryChanges | null>(null);
   const [entryError, setEntryError] = useState<string | null>(null);
+  const timelineRequests = useRef(createLatestRequestGate());
+  const entryRequests = useRef(createLatestRequestGate());
+  const scanRequests = useRef(createLatestRequestGate());
 
   const loadTimeline = useCallback(async () => {
+    const requestId = timelineRequests.current.begin();
+    entryRequests.current.begin();
     setData(null);
     setLoadError(null);
     setSelectedId(null);
     setEntryChanges(null);
     setEntryError(null);
     const response = await ConfigTrackingService.getTimeline(instanceId);
+    if (!timelineRequests.current.isCurrent(requestId)) return;
     if (response.status === "success") {
       setData(response.data);
     } else {
@@ -82,7 +89,15 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
   }, [instanceId]);
 
   useEffect(() => {
+    const timelineRequestGate = timelineRequests.current;
+    const entryRequestGate = entryRequests.current;
+    const scanRequestGate = scanRequests.current;
     void loadTimeline();
+    return () => {
+      timelineRequestGate.dispose();
+      entryRequestGate.dispose();
+      scanRequestGate.dispose();
+    };
   }, [loadTimeline]);
 
   const entries = useMemo(
@@ -92,6 +107,7 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
 
   const selectEntry = useCallback(
     async (entry: TimelineEntry) => {
+      const requestId = entryRequests.current.begin();
       setSelectedId(entry.id);
       setEntryChanges(null);
       setEntryError(null);
@@ -99,6 +115,7 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
         instanceId,
         entry.id
       );
+      if (!entryRequests.current.isCurrent(requestId)) return;
       if (response.status === "success") {
         setEntryChanges(response.data);
       } else {
@@ -109,36 +126,49 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
   );
 
   const createCheckpoint = async () => {
+    const requestId = scanRequests.current.begin();
     setScanning(true);
     setScanError(null);
     const response = await ConfigTrackingService.scan(instanceId);
+    if (!scanRequests.current.isCurrent(requestId)) return;
     if (response.status === "success") {
+      setScanning(false);
       await loadTimeline();
     } else {
       setScanError(response.details || response.message);
+      setScanning(false);
     }
-    setScanning(false);
   };
 
   const renderFileMetadata = (entry: FileEntry | null, label: string) => (
     <Text fontSize="xs" className="secondary-text">
-      {label}: {entry?.sha1 ?? t("ConfigTrackingModal.binary.missing")}（
-      {formatHistoryBytes(entry?.size ?? 0)}）
+      {t("ConfigTrackingModal.binary.metadata", {
+        label,
+        sha1: entry?.sha1 ?? t("ConfigTrackingModal.binary.missing"),
+        size: formatHistoryBytes(entry?.size ?? 0),
+      })}
     </Text>
   );
 
   const renderBody = (change: FileChange, body: FileDiffBody) => {
+    if (body.type === "unavailable") {
+      return (
+        <VStack align="stretch" spacing={1} px={3} py={2}>
+          {change.kind === "uncertain" && (
+            <Text fontSize="xs" className="secondary-text">
+              {t("ConfigTrackingModal.uncertain")}
+            </Text>
+          )}
+          <Text fontSize="xs" className="secondary-text">
+            {t("ConfigTrackingModal.unavailable", { reason: body.reason })}
+          </Text>
+        </VStack>
+      );
+    }
     if (change.kind === "uncertain") {
       return (
         <Text fontSize="xs" className="secondary-text" px={3} py={2}>
           {t("ConfigTrackingModal.uncertain")}
-        </Text>
-      );
-    }
-    if (body.type === "unavailable") {
-      return (
-        <Text fontSize="xs" className="secondary-text" px={3} py={2}>
-          {t("ConfigTrackingModal.unavailable", { reason: body.reason })}
         </Text>
       );
     }
@@ -290,12 +320,18 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
                     size="sm"
                     variant="link"
                     onClick={() => setDiagnosticsOpen((value) => !value)}
+                    aria-expanded={diagnosticsOpen}
+                    aria-controls="config-tracking-diagnostics"
                   >
                     {t("ConfigTrackingModal.diagnostics", {
                       count: data.timeline.diagnostics.length,
                     })}
                   </Button>
-                  <Collapse in={diagnosticsOpen} animateOpacity={false}>
+                  <Collapse
+                    id="config-tracking-diagnostics"
+                    in={diagnosticsOpen}
+                    animateOpacity={false}
+                  >
                     <VStack align="stretch" mt={2} spacing={1}>
                       {data.timeline.diagnostics.map((diagnostic, index) => (
                         <Text key={index} fontSize="xs" wordBreak="break-word">
@@ -342,6 +378,7 @@ const ConfigTrackingModal: React.FC<ConfigTrackingModalProps> = ({
                         borderColor={selected ? "blue.400" : undefined}
                         bg={selected ? "blackAlpha.50" : undefined}
                         p={3}
+                        aria-pressed={selected}
                         onClick={() => void selectEntry(entry)}
                       >
                         <VStack align="stretch" spacing={1.5}>
