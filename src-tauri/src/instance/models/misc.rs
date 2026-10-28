@@ -458,9 +458,6 @@ mod origin_tests {
       }),
       ..Default::default()
     };
-    assert_eq!(
-      saved_spec_version_isolation(&instance),
-      Some(false)
-    );
+    assert_eq!(saved_spec_version_isolation(&instance), Some(false));
   }
 }

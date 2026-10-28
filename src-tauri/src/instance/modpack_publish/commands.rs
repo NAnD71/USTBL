@@ -1115,7 +1115,10 @@ mod tests {
     };
     assert_eq!(
       crate::instance::helpers::misc::resolve_isolation(&instance, &global),
-      (true, crate::instance::helpers::misc::IsolationSource::Locked)
+      (
+        true,
+        crate::instance::helpers::misc::IsolationSource::Locked
+      )
     );
   }
 
