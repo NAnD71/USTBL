@@ -275,12 +275,25 @@ pub async fn monitor_process(
   let stop_polling_flag = stop_polling_flag.clone();
 
   tokio::spawn(async move {
-    let wait_result = child.wait();
-    let (exit, process_success) = match wait_result {
+    let (exit, exit_ok) = match child.wait() {
       Ok(status) => {
         let success = status.success();
+        if let Some(h) = stdout {
+          let _ = h.join();
+        }
+
+        if let Some(h) = stderr {
+          let _ = h.join();
+        }
+
         let exit = process_exit_from_wait(Ok(status));
-        (exit, success)
+        let exit_ok = if !game_ready_flag.load(Ordering::SeqCst) {
+          false
+        } else {
+          log_file.lock().unwrap().flush().unwrap();
+          success
+        };
+        (exit, exit_ok)
       }
       Err(error) => {
         writeln!(
@@ -290,21 +303,6 @@ pub async fn monitor_process(
         .unwrap();
         (process_exit_from_wait(Err(error)), false)
       }
-    };
-
-    if let Some(h) = stdout {
-      let _ = h.join();
-    }
-
-    if let Some(h) = stderr {
-      let _ = h.join();
-    }
-
-    let exit_ok = if !game_ready_flag.load(Ordering::SeqCst) {
-      false
-    } else {
-      log_file.lock().unwrap().flush().unwrap();
-      process_success
     };
 
     tracking_session.on_exit(exit).await;
