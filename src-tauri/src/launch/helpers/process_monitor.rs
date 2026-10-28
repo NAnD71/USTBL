@@ -1,6 +1,7 @@
 use crate::error::USTBLResult;
 use crate::instance::models::misc::{Instance, InstanceError};
 use crate::launch::constants::*;
+use crate::launch::helpers::config_tracking::{process_exit_from_wait, TrackingSession};
 use crate::launch::helpers::playtime_sync;
 use crate::launch::models::{LaunchError, LaunchingState};
 use crate::launcher_config::models::{LauncherVisiablity, ProcessPriority};
@@ -45,6 +46,7 @@ struct OutputPipe<T: Read + Send + 'static> {
   display_log_window: bool,
   ready_tx: Sender<()>,
   game_ready_flag: Arc<AtomicBool>,
+  tracking_session: Arc<TrackingSession>,
 }
 
 impl<T: Read + Send + 'static> OutputPipe<T> {
@@ -68,6 +70,7 @@ impl<T: Read + Send + 'static> OutputPipe<T> {
           if start_time_lock.is_none() {
             *start_time_lock = Some(Instant::now());
           }
+          self.tracking_session.on_ready();
           let _ = self.ready_tx.send(());
         }
       }
@@ -129,6 +132,7 @@ pub async fn monitor_process(
   id: u64,
   mut child: Child,
   instance_id: String,
+  tracking_session: Arc<TrackingSession>,
   display_log_window: bool,
   custom_title: &str,
   launcher_visibility: LauncherVisiablity,
@@ -229,6 +233,7 @@ pub async fn monitor_process(
       display_log_window,
       ready_tx: ready_tx.clone(),
       game_ready_flag: game_ready_flag.clone(),
+      tracking_session: tracking_session.clone(),
     })
     .listen_from_output()
   });
@@ -244,6 +249,7 @@ pub async fn monitor_process(
       display_log_window,
       ready_tx: ready_tx.clone(),
       game_ready_flag: game_ready_flag.clone(),
+      tracking_session: tracking_session.clone(),
     })
     .listen_from_output()
   });
@@ -269,33 +275,39 @@ pub async fn monitor_process(
   let stop_polling_flag = stop_polling_flag.clone();
 
   tokio::spawn(async move {
-    let exit_ok = match child.wait() {
+    let wait_result = child.wait();
+    let (exit, process_success) = match wait_result {
       Ok(status) => {
-        if let Some(h) = stdout {
-          let _ = h.join();
-        }
-
-        if let Some(h) = stderr {
-          let _ = h.join();
-        }
-
-        if !game_ready_flag.load(Ordering::SeqCst) {
-          false
-        } else {
-          log_file.lock().unwrap().flush().unwrap();
-          status.success()
-        }
+        let success = status.success();
+        let exit = process_exit_from_wait(Ok(status));
+        (exit, success)
       }
-
-      Err(e) => {
+      Err(error) => {
         writeln!(
           log_file.lock().unwrap(),
-          "[FATAL] Game process was killed Reason: {e}."
+          "[FATAL] Game process was killed Reason: {error}."
         )
         .unwrap();
-        false
+        (process_exit_from_wait(Err(error)), false)
       }
     };
+
+    if let Some(h) = stdout {
+      let _ = h.join();
+    }
+
+    if let Some(h) = stderr {
+      let _ = h.join();
+    }
+
+    let exit_ok = if !game_ready_flag.load(Ordering::SeqCst) {
+      false
+    } else {
+      log_file.lock().unwrap().flush().unwrap();
+      process_success
+    };
+
+    tracking_session.on_exit(exit).await;
 
     stop_polling_flag.store(true, Ordering::SeqCst);
     playtime_stop.notify_one();
