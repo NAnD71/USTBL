@@ -10,7 +10,9 @@ use std::collections::{BTreeMap, HashMap};
 /// Compared with the superseded design, incomplete scans do not force an
 /// ambiguous semantic, and overlap is evaluated only for each adjacent log
 /// interval. Once one session no longer covers an interval, another session's
-/// own evidence can be used normally.
+/// own evidence can be used normally. A game that kept running after the
+/// launcher crashed is invisible to the log, so a later interval may be
+/// misclassified as belonging to one session.
 pub fn semantics(entries: &[LogEntry]) -> Vec<Semantic> {
   #[derive(Default)]
   struct Session {
@@ -292,6 +294,22 @@ mod tests {
     assert_eq!(
       semantics(&with_manual_id),
       vec![InitialObservation, InterruptedOrUnknown, DuringRuntime]
+    );
+
+    let repeated_ready = vec![
+      entry(BeforeLaunch, Some("S")),
+      entry(LauncherReady, Some("S")),
+      entry(LauncherReady, Some("S")),
+      entry(AfterExit, Some("S")),
+    ];
+    assert_eq!(
+      semantics(&repeated_ready),
+      vec![
+        InitialObservation,
+        DuringLoading,
+        DuringRuntime,
+        DuringRuntime
+      ]
     );
   }
 
