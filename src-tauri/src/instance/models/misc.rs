@@ -150,6 +150,8 @@ structstruck::strike! {
     pub spec_game_config: Option<GameConfig>,
     pub modpack_version: Option<String>,
     pub origin: Option<InstanceOrigin>,
+    /// Once set, this instance always uses its own version directory.
+    pub isolation_locked: bool,
   }
 }
 
@@ -187,6 +189,7 @@ pub struct InstanceSummary {
   pub support_quick_play: bool,
   pub use_spec_game_config: bool,
   pub is_version_isolated: bool,
+  pub isolation_source: String,
   pub modpack_version: Option<String>,
   /// Imported from a MultiMC component profile; such an instance can only be
   /// exported as MultiMC.
@@ -201,6 +204,7 @@ impl InstanceSummary {
     id: String,
     instance: &Instance,
     is_version_isolated: bool,
+    isolation_source: &str,
   ) -> Self {
     InstanceSummary {
       id,
@@ -221,6 +225,7 @@ impl InstanceSummary {
         .is_ge(),
       use_spec_game_config: instance.use_spec_game_config,
       is_version_isolated,
+      isolation_source: isolation_source.to_string(),
       modpack_version: instance.modpack_version.clone(),
       is_component_profile: is_component_instance(&instance.version_path),
       origin: instance.origin.clone(),
@@ -410,5 +415,14 @@ mod origin_tests {
     assert_eq!(json["origin"]["projectId"], "p");
     let back: Instance = serde_json::from_value(json).unwrap();
     assert_eq!(back.origin, Some(origin));
+  }
+
+  #[test]
+  fn isolation_locked_defaults_for_legacy_json_and_is_serialized() {
+    let legacy: Instance = serde_json::from_str(r#"{"name":"old"}"#).unwrap();
+    assert!(!legacy.isolation_locked);
+
+    let json = serde_json::to_value(&legacy).unwrap();
+    assert_eq!(json["isolationLocked"], false);
   }
 }
