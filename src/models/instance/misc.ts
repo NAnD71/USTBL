@@ -66,6 +66,7 @@ export interface InstanceSummary {
   useSpecGameConfig: boolean;
   isVersionIsolated: boolean;
   isolationSource: "locked" | "instance" | "global";
+  specVersionIsolation?: boolean;
   modpackVersion?: string;
   isComponentProfile: boolean;
   campusInstallPending?: boolean;

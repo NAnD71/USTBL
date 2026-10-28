@@ -190,6 +190,8 @@ pub struct InstanceSummary {
   pub use_spec_game_config: bool,
   pub is_version_isolated: bool,
   pub isolation_source: String,
+  #[serde(skip_serializing_if = "Option::is_none")]
+  pub spec_version_isolation: Option<bool>,
   pub modpack_version: Option<String>,
   /// Imported from a MultiMC component profile; such an instance can only be
   /// exported as MultiMC.
@@ -199,6 +201,13 @@ pub struct InstanceSummary {
   pub campus_install_pending: bool,
   /// The modpack this instance follows, if any.
   pub origin: Option<InstanceOrigin>,
+}
+
+fn saved_spec_version_isolation(instance: &Instance) -> Option<bool> {
+  instance
+    .spec_game_config
+    .as_ref()
+    .map(|config| config.version_isolation)
 }
 
 impl InstanceSummary {
@@ -229,6 +238,7 @@ impl InstanceSummary {
       use_spec_game_config: instance.use_spec_game_config,
       is_version_isolated,
       isolation_source: isolation_source.to_string(),
+      spec_version_isolation: saved_spec_version_isolation(instance),
       modpack_version: instance.modpack_version.clone(),
       is_component_profile: is_component_instance(&instance.version_path),
       campus_install_pending: crate::instance::modpack_update::commands::has_campus_install(
@@ -436,5 +446,21 @@ mod origin_tests {
 
     let json = serde_json::to_value(&legacy).unwrap();
     assert_eq!(json["isolationLocked"], false);
+  }
+
+  #[test]
+  fn summary_keeps_saved_spec_version_isolation_when_not_enabled() {
+    let instance = Instance {
+      use_spec_game_config: false,
+      spec_game_config: Some(GameConfig {
+        version_isolation: false,
+        ..Default::default()
+      }),
+      ..Default::default()
+    };
+    assert_eq!(
+      saved_spec_version_isolation(&instance),
+      Some(false)
+    );
   }
 }

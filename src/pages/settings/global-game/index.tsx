@@ -24,7 +24,11 @@ import { useGlobalData } from "@/contexts/global-data";
 import { useRoutingHistory } from "@/contexts/routing-history";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { GameDirectory } from "@/models/config";
-import { getGameDirName, isSpecialGameDir } from "@/utils/instance";
+import {
+  getGameDirName,
+  isSpecialGameDir,
+  ownsInstanceFiles,
+} from "@/utils/instance";
 
 const GlobalGameSettingsPage = () => {
   const { t } = useTranslation();
@@ -50,7 +54,11 @@ const GlobalGameSettingsPage = () => {
           ? instance.versionPath
           : sharedDirectory;
         const to = nextIsolated ? instance.versionPath : sharedDirectory;
-        return `${instance.name}: ${from} → ${to}`;
+        const lockSuffix =
+          nextIsolated && ownsInstanceFiles(instance)
+            ? t("VersionIsolationConfirmDialog.willLockSuffix")
+            : "";
+        return `${instance.name}${lockSuffix}: ${from} → ${to}`;
       })
       .join("\n");
     const save = async () => {

@@ -1372,7 +1372,9 @@
   "VersionIsolationConfirmDialog": {
     "title": "切換版本隔離",
     "body": "實例將從「{{from}}」改用「{{to}}」。現有世界、模組和設定不會移動。",
-    "globalBody": "以下實例將切換遊戲目錄；現有世界、模組和設定不會移動：\n{{instances}}"
+    "globalBody": "以下實例將切換遊戲目錄；現有世界、模組和設定不會移動：\n{{instances}}",
+    "lockWarning": "此實例已安裝載入器或來自整合包，改為隔離後將被鎖定，之後不能再改回共用目錄。",
+    "willLockSuffix": "（將鎖定）"
   },
   "InstanceSettingsPage": {
     "name": "實例名稱",
