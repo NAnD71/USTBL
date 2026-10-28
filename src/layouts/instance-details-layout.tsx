@@ -114,6 +114,7 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
     {
       icon: "openFolder",
       danger: false,
+      disabled: false,
       onClick: () => {
         openPath(summary?.versionPath || "");
       },
@@ -122,14 +123,18 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
       icon: LuSquarePlus,
       label: t("InstanceDetailsLayout.secMenu.createShortcut"),
       danger: false,
+      disabled: false,
       onClick: () => {
         if (instanceId) handleCreateLaunchDesktopShortcut(instanceId);
       },
     },
     {
       icon: LuPackagePlus,
-      label: t("InstanceDetailsLayout.secMenu.exportModPack"),
+      label: summary?.isVersionIsolated
+        ? t("InstanceDetailsLayout.secMenu.exportModPack")
+        : t("InstanceDetailsLayout.secMenu.exportModPackDisabled"),
       danger: false,
+      disabled: !summary?.isVersionIsolated,
       onClick: () => {
         if (summary) {
           openSharedModal("export-modpack", {
@@ -146,6 +151,7 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
             icon: LuUpload,
             label: t("InstanceDetailsLayout.secMenu.publishModPack"),
             danger: false,
+            disabled: false,
             onClick: () => {
               if (summary) {
                 openSharedModal("publish-modpack", {
@@ -161,6 +167,7 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
       icon: "delete",
       label: t("InstanceMenu.label.delete"),
       danger: true,
+      disabled: false,
       onClick: () => {
         if (summary)
           openSharedModal("delete-instance-alert", { instance: summary });
@@ -212,6 +219,7 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
               label={btn.label}
               colorScheme={btn.danger ? "red" : "gray"}
               onClick={btn.onClick}
+              disabled={btn.disabled}
               size="xs"
               fontSize="sm"
               h={21}

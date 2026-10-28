@@ -26,6 +26,9 @@ import { useToast } from "@/contexts/toast";
 import { InstanceService } from "@/services/instance";
 import { getInstanceIconSrc, isInstanceNameInvalid } from "@/utils/instance";
 
+const getSharedGameDirectory = (versionPath: string) =>
+  versionPath.replace(/[\\/][^\\/]+[\\/][^\\/]+$/, "");
+
 const InstanceSettingsPage = () => {
   const router = useRouter();
   const toast = useToast();
@@ -45,6 +48,27 @@ const InstanceSettingsPage = () => {
     handleRestoreInstanceGameConfig,
   } = useInstanceSharedData();
   const useSpecGameConfig = summary?.useSpecGameConfig || false;
+
+  const getDirectoryChange = (nextIsolated: boolean) => ({
+    from: summary?.isVersionIsolated
+      ? summary.versionPath
+      : getSharedGameDirectory(summary?.versionPath || ""),
+    to: nextIsolated
+      ? summary?.versionPath || ""
+      : getSharedGameDirectory(summary?.versionPath || ""),
+  });
+
+  const confirmIsolationChange = (
+    nextIsolated: boolean,
+    onConfirm: () => void
+  ) => {
+    const { from, to } = getDirectoryChange(nextIsolated);
+    openGenericConfirmDialog({
+      title: t("VersionIsolationConfirmDialog.title"),
+      body: t("VersionIsolationConfirmDialog.body", { from, to }),
+      onOKCallback: onConfirm,
+    });
+  };
 
   const handleRenameInstance = useCallback(
     (name: string) => {
@@ -142,10 +166,18 @@ const InstanceSettingsPage = () => {
               colorScheme={primaryColor}
               isChecked={useSpecGameConfig}
               onChange={(event) => {
-                handleUpdateInstanceConfig(
-                  "useSpecGameConfig",
-                  event.target.checked
-                );
+                const nextUseSpec = event.target.checked;
+                const nextIsolated = nextUseSpec
+                  ? (instanceGameConfig?.versionIsolation ??
+                    config.globalGameConfig.versionIsolation)
+                  : config.globalGameConfig.versionIsolation;
+                const update = () =>
+                  handleUpdateInstanceConfig("useSpecGameConfig", nextUseSpec);
+                if (summary && nextIsolated !== summary.isVersionIsolated) {
+                  confirmIsolationChange(nextIsolated, update);
+                } else {
+                  update();
+                }
               }}
             />
           ),
@@ -175,26 +207,50 @@ const InstanceSettingsPage = () => {
                   </Button>
                 ),
               },
-              {
-                title: t(
-                  "GlobalGameSettingsPage.versionIsolation.settings.title"
-                ),
-                children: (
-                  <Switch
-                    colorScheme={primaryColor}
-                    isChecked={instanceGameConfig.versionIsolation}
-                    onChange={(event) => {
-                      handleUpdateInstanceConfig(
-                        "specGameConfig.versionIsolation",
-                        event.target.checked
-                      );
-                      // updateSummaryInContext("isVersionIsolated", event.target.checked)
-                    }}
-                  />
-                ),
-              },
             ]
           : []),
+        {
+          title: t("InstanceSettingsPage.versionIsolation.title"),
+          description:
+            summary?.isolationSource === "locked"
+              ? t("InstanceSettingsPage.versionIsolation.locked")
+              : summary?.isolationSource === "instance"
+                ? t("InstanceSettingsPage.versionIsolation.instance", {
+                    state: summary.isVersionIsolated
+                      ? t("InstanceSettingsPage.versionIsolation.on")
+                      : t("InstanceSettingsPage.versionIsolation.off"),
+                  })
+                : t("InstanceSettingsPage.versionIsolation.global", {
+                    state: summary?.isVersionIsolated
+                      ? t("InstanceSettingsPage.versionIsolation.on")
+                      : t("InstanceSettingsPage.versionIsolation.off"),
+                  }),
+          children:
+            summary?.isolationSource === "locked" ? (
+              <Switch colorScheme={primaryColor} isChecked isDisabled />
+            ) : summary?.isolationSource === "instance" ? (
+              <Switch
+                colorScheme={primaryColor}
+                isChecked={summary.isVersionIsolated}
+                onChange={(event) => {
+                  const nextIsolated = event.target.checked;
+                  confirmIsolationChange(nextIsolated, () =>
+                    handleUpdateInstanceConfig(
+                      "specGameConfig.versionIsolation",
+                      nextIsolated
+                    )
+                  );
+                }}
+              />
+            ) : (
+              <Link
+                color={`${primaryColor}.500`}
+                onClick={() => router.push("/settings/global-game")}
+              >
+                {t("InstanceSettingsPage.versionIsolation.goGlobal")}
+              </Link>
+            ),
+        },
       ],
     },
   ];
