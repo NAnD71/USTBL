@@ -61,7 +61,7 @@ pub(crate) fn scan_config(
     let entry = match result {
       Ok(entry) => entry,
       Err(error) => {
-        errors.push(format!("walk error: {error}"));
+        errors.push(format_walk_error(config, &error));
         continue;
       }
     };
@@ -84,6 +84,17 @@ pub(crate) fn scan_config(
     config_present: true,
     errors,
   })
+}
+
+fn format_walk_error(config: &Path, error: &walkdir::Error) -> String {
+  let reason = error
+    .io_error()
+    .map(ToString::to_string)
+    .unwrap_or_else(|| "directory loop detected".to_string());
+  match error.path().and_then(|path| relative_path(config, path)) {
+    Some(path) if !path.is_empty() => format!("walk error at {path}: {reason}"),
+    _ => format!("walk error: {reason}"),
+  }
 }
 
 fn relative_path(root: &Path, path: &Path) -> Option<String> {
@@ -228,7 +239,7 @@ mod tests {
     assert!(!is_stable(&before, 2, &before));
     assert!(is_stable(&before, 3, &before));
     std::thread::sleep(Duration::from_millis(20));
-    fs::write(&path, b"two").unwrap();
+    fs::write(&path, b"four").unwrap();
     let after = fs::metadata(&path).unwrap();
     assert!(!is_stable(&before, 3, &after));
     assert!(!is_stable(&before, 4, &after));

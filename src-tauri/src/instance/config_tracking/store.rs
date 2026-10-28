@@ -486,7 +486,9 @@ fn valid_hex_byte(byte: u8) -> bool {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use std::path::Path;
   use std::time::Duration;
+  use walkdir::WalkDir;
 
   struct TempDir(PathBuf);
   impl TempDir {
@@ -576,7 +578,16 @@ mod tests {
       .append(request(Checkpoint::ManualScan, None))
       .unwrap();
     assert_eq!(id, 3);
-    assert_eq!(history.read_log().unwrap().entries.len(), 2);
+    assert_eq!(
+      history
+        .read_log()
+        .unwrap()
+        .entries
+        .iter()
+        .map(|(entry_id, _)| *entry_id)
+        .collect::<Vec<_>>(),
+      [1, 3]
+    );
   }
 
   #[test]
@@ -588,15 +599,21 @@ mod tests {
       .unwrap();
     let log = history.history_dir().join("log.jsonl");
     let valid = fs::read_to_string(&log).unwrap();
-    let mut replacement = valid.clone();
-    replacement.push_str("bad\n");
+    let valid_line = valid.trim_end();
     let mut version =
       serde_json::from_str::<serde_json::Value>(valid.lines().next().unwrap()).unwrap();
     version["v"] = serde_json::json!(2);
-    replacement.push_str(&format!("{}\n", version));
+    let replacement = format!("{valid_line}\n\nbad\n{valid_line}\n{version}\n");
     fs::write(&log, replacement).unwrap();
     let read = history.read_log().unwrap();
-    assert_eq!(read.entries.len(), 1);
+    assert_eq!(
+      read
+        .entries
+        .iter()
+        .map(|(entry_id, _)| *entry_id)
+        .collect::<Vec<_>>(),
+      [1, 4]
+    );
     assert_eq!(read.diagnostics.len(), 2);
   }
 
@@ -684,6 +701,29 @@ mod tests {
   }
 
   #[test]
+  fn rewriting_same_content_between_appends_is_not_modified() {
+    let root = TempDir::new();
+    fs::create_dir_all(root.0.join("config")).unwrap();
+    let path = root.0.join("config/a.txt");
+    fs::write(&path, b"same").unwrap();
+    let history = ConfigHistory::new(&root.0);
+    history
+      .append(request(Checkpoint::ManualScan, None))
+      .unwrap();
+    fs::write(&path, b"same").unwrap();
+    history
+      .append(request(Checkpoint::ManualScan, None))
+      .unwrap();
+    let timeline = history.timeline().unwrap();
+    let changes = timeline.entries[1].changes.as_ref().unwrap();
+    assert_eq!(
+      (changes.added, changes.modified, changes.deleted),
+      (0, 0, 0)
+    );
+    assert_eq!(changes.uncertain, 0);
+  }
+
+  #[test]
   fn delete_then_reappear_is_deleted_then_added() {
     let root = TempDir::new();
     fs::create_dir_all(root.0.join("config")).unwrap();
@@ -711,15 +751,40 @@ mod tests {
   #[test]
   fn timeline_reports_missing_tree_with_diagnostic() {
     let root = TempDir::new();
+    fs::create_dir_all(root.0.join("config")).unwrap();
+    fs::write(root.0.join("config/a.txt"), b"one").unwrap();
     let history = ConfigHistory::new(&root.0);
+    history
+      .append(request(Checkpoint::ManualScan, None))
+      .unwrap();
+    fs::write(root.0.join("config/a.txt"), b"two").unwrap();
     history
       .append(request(Checkpoint::ManualScan, None))
       .unwrap();
     let entry = history.read_log().unwrap().entries[0].1.clone();
     fs::remove_file(history.history_dir().join("objects").join(entry.tree)).unwrap();
     let timeline = history.timeline().unwrap();
-    assert!(timeline.entries[0].changes.is_none());
+    assert!(timeline.entries[1].changes.is_none());
     assert!(!timeline.diagnostics.is_empty());
+  }
+
+  #[test]
+  fn timeline_marks_too_large_file_incomplete() {
+    let root = TempDir::new();
+    fs::create_dir_all(root.0.join("config")).unwrap();
+    fs::write(
+      root.0.join("config/large.bin"),
+      vec![b'x'; MAX_CONFIG_FILE_BYTES as usize + 1],
+    )
+    .unwrap();
+    let history = ConfigHistory::new(&root.0);
+    history
+      .append(request(Checkpoint::ManualScan, None))
+      .unwrap();
+    let timeline = history.timeline().unwrap();
+    assert!(timeline.entries[0].incomplete);
+    let changes = timeline.entries[0].changes.as_ref().unwrap();
+    assert_eq!(changes.uncertain, 1);
   }
 
   #[test]
@@ -755,9 +820,10 @@ mod tests {
   #[test]
   fn config_is_unchanged_by_repeated_scans_and_timeline_reports_stats() {
     let root = TempDir::new();
-    fs::create_dir_all(root.0.join("config/nested")).unwrap();
+    fs::create_dir_all(root.0.join("config/nested/deeper")).unwrap();
     fs::write(root.0.join("config/nested/a.txt"), b"a").unwrap();
-    let before = fs::read(root.0.join("config/nested/a.txt")).unwrap();
+    fs::write(root.0.join("config/nested/deeper/b.txt"), b"b").unwrap();
+    let before = snapshot_config(&root.0.join("config"));
     let history = ConfigHistory::new(&root.0);
     history
       .append(request(Checkpoint::ManualScan, None))
@@ -765,15 +831,42 @@ mod tests {
     history
       .append(request(Checkpoint::ManualScan, None))
       .unwrap();
-    assert_eq!(
-      fs::read(root.0.join("config/nested/a.txt")).unwrap(),
-      before
-    );
+    assert_eq!(snapshot_config(&root.0.join("config")), before);
     let timeline = history.timeline().unwrap();
     assert_eq!(timeline.entries[1].previous_id, Some(1));
+    assert_eq!(timeline.entries[0].changes.as_ref().unwrap().added, 2);
     assert_eq!(timeline.entries[1].changes.as_ref().unwrap().added, 0);
     assert!(!timeline.entries[0].incomplete);
-    assert!(timeline.stats.log_bytes > 0 && timeline.stats.object_bytes > 0);
+    assert_eq!(timeline.stats.entries, 2);
+    assert_eq!(
+      timeline.stats.log_bytes,
+      fs::metadata(history.history_dir().join("log.jsonl"))
+        .unwrap()
+        .len()
+    );
+    assert!(timeline.stats.object_bytes > 0);
     std::thread::sleep(Duration::from_millis(1));
+  }
+
+  fn snapshot_config(config: &Path) -> Vec<(String, Vec<u8>)> {
+    let mut files = WalkDir::new(config)
+      .follow_links(false)
+      .into_iter()
+      .filter_map(Result::ok)
+      .filter(|entry| entry.file_type().is_file())
+      .map(|entry| {
+        let relative = entry
+          .path()
+          .strip_prefix(config)
+          .unwrap()
+          .components()
+          .map(|component| component.as_os_str().to_str().unwrap())
+          .collect::<Vec<_>>()
+          .join("/");
+        (relative, fs::read(entry.path()).unwrap())
+      })
+      .collect::<Vec<_>>();
+    files.sort_by(|a, b| a.0.cmp(&b.0));
+    files
   }
 }
