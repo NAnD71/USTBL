@@ -11,6 +11,7 @@ use crate::instance::modpack_update::commands::{has_campus_install, pending_camp
 use crate::launch::helpers::command_generator::{
   export_full_launch_command, generate_launch_command, LaunchCommand,
 };
+use crate::launch::helpers::config_tracking::TrackingSession;
 use crate::launch::helpers::file_validator::{
   extract_native_libraries, get_invalid_assets, get_invalid_library_files, prepare_legacy_assets,
 };
@@ -46,6 +47,7 @@ use std::sync::{mpsc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, State};
+use uuid::Uuid;
 
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -362,6 +364,13 @@ pub async fn launch_game(
     let _ = execute_command_line(&precall_cmd);
   }
 
+  let tracking_session = TrackingSession::new(
+    work_dir.clone(),
+    Uuid::new_v4().simple().to_string(),
+    instance_id.clone(),
+  );
+  tracking_session.before_launch().await;
+
   // execute launch command
   #[cfg(target_os = "windows")]
   cmd_base.creation_flags(0x08000000);
@@ -400,6 +409,7 @@ pub async fn launch_game(
     id,
     child,
     instance_id,
+    tracking_session,
     game_config.display_game_log,
     &game_config.game_window.custom_title,
     game_config.launcher_visibility.clone(),
