@@ -1386,7 +1386,8 @@
     "binary": {
       "old": "Old file",
       "new": "New file",
-      "missing": "missing"
+      "missing": "missing",
+      "metadata": "{{label}}: {{sha1}} ({{size}})"
     },
     "fileKind": {
       "added": "Added",

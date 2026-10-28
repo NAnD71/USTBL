@@ -1383,7 +1383,12 @@
     "exitCode": "退出碼：{{code}}",
     "unknown": "未知",
     "triggeredBy": "觸發實例：{{instance}}",
-    "binary": { "old": "舊檔案", "new": "新檔案", "missing": "不存在" },
+    "binary": {
+      "old": "舊檔案",
+      "new": "新檔案",
+      "missing": "不存在",
+      "metadata": "{{label}}：{{sha1}}（{{size}}）"
+    },
     "fileKind": {
       "added": "新增",
       "modified": "修改",

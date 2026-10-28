@@ -1383,7 +1383,12 @@
     "exitCode": "終了コード：{{code}}",
     "unknown": "不明",
     "triggeredBy": "トリガーしたインスタンス：{{instance}}",
-    "binary": { "old": "旧ファイル", "new": "新ファイル", "missing": "なし" },
+    "binary": {
+      "old": "旧ファイル",
+      "new": "新ファイル",
+      "missing": "なし",
+      "metadata": "{{label}}：{{sha1}}（{{size}}）"
+    },
     "fileKind": {
       "added": "追加",
       "modified": "変更",
