@@ -10,8 +10,8 @@ use crate::instance::helpers::loader::optifine::{
   download_optifine_installer, finish_optifine_install,
 };
 use crate::instance::helpers::misc::{
-  get_instance_game_config, get_instance_subdir_path_by_id, get_instance_subdir_paths,
-  owns_files, refresh_and_update_instances, resolve_isolation, unify_instance_name,
+  get_instance_game_config, get_instance_subdir_path_by_id, get_instance_subdir_paths, owns_files,
+  refresh_and_update_instances, resolve_isolation, unify_instance_name,
 };
 use crate::instance::helpers::modpack::base_store;
 use crate::instance::helpers::modpack::baseline::{
@@ -93,8 +93,7 @@ pub async fn retrieve_instance_list(app: AppHandle) -> USTBLResult<Vec<InstanceS
   let instance_binding = app.state::<Mutex<HashMap<String, Instance>>>();
   let instances = instance_binding.lock().unwrap().clone();
   for (id, instance) in instances.iter() {
-    let (is_version_isolated, isolation_source) =
-      resolve_isolation(instance, &global_game_config);
+    let (is_version_isolated, isolation_source) = resolve_isolation(instance, &global_game_config);
 
     summary_list.push(
       InstanceSummary::from_instance(
