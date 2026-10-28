@@ -65,6 +65,7 @@ export interface InstanceSummary {
   supportQuickPlay: boolean;
   useSpecGameConfig: boolean;
   isVersionIsolated: boolean;
+  isolationSource: "locked" | "instance" | "global";
   modpackVersion?: string;
   isComponentProfile: boolean;
   origin?: InstanceOrigin;
