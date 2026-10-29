@@ -48,6 +48,9 @@ pub struct ChangeDetailEntry {
   pub no_diff: Option<NoDiffReason>,
   #[serde(default)]
   pub toggled: bool,
+  /// The file sits at `<path>.disabled` on disk.
+  #[serde(default)]
+  pub disabled: bool,
 }
 
 impl ChangeDetailEntry {
@@ -62,6 +65,7 @@ impl ChangeDetailEntry {
       hunks: None,
       no_diff: None,
       toggled: false,
+      disabled: false,
     }
   }
 }
@@ -177,6 +181,13 @@ pub async fn compute_changes(
     .into_iter()
     .map(|change| (change.path.to_lowercase(), change))
     .collect();
+  // A whole-file ignore is anchored on the managed baseline entry.
+  let managed: HashMap<String, FileKey> = baseline
+    .files
+    .iter()
+    .filter(|file| file.is_managed())
+    .filter_map(|file| file.key().map(|key| (file.path.to_lowercase(), key)))
+    .collect();
 
   let mut entries = Vec::new();
   let mut once_keys = BTreeMap::new();
@@ -192,9 +203,10 @@ pub async fn compute_changes(
       continue;
     }
     let change = local.get(&folded);
+    let base_key = managed.get(&folded).cloned().unwrap_or_else(|| file.key());
     let Some((disabled, _)) = variant_on_disk(root, &file.path) else {
       let mut entry = ChangeDetailEntry::new(&file.path, ChangeClass::Deleted, true);
-      entry.baseline = Some(change.map_or_else(|| file.key(), |change| change.baseline.clone()));
+      entry.baseline = Some(base_key);
       entries.push(entry);
       continue;
     };
@@ -211,8 +223,9 @@ pub async fn compute_changes(
     let mut entry = ChangeDetailEntry::new(&file.path, class, true);
     entry.size = size_on_disk(root, &file.path, disabled);
     entry.toggled = switched;
+    entry.disabled = disabled;
+    entry.baseline = Some(base_key);
     if let Some(change) = change {
-      entry.baseline = Some(change.baseline.clone());
       entry.local = change.local.clone();
     }
     if let Some(change) = modified {
@@ -235,6 +248,7 @@ pub async fn compute_changes(
       if once_differs(root, path, state, wanted) {
         let mut entry = ChangeDetailEntry::new(path, ChangeClass::OnceChanged, false);
         entry.size = state.key().map(|key| key.size);
+        entry.disabled = state.variant_disabled() == Some(true);
         entries.push(entry);
       }
     }
@@ -253,6 +267,7 @@ pub async fn compute_changes(
     };
     let mut entry =
       ChangeDetailEntry::new(&file.path, class, published && in_content_dir(&file.path));
+    entry.disabled = file.disabled;
     if with_diff {
       entry.size = size_on_disk(root, &file.path, file.disabled);
     }
@@ -341,6 +356,7 @@ pub async fn ignore_added_file(
     None => Err(IgnoreError::Mismatch),
   }
 }
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -553,6 +569,33 @@ mod tests {
       find(&entries, "mods/b.jar").unwrap().class,
       ChangeClass::Toggled
     );
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[tokio::test]
+  async fn a_toggle_only_the_release_sees_carries_the_baseline_and_can_be_ignored() {
+    // The baseline recorded the player's switched-off state, so the old local
+    // change list has nothing here; only the release says it ships enabled.
+    let root = instance(&[("mods/a.jar.disabled", "a")]);
+    let baseline = baseline_with(vec![BaselineFile::managed("mods/a.jar", key("a"), true)]);
+    let release = release_of(vec![release_file("mods/a.jar", "a", false, false)], vec![]);
+    release::write(&root, &release).await.unwrap();
+    assert!(local_changes(&root, &baseline, false)
+      .await
+      .unwrap()
+      .is_empty());
+
+    let entries = detail(&root, &baseline, &release).await;
+    let toggled = find(&entries, "mods/a.jar").unwrap();
+    assert_eq!(toggled.class, ChangeClass::Toggled);
+    assert!(toggled.disabled);
+    let base = toggled.baseline.clone().unwrap();
+    assert_eq!(base, key("a"));
+    assert_eq!(count(&root, &baseline).await.unwrap(), 1);
+
+    ignores::add(&root, &baseline, "mods/a.jar", &base.sha1, None).unwrap();
+    assert!(find(&detail(&root, &baseline, &release).await, "mods/a.jar").is_none());
+    assert_eq!(count(&root, &baseline).await.unwrap(), 0);
     let _ = fs::remove_dir_all(root);
   }
 

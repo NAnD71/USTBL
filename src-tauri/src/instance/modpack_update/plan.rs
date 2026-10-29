@@ -137,6 +137,7 @@ pub fn requires_reinstall(baseline: &ModpackBaseline, remote: &RemoteModpack, fr
 pub async fn count_local_changes(root: &Path, baseline: &ModpackBaseline) -> USTBLResult<usize> {
   super::changes::count(root, baseline).await
 }
+
 /// Forget this instance's scan entries (deleted, or stopped following).
 pub fn invalidate_scan_cache(root: &Path) {
   cache().invalidate(root);

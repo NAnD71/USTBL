@@ -1259,17 +1259,19 @@ pub async fn list_modpack_change_detail(
     let version_id = baseline.origin.version_id.clone();
     let mut origin = target.origin.clone();
     origin.version_id = version_id.clone();
-    // Not while an update runs, and not on every render after a failure.
+    // Not while an update runs, and not on every render after a failure. The
+    // lock is held until the record is written.
     let fetched = match UpdateGuard::acquire(&target.root) {
-      Ok(_guard) if release_fetch_allowed(&target.root, &version_id) => {
+      Ok(guard) if release_fetch_allowed(&target.root, &version_id) => {
         super::sources::campus_base_remote(&app, &origin, &target.root, &target.instance.name)
           .await
           .ok()
+          .map(|remote| (guard, remote))
       }
       _ => None,
     };
     match fetched {
-      Some(remote) => {
+      Some((_guard, remote)) => {
         release = release::Release::from_remote(&remote);
         if let Err(error) = release::write(&target.root, &release).await {
           log::warn!("cannot save local release record: {error}");
@@ -1294,6 +1296,7 @@ pub async fn list_modpack_change_detail(
     entries,
   })
 }
+
 /// Map the ignore store's refusals onto the update errors: a request that no
 /// longer matches the files is a stale one.
 fn ignore_error(error: super::ignores::IgnoreError) -> crate::error::USTBLError {

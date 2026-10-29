@@ -161,6 +161,7 @@ pub fn release_for(root: &Path, baseline: &ModpackBaseline) -> (Release, bool) {
     None => (Release::from_baseline(baseline, version_id.clone()), true),
   }
 }
+
 #[cfg(test)]
 mod tests {
   use super::*;
