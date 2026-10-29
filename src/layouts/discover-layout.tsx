@@ -129,7 +129,7 @@ const DiscoverLayout: React.FC<{ children: React.ReactNode }> = ({
             return (
               <NavMenu
                 key={index}
-                selectedKeys={[router.asPath]}
+                selectedKeys={[router.asPath.split("?")[0]]}
                 onClick={(value) => {
                   const item = itemsWithMetadata.find((i) => i.value === value);
                   if (item) {

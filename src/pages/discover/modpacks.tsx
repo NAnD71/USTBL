@@ -1,3 +1,4 @@
+import { Box } from "@chakra-ui/react";
 import { useRouter } from "next/router";
 import { useTranslation } from "react-i18next";
 import { Section } from "@/components/common/section";
@@ -28,13 +29,22 @@ const DiscoverModpacksPage = () => {
       display="flex"
       flexDir="column"
     >
-      <ResourceDownloader
-        key={`${query}\u0000${source}`}
-        resourceType={OtherResourceType.ModPack}
-        initialSearchQuery={query}
-        initialDownloadSource={source}
-        displayInModal={false}
-      />
+      <Box
+        flex="1"
+        bg="chakra-body-bg"
+        borderWidth="1px"
+        borderRadius="lg"
+        boxShadow="sm"
+        pt={2}
+        px={1}
+      >
+        <ResourceDownloader
+          resourceType={OtherResourceType.ModPack}
+          initialSearchQuery={query}
+          initialDownloadSource={source}
+          displayInModal={false}
+        />
+      </Box>
     </Section>
   );
 };

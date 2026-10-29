@@ -1,10 +1,11 @@
-import { Box, useToast } from "@chakra-ui/react";
+import { Box } from "@chakra-ui/react";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import CampusPlatformSection from "@/components/campus-platform-section";
 import { Section } from "@/components/common/section";
 import { useGlobalData } from "@/contexts/global-data";
+import { useToast } from "@/contexts/toast";
 import {
   CampusModpackProject,
   CampusModpackRecommendation,
