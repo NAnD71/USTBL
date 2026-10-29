@@ -104,7 +104,9 @@ pub fn plan_hash(
   hasher.update(b"\0");
   hasher.update(serde_json::to_vec(next_baseline).unwrap_or_default());
   hasher.update(b"\0");
-  hasher.update(serde_json::to_vec(ignores).unwrap_or_default());
+  let mut hash_ignores = ignores.clone();
+  hash_ignores.added.clear();
+  hasher.update(serde_json::to_vec(&hash_ignores).unwrap_or_default());
   hex::encode(hasher.finalize())
 }
 
@@ -132,7 +134,73 @@ pub fn requires_reinstall(baseline: &ModpackBaseline, remote: &RemoteModpack, fr
 /// How many files the modpack manages differ from what it installed. A file the
 /// player switched off counts, since that is a deliberate local change.
 pub async fn count_local_changes(root: &Path, baseline: &ModpackBaseline) -> USTBLResult<usize> {
-  Ok(local_changes(root, baseline, false).await?.len())
+  let saved_release = super::release::read(root)
+    .await
+    .map_err(|error| USTBLError(error.to_string()))?;
+  let changes = local_changes(root, baseline, false).await?;
+  let Some(release) = saved_release.filter(|release| release.version_id == baseline.origin.version_id) else {
+    return Ok(changes.len());
+  };
+  let ignored = super::ignores::read_valid_for_release(root, baseline, &release);
+  let mut counted_paths = std::collections::HashSet::new();
+  let mut count = 0;
+  for change in &changes {
+    let Some(file) = release.file_of(&change.path) else { continue };
+    if file.once || ignored.files.get(&change.path).is_some_and(|entry| entry.whole) {
+      continue;
+    }
+    let counted = match change.kind {
+      super::plan::LocalChangeKind::Disabled | super::plan::LocalChangeKind::Enabled => {
+        change.local.as_ref().is_some_and(|_| {
+          let local = super::changes::local_file_key(root, &change.path);
+          local.is_some_and(|(_, disabled)| disabled != file.disabled)
+        })
+      }
+      _ => true,
+    };
+    if counted && counted_paths.insert(change.path.to_lowercase()) {
+      count += 1;
+    }
+  }
+  for file in &release.files {
+    if file.once || ignored.files.get(&file.path).is_some_and(|entry| entry.whole) {
+      continue;
+    }
+    let local = super::changes::local_file_key(root, &file.path);
+    if local.is_none() {
+      if counted_paths.insert(file.path.to_lowercase()) {
+        count += 1;
+      }
+    } else if local.is_some_and(|(key, disabled)| {
+      key != file.key() || disabled != file.disabled
+    }) && counted_paths.insert(file.path.to_lowercase())
+    {
+      count += 1;
+    }
+  }
+  let mut added = std::collections::HashSet::new();
+  for directory in ["mods", "resourcepacks", "shaderpacks"] {
+    let base = root.join(directory);
+    if !base.is_dir() {
+      continue;
+    }
+    for entry in walkdir::WalkDir::new(base).into_iter().flatten() {
+      if !entry.file_type().is_file() {
+        continue;
+      }
+      let Ok(path) = entry.path().strip_prefix(root) else { continue };
+      let path = path.to_string_lossy().replace('\\', "/");
+      let logical = super::changes::logical_disk_path(&path);
+      if !release.contains(logical)
+        && super::changes::added_is_counted(logical, &release)
+        && !ignored.added.contains(&logical.to_lowercase())
+        && added.insert(logical.to_lowercase())
+      {
+        count += 1;
+      }
+    }
+  }
+  Ok(count)
 }
 
 /// Forget this instance's scan entries (deleted, or stopped following).
@@ -1192,6 +1260,22 @@ mod tests {
         .unwrap()
         .plan_hash
     );
+
+    let prepared = prepare_with_contents(&root, &baseline, &remote_v2, &BTreeMap::new())
+      .await
+      .unwrap();
+    let plain = plan_hash(
+      &remote_v2,
+      &prepared.diff,
+      &prepared.next_baseline,
+      &Ignores::default(),
+    );
+    let mut with_added_ignore = Ignores::default();
+    with_added_ignore.added.insert("mods/unmanaged.jar".into());
+    assert_eq!(
+      plain,
+      plan_hash(&remote_v2, &prepared.diff, &prepared.next_baseline, &with_added_ignore)
+    );
     let _ = fs::remove_dir_all(root);
   }
 
@@ -1338,6 +1422,48 @@ mod tests {
     assert_eq!(count_local_changes(&root, &installed).await.unwrap(), 3);
     let clean = baseline(&[("mods/same.jar", "same")]);
     assert_eq!(count_local_changes(&root, &clean).await.unwrap(), 0);
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[tokio::test]
+  async fn with_a_release_added_files_count_only_in_content_directories() {
+    use crate::instance::modpack_update::release::{self, ReleaseFile};
+    let root = std::env::temp_dir().join(format!("ustbl-plan-test-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(root.join("mods")).unwrap();
+    fs::create_dir_all(root.join("config")).unwrap();
+    fs::write(root.join("mods/same.jar"), "same").unwrap();
+    let installed = baseline(&[("mods/same.jar", "same")]);
+    let mut saved = release::Release::from_baseline(&installed, "1");
+    let once = key("once-original");
+    saved.files.push(ReleaseFile {
+      path: "config/once.toml".into(),
+      sha1: once.sha1.clone(),
+      size: once.size,
+      disabled: false,
+      once: true,
+    });
+    release::write(&root, &saved).await.unwrap();
+    assert_eq!(count_local_changes(&root, &installed).await.unwrap(), 0);
+
+    // A changed once file and a config addition are not counted.
+    fs::write(root.join("config/once.toml"), "player-edit").unwrap();
+    fs::write(root.join("config/extra.toml"), "x").unwrap();
+    assert_eq!(count_local_changes(&root, &installed).await.unwrap(), 0);
+
+    // A mod outside the release is counted, and a `.disabled` copy counts once.
+    fs::write(root.join("mods/mine.jar"), "mine").unwrap();
+    assert_eq!(count_local_changes(&root, &installed).await.unwrap(), 1);
+    fs::rename(root.join("mods/mine.jar"), root.join("mods/mine.jar.disabled")).unwrap();
+    assert_eq!(count_local_changes(&root, &installed).await.unwrap(), 1);
+
+    // Ignoring it drops the count.
+    crate::instance::modpack_update::ignores::add_added(&root, &installed, &saved, "mods/mine.jar")
+      .unwrap();
+    assert_eq!(count_local_changes(&root, &installed).await.unwrap(), 0);
+
+    // Unlinking removes the release.
+    release::remove(&root).unwrap();
+    assert!(release::read(&root).await.unwrap().is_none());
     let _ = fs::remove_dir_all(root);
   }
 

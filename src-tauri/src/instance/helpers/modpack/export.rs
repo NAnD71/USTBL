@@ -155,6 +155,7 @@ static BLACKLIST: LazyLock<HashSet<&'static str>> = LazyLock::new(|| {
     "ustbl-multimc-components.json",
     "ustbl-multimc-profile.json",
     "ustbl-modpack-baseline.json",
+    "release.json",
     // Fabric/OptiFine
     ".fabric",
     ".mixin.out",
@@ -312,6 +313,15 @@ fn suggested_entry(path: &str) -> Option<(String, &'static str)> {
       None
     }
   })
+}
+
+/// Whether a path is covered by the export tree's suggested blacklist.
+/// Listing itself remains the source of truth for the concrete suggested node;
+/// this helper is for the local-change count, which intentionally does not
+/// enumerate the whole instance.
+pub fn is_suggested_blacklisted(path: &str) -> bool {
+  SUGGESTED_BLACKLIST.contains(path)
+    || SUGGESTED_REGEX_BLACKLIST.is_match(path)
 }
 
 static FORGE_VERSION_REGEX: LazyLock<Regex> = LazyLock::new(|| {
