@@ -9,12 +9,12 @@ use super::diff::{scan_path, Conflict, ConflictChoice, LocalState, DISABLED_SUFF
 use super::merge::MergeConflict;
 use super::plan::Prepared;
 use super::release::Release;
-use super::remote::UPDATE_DIR;
+use super::remote::{RemoteModpack, UPDATE_DIR};
 use super::text_diff::{edits, lines_of, Edit};
 use crate::instance::helpers::modpack::baseline::{BaselineFile, ModpackBaseline};
 use crate::instance::helpers::modpack::{base_store, text};
 use serde::{Deserialize, Serialize};
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
 use std::io;
 use std::path::{Path, PathBuf};
@@ -126,14 +126,30 @@ impl Ignores {
     }
   }
 
+  /// The added-file ignores that still apply: the file is not in the release
+  /// and some variant of it is on disk. Records keep the spelling they were
+  /// made with; a record that does not match the disk spelling is stale.
   pub fn validated_added(&self, root: &Path, release: &Release) -> BTreeSet<String> {
+    let listed = release.index();
     self
       .added
       .iter()
-      .filter(|path| !release.contains(path) && (root.join(path).is_file() || root.join(format!("{path}{DISABLED_SUFFIX}")).is_file()))
+      .filter(|path| !listed.contains_key(&path.to_lowercase()) && on_disk(root, path))
       .cloned()
       .collect()
   }
+
+  /// Whether the added file is ignored. Paths compare without case.
+  pub fn ignores_added(&self, path: &str) -> bool {
+    self
+      .added
+      .iter()
+      .any(|added| added.eq_ignore_ascii_case(path))
+  }
+}
+
+fn on_disk(root: &Path, path: &str) -> bool {
+  root.join(path).is_file() || root.join(format!("{path}{DISABLED_SUFFIX}")).is_file()
 }
 
 fn canonical(entry: &IgnoreEntry) -> IgnoreEntry {
@@ -182,7 +198,11 @@ pub fn read_valid(root: &Path, baseline: &ModpackBaseline) -> Ignores {
   read(root).validated(baseline)
 }
 
-pub fn read_valid_for_release(root: &Path, baseline: &ModpackBaseline, release: &Release) -> Ignores {
+pub fn read_valid_for_release(
+  root: &Path,
+  baseline: &ModpackBaseline,
+  release: &Release,
+) -> Ignores {
   let mut ignores = read_valid(root, baseline);
   ignores.added = ignores.validated_added(root, release);
   ignores
@@ -340,6 +360,7 @@ pub fn after_update(
 pub fn plan_update(
   root: &Path,
   prepared: &Prepared,
+  remote: &RemoteModpack,
   remote_texts: &BTreeMap<String, Vec<u8>>,
   choices: &BTreeMap<String, ConflictChoice>,
 ) -> Option<IgnoresUpdate> {
@@ -374,17 +395,16 @@ pub fn plan_update(
       remap_entry(path, entry, &base, remote, &taken)
     },
   );
-  let managed: BTreeSet<String> = prepared
-    .next_baseline
+  // An added file stops being one when the new version lists it, once-only
+  // files included.
+  let entered: HashSet<String> = remote
+    .files
     .iter()
-    .filter(|file| file.is_managed())
     .map(|file| file.path.to_lowercase())
     .collect();
   let mut to = to;
-  to.added.retain(|path| {
-    !managed.contains(path)
-      && (root.join(path).is_file() || root.join(format!("{path}{DISABLED_SUFFIX}")).is_file())
-  });
+  to.added
+    .retain(|path| !entered.contains(&path.to_lowercase()) && on_disk(root, path));
   (to != prepared.ignores_on_disk).then(|| IgnoresUpdate {
     from: prepared.ignores_on_disk.clone(),
     to,
@@ -609,15 +629,22 @@ pub fn add(
   Ok(())
 }
 
-pub fn add_added(root: &Path, baseline: &ModpackBaseline, release: &Release, path: &str) -> Result<(), IgnoreError> {
-  if release.contains(path)
-    || baseline.files.iter().any(|file| file.path.eq_ignore_ascii_case(path))
-    || (!root.join(path).is_file() && !root.join(format!("{path}{DISABLED_SUFFIX}")).is_file())
-  {
+/// Keep a file the player added as the player's own. The path is the enabled
+/// name; the caller has checked it is currently an added file.
+pub fn add_added(
+  root: &Path,
+  baseline: &ModpackBaseline,
+  release: &Release,
+  path: &str,
+) -> Result<(), IgnoreError> {
+  if release.index().contains_key(&path.to_lowercase()) || !on_disk(root, path) {
     return Err(IgnoreError::Mismatch);
   }
   let mut ignores = read_valid_for_release(root, baseline, release);
-  ignores.added.insert(path.to_lowercase());
+  ignores
+    .added
+    .retain(|added| !added.eq_ignore_ascii_case(path));
+  ignores.added.insert(path.to_string());
   write(root, &ignores)?;
   Ok(())
 }
@@ -632,7 +659,12 @@ pub fn undo(
   let mut ignores = read_valid(root, baseline);
   match range {
     None => {
-      if ignores.files.remove(path).is_none() && !ignores.added.remove(&path.to_lowercase()) {
+      let before = ignores.added.len();
+      ignores
+        .added
+        .retain(|added| !added.eq_ignore_ascii_case(path));
+      let was_added = ignores.added.len() != before;
+      if ignores.files.remove(path).is_none() && !was_added {
         return Err(IgnoreError::Mismatch);
       }
     }
@@ -721,7 +753,11 @@ pub fn list(root: &Path, baseline: &ModpackBaseline) -> Vec<IgnoredItem> {
   list_from(root, read_valid(root, baseline))
 }
 
-pub fn list_for_release(root: &Path, baseline: &ModpackBaseline, release: &Release) -> Vec<IgnoredItem> {
+pub fn list_for_release(
+  root: &Path,
+  baseline: &ModpackBaseline,
+  release: &Release,
+) -> Vec<IgnoredItem> {
   list_from(root, read_valid_for_release(root, baseline, release))
 }
 
@@ -1130,7 +1166,9 @@ mod tests {
     let valid = read_valid_for_release(&root, &baseline, &release);
     assert_eq!(valid.added.len(), 1);
     std::fs::remove_file(root.join("mods/new.jar")).unwrap();
-    assert!(read_valid_for_release(&root, &baseline, &release).added.is_empty());
+    assert!(read_valid_for_release(&root, &baseline, &release)
+      .added
+      .is_empty());
     assert!(add_added(&root, &baseline, &release, "mods/missing.jar").is_err());
     let _ = std::fs::remove_dir_all(root);
   }

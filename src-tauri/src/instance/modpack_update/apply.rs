@@ -302,7 +302,7 @@ fn meta_files(instance_name: &str, restoring_components: bool) -> Vec<String> {
     INSTANCE_CONFIG_FILE.to_string(),
     format!("{instance_name}.json"),
     super::ignores::meta_name(),
-    super::release::RELEASE_FILE_NAME.to_string(),
+    super::release::meta_name(),
   ];
   if restoring_components {
     names.extend([
@@ -2179,7 +2179,7 @@ mod tests {
     assert_eq!(root.read("mods/dormant.jar").as_deref(), Some("stale"));
     assert_eq!(root.read("mods/flip.jar").as_deref(), Some("flip"));
     assert_eq!(root.read("mods/flip.jar.disabled"), None);
-    assert_eq!(release::read(&root.0).await.unwrap(), Some(old_release));
+    assert_eq!(release::read(&root.0), Some(old_release));
     assert!(root.0.join("mods/old").exists());
     assert!(!journal_path(&root.0).exists());
   }
@@ -2683,10 +2683,12 @@ mod tests {
     assert!(!root.0.parent().unwrap().join("evil.jar").exists());
   }
 
-  /// "Take remote" on every conflict leaves only the two pre-existing content
-  /// files outside the new release to report as added files.
+  /// "Take remote" on every conflict leaves no modified file. The 2 that
+  /// remain are the two mods `setup()` puts in the instance (`mods/old.jar`,
+  /// `mods/gone.jar`), which the new release does not list, so they read as
+  /// added files.
   #[tokio::test]
-  async fn taking_every_remote_side_leaves_no_local_changes() {
+  async fn taking_every_remote_side_leaves_only_preexisting_added_files() {
     use crate::instance::helpers::modpack::baseline::BaselineFile;
     use crate::instance::modpack_update::commands::selected_hunk_contents;
     use crate::instance::modpack_update::diff::ConflictChoice;
@@ -2809,6 +2811,7 @@ mod tests {
     apply(&env, update).await.unwrap();
 
     let baseline = ModpackBaseline::load(&root.0).await.unwrap();
+    // The kept file and the two mods from setup() that the release lacks.
     assert_eq!(count_local_changes(&root.0, &baseline).await.unwrap(), 3);
     let changes = local_changes(&root.0, &baseline, true).await.unwrap();
     assert_eq!(changes.len(), 1);
@@ -2867,6 +2870,7 @@ mod tests {
       Some("x = 2\ny = 1\nz = 3\n")
     );
     let baseline = ModpackBaseline::load(&root.0).await.unwrap();
+    // The kept file and the two mods from setup() that the release lacks.
     assert_eq!(count_local_changes(&root.0, &baseline).await.unwrap(), 3);
     let changes = local_changes(&root.0, &baseline, true).await.unwrap();
     assert_eq!(changes.len(), 1);

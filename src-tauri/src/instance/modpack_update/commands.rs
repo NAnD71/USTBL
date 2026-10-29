@@ -13,8 +13,8 @@ use super::plan::{
   requires_reinstall, resolve, LocalChange, Prepared,
 };
 use super::plan_cache::{self, PlanCache};
-use super::remote::{ComponentPack, RemoteModpack};
 use super::release;
+use super::remote::{ComponentPack, RemoteModpack};
 use super::restore::restore_component_profile;
 use super::sources::{download_param, latest_version, resolve_remote, LatestVersion, Payload};
 use crate::error::USTBLResult;
@@ -67,7 +67,9 @@ static RELEASE_FETCH_ATTEMPTS: std::sync::LazyLock<Mutex<HashMap<String, u8>>> =
 
 fn release_fetch_allowed(root: &Path, version_id: &str) -> bool {
   let key = format!("{}\0{version_id}", root.to_string_lossy());
-  let mut attempts = RELEASE_FETCH_ATTEMPTS.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+  let mut attempts = RELEASE_FETCH_ATTEMPTS
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
   let attempt = attempts.entry(key).or_default();
   if *attempt >= 2 {
     return false;
@@ -1241,6 +1243,9 @@ pub struct ModpackChangeDetail {
   pub entries: Vec<super::changes::ChangeDetailEntry>,
 }
 
+/// The local changes against the release the instance last matched, with line
+/// diffs for modified text files. Works offline; a campus instance without a
+/// saved release record fetches it once (see `incomplete`).
 #[tauri::command]
 pub async fn list_modpack_change_detail(
   app: AppHandle,
@@ -1248,40 +1253,33 @@ pub async fn list_modpack_change_detail(
 ) -> USTBLResult<ModpackChangeDetail> {
   let target = target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   let baseline = load_baseline(&target).await?;
-  let saved = release::read(&target.root)
-    .await
-    .map_err(|error| crate::error::USTBLError(error.to_string()))?;
-  let (release, incomplete) = if let Some(release) = saved.filter(|release| release.version_id == target.origin.version_id) {
-    (release, false)
-  } else if target.origin.platform == OriginPlatform::Campus {
-    match UpdateGuard::acquire(&target.root) {
-      Ok(_guard) if release_fetch_allowed(&target.root, &target.origin.version_id) => {
-        match super::sources::campus_base_remote(
-          &app,
-          &target.origin,
-          &target.root,
-          &target.instance.name,
-        )
-        .await
-        {
-          Ok(remote) => {
-            let release = release::Release::from_remote(&remote);
-            if let Err(error) = release::write(&target.root, &release).await {
-              log::warn!("cannot save local release record: {error}");
-            } else {
-              release_fetch_succeeded(&target.root, &target.origin.version_id);
-            }
-            (release, false)
-          }
-          Err(_error) => (super::changes::baseline_release(&baseline), true),
+  let (mut release, fallback) = release::release_for(&target.root, &baseline);
+  let mut incomplete = false;
+  if fallback && target.origin.platform == OriginPlatform::Campus {
+    let version_id = baseline.origin.version_id.clone();
+    let mut origin = target.origin.clone();
+    origin.version_id = version_id.clone();
+    // Not while an update runs, and not on every render after a failure.
+    let fetched = match UpdateGuard::acquire(&target.root) {
+      Ok(_guard) if release_fetch_allowed(&target.root, &version_id) => {
+        super::sources::campus_base_remote(&app, &origin, &target.root, &target.instance.name)
+          .await
+          .ok()
+      }
+      _ => None,
+    };
+    match fetched {
+      Some(remote) => {
+        release = release::Release::from_remote(&remote);
+        if let Err(error) = release::write(&target.root, &release).await {
+          log::warn!("cannot save local release record: {error}");
+        } else {
+          release_fetch_succeeded(&target.root, &version_id);
         }
       }
-      Ok(_guard) => (super::changes::baseline_release(&baseline), true),
-      Err(_) => (super::changes::baseline_release(&baseline), true),
+      None => incomplete = true,
     }
-  } else {
-    (super::changes::baseline_release(&baseline), false)
-  };
+  }
   let listed = tokio::task::spawn_blocking({
     let instance = target.instance.clone();
     move || crate::instance::helpers::modpack::export::list_files(&instance)
@@ -1296,7 +1294,6 @@ pub async fn list_modpack_change_detail(
     entries,
   })
 }
-
 /// Map the ignore store's refusals onto the update errors: a request that no
 /// longer matches the files is a stale one.
 fn ignore_error(error: super::ignores::IgnoreError) -> crate::error::USTBLError {
@@ -1340,27 +1337,15 @@ pub async fn ignore_modpack_added_file(
   let target = target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   let _guard = UpdateGuard::acquire(&target.root)?;
   let baseline = load_baseline(&target).await?;
-  let release = release::read(&target.root)
-    .await
-    .map_err(|error| crate::error::USTBLError(error.to_string()))?
-    .unwrap_or_else(|| super::changes::baseline_release(&baseline));
+  let (release, _) = release::release_for(&target.root, &baseline);
   let listed = tokio::task::spawn_blocking({
     let instance = target.instance.clone();
     move || crate::instance::helpers::modpack::export::list_files(&instance)
   })
   .await
   .map_err(|error| crate::error::USTBLError(error.to_string()))??;
-  let path = super::changes::logical_disk_path(&path).to_string();
-  if !listed.all.iter().any(|listed| {
-    listed.eq_ignore_ascii_case(&path)
-      || super::changes::logical_disk_path(listed).eq_ignore_ascii_case(&path)
-  }) {
-    return Err(InstanceError::ModpackUpdateStale.into());
-  }
-  let root = target.root.clone();
-  tokio::task::spawn_blocking(move || super::ignores::add_added(&root, &baseline, &release, &path))
+  super::changes::ignore_added_file(&target.root, &baseline, &release, &listed, &path)
     .await
-    .map_err(|error| crate::error::USTBLError(error.to_string()))?
     .map_err(ignore_error)
 }
 
@@ -1372,10 +1357,7 @@ pub async fn list_modpack_ignores(
 ) -> USTBLResult<Vec<super::ignores::IgnoredItem>> {
   let target = target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   let baseline = load_baseline(&target).await?;
-  let release = release::read(&target.root)
-    .await
-    .map_err(|error| crate::error::USTBLError(error.to_string()))?
-    .unwrap_or_else(|| super::changes::baseline_release(&baseline));
+  let (release, _) = release::release_for(&target.root, &baseline);
   let root = target.root.clone();
   tokio::task::spawn_blocking(move || super::ignores::list_for_release(&root, &baseline, &release))
     .await
@@ -1394,7 +1376,7 @@ pub async fn unignore_modpack_local_change(
   let target = target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   let _guard = UpdateGuard::acquire(&target.root)?;
   let baseline = load_baseline(&target).await?;
-  let was_added = super::ignores::read(&target.root).added.contains(&path.to_lowercase());
+  let was_added = super::ignores::read(&target.root).ignores_added(&path);
   let root = target.root.clone();
   let undo_path = path.clone();
   tokio::task::spawn_blocking(move || super::ignores::undo(&root, &baseline, &undo_path, range))
@@ -2259,7 +2241,13 @@ async fn apply_modpack_update_inner(
     "modpack update apply resolutions: instance={instance_id} plan_hash={plan_hash} resolutions=[{}]",
     describe_conflict_resolutions(&prepared.diff, &apply_choices).join(","),
   );
-  let ignores = super::ignores::plan_update(&target.root, &prepared, &base_texts, &apply_choices);
+  let ignores = super::ignores::plan_update(
+    &target.root,
+    &prepared,
+    &remote,
+    &base_texts,
+    &apply_choices,
+  );
   let result = apply(
     &env,
     UpdateRequest {
@@ -2663,8 +2651,13 @@ async fn install_campus_modpack_inner(
   } else {
     None
   };
-  let ignores =
-    super::ignores::plan_update(&target.root, &prepared, &BTreeMap::new(), &apply_choices);
+  let ignores = super::ignores::plan_update(
+    &target.root,
+    &prepared,
+    &remote,
+    &BTreeMap::new(),
+    &apply_choices,
+  );
   let result = apply(
     &env,
     UpdateRequest {

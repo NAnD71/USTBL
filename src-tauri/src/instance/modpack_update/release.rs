@@ -1,10 +1,12 @@
 use super::diff::FileKey;
-use super::remote::{RemoteModpack, RemoteRule};
+use super::remote::{RemoteModpack, RemoteRule, UPDATE_DIR};
 use crate::instance::helpers::modpack::baseline::ModpackBaseline;
-use crate::storage::{load_json_async, save_json_async};
+use crate::instance::modpack_publish::commands::{PreviousFile, PreviousRelease};
+use crate::storage::save_json_async;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::io;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 pub const RELEASE_FILE_NAME: &str = "release.json";
 pub const RELEASE_SCHEMA: u32 = 1;
@@ -89,41 +91,76 @@ impl Release {
     }
   }
 
-  pub fn file_of(&self, path: &str) -> Option<&ReleaseFile> {
+  /// Files by lowercase path, for lookups inside loops.
+  pub fn index(&self) -> HashMap<String, &ReleaseFile> {
     self
       .files
       .iter()
-      .find(|file| file.path.eq_ignore_ascii_case(path))
+      .map(|file| (file.path.to_lowercase(), file))
+      .collect()
   }
 
-  pub fn contains(&self, path: &str) -> bool {
-    self.file_of(path).is_some()
+  /// What the publish tree starts from, as the line's previous release.
+  pub fn to_previous(&self) -> PreviousRelease {
+    PreviousRelease {
+      files: self
+        .files
+        .iter()
+        .map(|file| PreviousFile {
+          path: file.path.clone(),
+          sha1: file.sha1.clone(),
+          size: file.size,
+          disabled: file.disabled,
+          once: file.once,
+        })
+        .collect(),
+      rules: self.rules.clone(),
+      rules_manifest: self.rules_manifest,
+    }
   }
 }
 
-pub async fn read(root: &Path) -> io::Result<Option<Release>> {
-  match load_json_async::<Release>(&root.join(RELEASE_FILE_NAME)).await {
-    Ok(release) if release.schema == RELEASE_SCHEMA => Ok(Some(release)),
-    Ok(_) => Ok(None),
-    Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
-    Err(error) if error.kind() == io::ErrorKind::InvalidData => Ok(None),
-    Err(error) => Err(io::Error::other(error.to_string())),
-  }
+/// Name of the record relative to the instance, as the update transaction
+/// lists its metadata files.
+pub fn meta_name() -> String {
+  format!("{UPDATE_DIR}/{RELEASE_FILE_NAME}")
+}
+
+fn release_path(root: &Path) -> PathBuf {
+  root.join(UPDATE_DIR).join(RELEASE_FILE_NAME)
+}
+
+/// The saved record, or `None` when it is missing, unreadable or from another
+/// schema. A damaged record is the same as no record: the caller falls back.
+pub fn read(root: &Path) -> Option<Release> {
+  let bytes = std::fs::read(release_path(root)).ok()?;
+  serde_json::from_slice::<Release>(&bytes)
+    .ok()
+    .filter(|release| release.schema == RELEASE_SCHEMA)
 }
 
 pub async fn write(root: &Path, release: &Release) -> io::Result<()> {
-  save_json_async(release, &root.join(RELEASE_FILE_NAME))
-    .await
-    .map_err(|error| io::Error::other(error.to_string()))
+  save_json_async(release, &release_path(root)).await
 }
 
 pub fn remove(root: &Path) -> io::Result<()> {
-  match std::fs::remove_file(root.join(RELEASE_FILE_NAME)) {
+  match std::fs::remove_file(release_path(root)) {
     Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
     _ => Ok(()),
   }
 }
 
+/// The release list the instance was last known to match, without the network.
+/// The flag is set when the saved record is missing or belongs to another
+/// version, so the list is rebuilt from the baseline (managed entries only, no
+/// rules and no first-install flags).
+pub fn release_for(root: &Path, baseline: &ModpackBaseline) -> (Release, bool) {
+  let version_id = &baseline.origin.version_id;
+  match read(root).filter(|release| release.version_id == *version_id) {
+    Some(release) => (release, false),
+    None => (Release::from_baseline(baseline, version_id.clone()), true),
+  }
+}
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -148,10 +185,27 @@ mod tests {
   fn baseline_fallback_keeps_only_managed_files_and_no_publish_flags() {
     let baseline = ModpackBaseline::build(
       &origin(),
-      BaselineLoader { loader_type: ModLoaderType::Fabric, version: "0.16".into() },
+      BaselineLoader {
+        loader_type: ModLoaderType::Fabric,
+        version: "0.16".into(),
+      },
       vec![
-        BaselineFile::managed("mods/a.jar", FileKey { sha1: "a".into(), size: 1 }, true),
-        BaselineFile::dormant("config/once.toml", Some(FileKey { sha1: "b".into(), size: 1 }), false),
+        BaselineFile::managed(
+          "mods/a.jar",
+          FileKey {
+            sha1: "a".into(),
+            size: 1,
+          },
+          true,
+        ),
+        BaselineFile::dormant(
+          "config/once.toml",
+          Some(FileKey {
+            sha1: "b".into(),
+            size: 1,
+          }),
+          false,
+        ),
       ],
     );
     let release = Release::from_baseline(&baseline, "old");
@@ -170,31 +224,43 @@ mod tests {
       version_id: "12".into(),
       label: "v12".into(),
       game_version: "1.21.1".into(),
-      loader: BaselineLoader { loader_type: ModLoaderType::Fabric, version: "0.16".into() },
+      loader: BaselineLoader {
+        loader_type: ModLoaderType::Fabric,
+        version: "0.16".into(),
+      },
       components: None,
       component_pack: None,
       files: vec![RemoteFile {
         path: "mods/a.jar".into(),
-        key: FileKey { sha1: "abc".into(), size: 3 },
-        source: super::super::remote::FileSource::Download(Box::new(crate::tasks::download::DownloadParam {
-          src: "https://example.invalid/a.jar".parse().unwrap(),
-          dest: std::path::PathBuf::new(),
-          filename: None,
-          sha1: None,
-          custom_headers: None,
-          transfer_options: Default::default(),
-        })),
+        key: FileKey {
+          sha1: "abc".into(),
+          size: 3,
+        },
+        source: super::super::remote::FileSource::Download(Box::new(
+          crate::tasks::download::DownloadParam {
+            src: "https://example.invalid/a.jar".parse().unwrap(),
+            dest: std::path::PathBuf::new(),
+            filename: None,
+            sha1: None,
+            custom_headers: None,
+            transfer_options: Default::default(),
+          },
+        )),
         disabled: true,
         once: true,
       }],
-      rules: vec![RemoteRule { path: "config/cache".into(), kind: RuleKind::Dir, state: RuleState::Ignore }],
+      rules: vec![RemoteRule {
+        path: "config/cache".into(),
+        kind: RuleKind::Dir,
+        state: RuleState::Ignore,
+      }],
       rules_manifest: true,
       path_index: Arc::new(OnceLock::new()),
     };
     let release = Release::from_remote(&remote);
     let json = serde_json::to_string(&release).unwrap();
     assert!(!json.contains("example.invalid"));
-    assert_eq!(Release::file_of(&release, "MODS/A.JAR").unwrap().once, true);
+    assert_eq!(release.index()["mods/a.jar"].once, true);
     assert_eq!(release.rules[0].state, RuleState::Ignore);
   }
 
@@ -211,15 +277,57 @@ mod tests {
       rules_manifest: false,
     };
     write(&root, &release).await.unwrap();
-    assert_eq!(read(&root).await.unwrap(), Some(release));
+    assert!(root.join(UPDATE_DIR).join(RELEASE_FILE_NAME).is_file());
+    assert!(!root.join(RELEASE_FILE_NAME).exists());
+    assert_eq!(read(&root), Some(release));
     std::fs::write(
-      root.join(RELEASE_FILE_NAME),
+      release_path(&root),
       br#"{"schema":99,"versionId":"1","label":"one","files":[],"rules":[],"rulesManifest":false}"#,
     )
     .unwrap();
-    assert_eq!(read(&root).await.unwrap(), None);
+    assert_eq!(read(&root), None);
+    std::fs::write(release_path(&root), b"{ not json").unwrap();
+    assert_eq!(read(&root), None);
     remove(&root).unwrap();
-    assert!(!root.join(RELEASE_FILE_NAME).exists());
+    assert!(!release_path(&root).exists());
+    let _ = std::fs::remove_dir_all(root);
+  }
+
+  #[tokio::test]
+  async fn a_release_of_another_version_is_treated_as_missing() {
+    let root = std::env::temp_dir().join(format!("ustbl-release-test-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    let baseline = ModpackBaseline::build(
+      &origin(),
+      BaselineLoader {
+        loader_type: ModLoaderType::Fabric,
+        version: "0.16".into(),
+      },
+      vec![BaselineFile::managed(
+        "mods/a.jar",
+        FileKey {
+          sha1: "a".into(),
+          size: 1,
+        },
+        false,
+      )],
+    );
+    let (fallback, flag) = release_for(&root, &baseline);
+    assert!(flag);
+    assert_eq!(fallback.version_id, "12");
+    let mut stale = fallback.clone();
+    stale.version_id = "11".into();
+    stale.files.clear();
+    write(&root, &stale).await.unwrap();
+    let (used, flag) = release_for(&root, &baseline);
+    assert!(flag);
+    assert_eq!(used.files.len(), 1);
+    let mut current = stale;
+    current.version_id = "12".into();
+    write(&root, &current).await.unwrap();
+    let (used, flag) = release_for(&root, &baseline);
+    assert!(!flag);
+    assert!(used.files.is_empty());
     let _ = std::fs::remove_dir_all(root);
   }
 }

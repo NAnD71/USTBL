@@ -27,8 +27,8 @@ use crate::instance::modpack_update::commands::fast_forward;
 use crate::instance::modpack_update::commands::store_instance;
 use crate::instance::modpack_update::diff::FileKey;
 use crate::instance::modpack_update::plan::{compare, Compared};
-use crate::instance::modpack_update::remote::RemoteRule;
 use crate::instance::modpack_update::release;
+use crate::instance::modpack_update::remote::RemoteRule;
 use crate::instance::modpack_update::sources::{
   campus_base_remote, campus_client, loader_slug, CAMPUS_API,
 };
@@ -448,25 +448,35 @@ pub async fn prepare_campus_modpack_publish_tree(
 ) -> USTBLResult<super::defaults::PublishDefaults> {
   let instance = instance_of(&app, &instance_id)?;
   let previous = match project {
-    Some(project) => fetch_campus_modpack_previous_release(app.clone(), instance_id, project).await?,
+    Some(project) => {
+      fetch_campus_modpack_previous_release(app.clone(), instance_id, project).await?
+    }
     None => None,
   };
-  let list = tokio::task::spawn_blocking(move || crate::instance::helpers::modpack::export::list_files(&instance))
-    .await
-    .map_err(|error| USTBLError(error.to_string()))??;
+  let list = tokio::task::spawn_blocking(move || {
+    crate::instance::helpers::modpack::export::list_files(&instance)
+  })
+  .await
+  .map_err(|error| USTBLError(error.to_string()))??;
   let suggested = list
     .suggested
     .iter()
-    .filter_map(|entry| Some(super::defaults::SuggestedEntry {
-      path: entry.path.clone(),
-      kind: match entry.kind.as_str() {
-        "file" => crate::instance::modpack_update::remote::RuleKind::File,
-        "dir" => crate::instance::modpack_update::remote::RuleKind::Dir,
-        _ => return None,
-      },
-    }))
+    .filter_map(|entry| {
+      Some(super::defaults::SuggestedEntry {
+        path: entry.path.clone(),
+        kind: match entry.kind.as_str() {
+          "file" => crate::instance::modpack_update::remote::RuleKind::File,
+          "dir" => crate::instance::modpack_update::remote::RuleKind::Dir,
+          _ => return None,
+        },
+      })
+    })
     .collect::<Vec<_>>();
-  Ok(super::defaults::create_initial_model(&list.all, previous.as_ref(), &suggested))
+  Ok(super::defaults::create_initial_model(
+    &list.all,
+    previous.as_ref(),
+    &suggested,
+  ))
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -1095,7 +1105,11 @@ async fn try_adopt(
     baseline = baseline.with_components(components);
   }
   baseline.save(&instance.version_path).await?;
-  release::write(&instance.version_path, &release::Release::from_remote(&remote)).await?;
+  release::write(
+    &instance.version_path,
+    &release::Release::from_remote(&remote),
+  )
+  .await?;
   let label = version_number.to_string();
   store_instance(app, &instance.id, move |stored| {
     adopt_instance_identity(stored, new_origin, label);
