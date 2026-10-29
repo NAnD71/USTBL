@@ -109,6 +109,16 @@ pub struct LoaderChange {
   pub to: BaselineLoader,
 }
 
+fn compute_loader_change(
+  baseline: &BaselineLoader,
+  remote: &BaselineLoader,
+) -> Option<LoaderChange> {
+  (remote != baseline).then(|| LoaderChange {
+    from: baseline.clone(),
+    to: remote.clone(),
+  })
+}
+
 #[derive(Debug, Clone, serde::Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdatePlan {
@@ -258,7 +268,9 @@ fn rewrite_install_record(
     error: None,
     group: None,
     progress: None,
-    client_group: old_record.as_ref().and_then(|record| record.client_group.clone()),
+    client_group: old_record
+      .as_ref()
+      .and_then(|record| record.client_group.clone()),
     target: old_record.and_then(|record| record.target),
   }
 }
@@ -320,10 +332,7 @@ pub(crate) fn register_created_campus_instance(
     .as_ref()
     .is_some_and(|origin| is_campus_install(origin, Some(&record)) && is_fresh(origin))
   {
-    save_campus_install_record(
-      &instance.version_path,
-      &record,
-    )?;
+    save_campus_install_record(&instance.version_path, &record)?;
   }
   Ok(())
 }
@@ -522,9 +531,7 @@ fn scan_campus_instances(
       if instance
         .origin
         .as_ref()
-        .is_none_or(|origin| {
-          !is_campus_install(origin, load_campus_install_record(&root).as_ref())
-        })
+        .is_none_or(|origin| !is_campus_install(origin, load_campus_install_record(&root).as_ref()))
       {
         continue;
       }
@@ -1428,10 +1435,7 @@ async fn plan_prepared(
       remote,
     });
   }
-  let loader_change = (remote.loader != baseline.loader).then(|| LoaderChange {
-    from: baseline.loader.clone(),
-    to: remote.loader.clone(),
-  });
+  let loader_change = compute_loader_change(&baseline.loader, &remote.loader);
   let compared = compare(&target.root, baseline, &remote).await?;
   if !compared.both_variants.is_empty() {
     log::info!(
@@ -1515,8 +1519,10 @@ fn fresh_identity_loader(
   if game_version != origin.game_version {
     return Err(InstanceError::ModpackUpdateLineMismatch.into());
   }
-  Ok((loader_type != origin.loader_type || origin.loader_type == ModLoaderType::Unknown)
-    .then_some(loader_type))
+  Ok(
+    (loader_type != origin.loader_type || origin.loader_type == ModLoaderType::Unknown)
+      .then_some(loader_type),
+  )
 }
 
 /// A plan fast-forwards when nothing but the baseline moves. A `Retire`
@@ -1698,10 +1704,7 @@ async fn plan_fresh_install(
     Ok::<_, crate::error::USTBLError>(prepared)
   };
   let (prepared, ()) = tokio::try_join!(planning, locating)?;
-  let loader_change = (remote.loader != baseline.loader).then(|| LoaderChange {
-    from: baseline.loader.clone(),
-    to: remote.loader.clone(),
-  });
+  let loader_change = compute_loader_change(&baseline.loader, &remote.loader);
   let plan = UpdatePlan {
     from_version_id: target.origin.version_id.clone(),
     to_version_id: remote.version_id.clone(),
@@ -2199,8 +2202,7 @@ async fn start_campus_modpack_install(
   let guard = PlanGuard::acquire(&instance.version_path)?;
   let old_record = load_campus_install_record(&instance.version_path);
   if instance.origin.as_ref().is_none_or(|origin| {
-    !is_campus_install(origin, old_record.as_ref())
-      || (old_record.is_none() && !is_fresh(origin))
+    !is_campus_install(origin, old_record.as_ref()) || (old_record.is_none() && !is_fresh(origin))
   }) {
     return Err(InstanceError::ModpackUpdateUnsupported.into());
   }
@@ -2690,7 +2692,10 @@ mod tests {
       target: Some(target.clone()),
       ..old
     };
-    assert_eq!(serde_json::to_value(record).unwrap()["target"]["versionId"], "v1");
+    assert_eq!(
+      serde_json::to_value(record).unwrap()["target"]["versionId"],
+      "v1"
+    );
   }
 
   #[test]
@@ -2720,8 +2725,14 @@ mod tests {
       ..target.clone()
     };
     assert!(is_campus_install(&campus, None));
-    assert!(is_campus_install(&platform_origin(ModLoaderType::Fabric), Some(&target)));
-    assert!(!is_campus_install(&platform_origin(ModLoaderType::Fabric), None));
+    assert!(is_campus_install(
+      &platform_origin(ModLoaderType::Fabric),
+      Some(&target)
+    ));
+    assert!(!is_campus_install(
+      &platform_origin(ModLoaderType::Fabric),
+      None
+    ));
     assert!(!is_campus_install(
       &platform_origin(ModLoaderType::Fabric),
       Some(&no_target)
@@ -2738,7 +2749,10 @@ mod tests {
     });
     assert_eq!(latest.version_id, "file-42");
     assert_eq!(latest.label, "Release 42");
-    assert_eq!(latest.archive_ref(), Some(("abc", "https://example.test/pack.mrpack")));
+    assert_eq!(
+      latest.archive_ref(),
+      Some(("abc", "https://example.test/pack.mrpack"))
+    );
   }
 
   #[test]
@@ -2786,6 +2800,21 @@ mod tests {
         .0,
       "MODPACK_UPDATE_LINE_MISMATCH"
     );
+  }
+
+  #[test]
+  fn vanilla_placeholder_plan_reports_loader_change() {
+    let baseline = BaselineLoader {
+      loader_type: ModLoaderType::Unknown,
+      version: String::new(),
+    };
+    let remote = BaselineLoader {
+      loader_type: ModLoaderType::Fabric,
+      version: "0.16.9".into(),
+    };
+    let change = compute_loader_change(&baseline, &remote).unwrap();
+    assert_eq!(change.from, baseline);
+    assert_eq!(change.to, remote);
   }
 
   impl Sink for StageSink {

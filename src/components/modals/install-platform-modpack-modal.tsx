@@ -98,7 +98,8 @@ const InstallPlatformModpackModal: React.FC<
       },
       {
         title: t("InstallPlatformModpackModal.label.modLoader"),
-        children: file.loader || t("InstallPlatformModpackModal.label.vanilla"),
+        children:
+          file.loader || t("InstallPlatformModpackModal.label.manifest"),
       },
       {
         title: t("InstallPlatformModpackModal.label.modpackVersion"),

@@ -995,7 +995,10 @@ async fn verify_origin(
     });
   }
   if modpack_path.is_none()
-    && matches!(input.platform, OriginPlatform::Modrinth | OriginPlatform::CurseForge)
+    && matches!(
+      input.platform,
+      OriginPlatform::Modrinth | OriginPlatform::CurseForge
+    )
     && !input.version_id.is_empty()
     && !input.expected_sha1.is_empty()
   {
@@ -1999,9 +2002,14 @@ mod origin_tests {
       label: Some("Pack".into()),
       loader_type: ModLoaderType::Fabric,
     };
-    let origin = verify_origin(Some(platform.clone()), None, "1.21.1", ModLoaderType::Unknown)
-      .await
-      .unwrap();
+    let origin = verify_origin(
+      Some(platform.clone()),
+      None,
+      "1.21.1",
+      ModLoaderType::Unknown,
+    )
+    .await
+    .unwrap();
     assert_eq!(origin.version_id, "");
     assert_eq!(origin.loader_type, ModLoaderType::Fabric);
     assert!(verify_origin(

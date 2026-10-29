@@ -646,19 +646,25 @@
       "beta": "公测版",
       "release": "正式版"
     },
-    "error": { "missingSha1": "该文件没有 SHA-1，无法安装" }
+    "error": {
+      "missingSha1": "该文件没有 SHA-1，无法安装"
+    }
   },
   "InstallPlatformModpackModal": {
-    "header": { "title": "安装整合包" },
+    "header": {
+      "title": "安装整合包"
+    },
     "label": {
       "gameVersion": "游戏版本",
       "modLoader": "模组加载器",
-      "vanilla": "原版",
+      "manifest": "以整合包清单为准",
       "modpackVersion": "整合包版本",
       "modpackInfo": "整合包信息",
       "summary": "简介"
     },
-    "button": { "install": "安装" }
+    "button": {
+      "install": "安装"
+    }
   },
   "DownloadTasksPage": {
     "updateStarted": "整合包更新已加入任务页",

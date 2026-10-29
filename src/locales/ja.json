@@ -651,16 +651,20 @@
     }
   },
   "InstallPlatformModpackModal": {
-    "header": { "title": "Modpack をインストール" },
+    "header": {
+      "title": "Modpack をインストール"
+    },
     "label": {
       "gameVersion": "ゲームバージョン",
       "modLoader": "Mod ローダー",
-      "vanilla": "バニラ",
+      "manifest": "Modpack マニフェストに従う",
       "modpackVersion": "Modpack バージョン",
       "modpackInfo": "Modpack 情報",
       "summary": "概要"
     },
-    "button": { "install": "インストール" }
+    "button": {
+      "install": "インストール"
+    }
   },
   "DownloadTasksPage": {
     "updateStarted": "モッドパックの更新をタスクページに追加しました",

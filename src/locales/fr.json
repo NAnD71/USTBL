@@ -651,16 +651,20 @@
     }
   },
   "InstallPlatformModpackModal": {
-    "header": { "title": "Installer le modpack" },
+    "header": {
+      "title": "Installer le modpack"
+    },
     "label": {
       "gameVersion": "Version du jeu",
       "modLoader": "Chargeur de mods",
-      "vanilla": "Vanille",
+      "manifest": "Selon le manifeste du modpack",
       "modpackVersion": "Version du modpack",
       "modpackInfo": "Informations du modpack",
       "summary": "Résumé"
     },
-    "button": { "install": "Installer" }
+    "button": {
+      "install": "Installer"
+    }
   },
   "DownloadTasksPage": {
     "updateStarted": "Mise à jour du modpack ajoutée à la page des tâches",
