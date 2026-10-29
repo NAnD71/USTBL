@@ -402,7 +402,6 @@ pub struct PreviousRelease {
 /// The files and rules the line's current release lists, so the publish dialog
 /// starts from them. `None` when the project has no release on this line; any
 /// other failure is an error, since publishing on top of a guess would lose rules.
-#[tauri::command]
 pub async fn fetch_campus_modpack_previous_release(
   app: AppHandle,
   instance_id: String,

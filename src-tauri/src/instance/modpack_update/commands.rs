@@ -9,8 +9,8 @@ use super::diff::{Conflict, ConflictChoice, Diff, FileChange};
 use super::merge::merge_with_choices;
 use super::notice::{read_update_notice, write_update_notice, UpdateNotice};
 use super::plan::{
-  compare, count_local_changes, finish, invalidate_scan_cache, local_changes,
-  requires_reinstall, resolve, LocalChange, Prepared,
+  compare, count_local_changes, finish, invalidate_scan_cache, requires_reinstall, resolve,
+  Prepared,
 };
 use super::plan_cache::{self, PlanCache};
 use super::release;
@@ -123,7 +123,7 @@ pub struct UpdateCheck {
   pub reason: Option<String>,
   /// The previous update left a backup that can still be rolled back.
   pub can_roll_back: bool,
-  /// How many managed files differ from the install; set by the local scan.
+  /// Counted local changes against the last release; set by the local scan.
   pub local_changes: Option<usize>,
   /// The platform confirmed the followed project is gone, so this check
   /// detached the instance from it. Only set on the check that unlinked.
@@ -1220,18 +1220,6 @@ pub async fn set_modpack_follow(
     }
   })
   .await
-}
-
-/// The managed files changed here since the modpack installed them, with
-/// line diffs for text files. Works offline: only the local record is used.
-#[tauri::command]
-pub async fn list_modpack_local_changes(
-  app: AppHandle,
-  instance_id: String,
-) -> USTBLResult<Vec<LocalChange>> {
-  let target = target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
-  let baseline = load_baseline(&target).await?;
-  local_changes(&target.root, &baseline, true).await
 }
 
 #[derive(Debug, Clone, Serialize)]

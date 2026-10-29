@@ -890,6 +890,29 @@ mod tests {
   }
 
   #[test]
+  fn the_payload_never_holds_two_files_whose_paths_differ_only_by_case() {
+    let m = model(&["a/X.txt", "a/x.txt", "b/y.txt"], None, &[]);
+    let keys: Vec<String> = payload_files(&m).iter().map(|file| key(&file.0)).collect();
+    let unique: HashSet<&String> = keys.iter().collect();
+    assert_eq!(unique.len(), keys.len());
+    assert!(keys.contains(&"b/y.txt".to_string()));
+  }
+
+  #[test]
+  fn a_dir_rule_that_matches_an_existing_directory_by_case_is_not_a_virtual_node() {
+    let m = model(
+      &["Config/Cache/a.bin"],
+      Some(previous(
+        vec![],
+        vec![rule("config/cache", RuleKind::Dir, RuleState::Ignore)],
+      )),
+      &[],
+    );
+    assert!(m.ghosts.is_empty());
+    assert_eq!(file_state(&m, "Config/Cache/a.bin"), "ignore");
+  }
+
+  #[test]
   fn publishes_follows_the_rules_and_ticks_of_the_starting_state() {
     let m = model(
       &[
