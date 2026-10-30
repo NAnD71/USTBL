@@ -28,10 +28,15 @@ const ROWS: Row[] = [
   { key: "rulesChanged", colorScheme: "blue" },
 ];
 
-const nameOf = (item: string | PublishRule): string =>
+const nameOf = (
+  item: string | PublishRule,
+  t: (key: string) => string
+): string =>
   typeof item === "string"
     ? item
-    : `${item.path}${item.kind === "dir" ? "/" : ""} (${item.state})`;
+    : `${item.path}${item.kind === "dir" ? "/" : ""} (${t(
+        `PublishModpackModal.tree.${item.state}`
+      )})`;
 
 interface PublishSummaryProps {
   summary: PublishSummaryData;
@@ -60,7 +65,7 @@ const PublishSummary: React.FC<PublishSummaryProps> = ({ summary }) => {
         <HStack spacing={2} flexWrap="wrap">
           {rows.map(({ key, colorScheme }) => {
             const items: (string | PublishRule)[] = summary[key];
-            const shown = items.slice(0, LISTED).map(nameOf);
+            const shown = items.slice(0, LISTED).map((item) => nameOf(item, t));
             return (
               <Tooltip
                 key={key}

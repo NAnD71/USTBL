@@ -105,9 +105,10 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
   const { t } = useTranslation();
   const [filter, setFilter] = useState<ChangeFilter>(NO_FILTER);
   const nodes = useMemo(() => buildPublishNodes(context), [context]);
+  const view = useMemo(() => viewOf(context, draft), [context, draft]);
   const marks = useMemo(
-    () => categorizeChanges(changes, context.ghosts, previous),
-    [changes, context.ghosts, previous]
+    () => categorizeChanges(changes, context.ghosts, previous, view),
+    [changes, context.ghosts, previous, view]
   );
   const counts = useMemo(() => countCategories(marks), [marks]);
   const dirCounts = useMemo(() => dirChangeCounts(marks), [marks]);
@@ -125,7 +126,6 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
       }));
     return convert(filterNodes(nodes, marks, filter));
   }, [nodes, marks, filter]);
-  const view = useMemo(() => viewOf(context, draft), [context, draft]);
 
   const label = (state: ShownState) => t(`PublishModpackModal.tree.${state}`);
 

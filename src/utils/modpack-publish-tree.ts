@@ -453,14 +453,23 @@ export interface PreviousRelease {
   rulesManifest: boolean;
 }
 
-/** The mark of each node by lowercased path. */
+/**
+ * The mark of each node by lowercased path. A file the previous release lacks
+ * is only "added" while the draft publishes it.
+ */
 export const categorizeChanges = (
   changes: PublishChange[],
   ghosts: GhostEntry[],
-  previous: PreviousRelease | null
+  previous: PreviousRelease | null,
+  view: PublishView
 ): Map<string, ChangeCategory> => {
   const marks = new Map<string, ChangeCategory>();
-  for (const change of changes) marks.set(keyOf(change.path), change.kind);
+  for (const change of changes) {
+    if (change.kind === "added" && view.fileState(change.path) !== "include") {
+      continue;
+    }
+    marks.set(keyOf(change.path), change.kind);
+  }
   if (previous) {
     const listed = new Set(previous.files.map((file) => keyOf(file.path)));
     for (const ghost of ghosts) {

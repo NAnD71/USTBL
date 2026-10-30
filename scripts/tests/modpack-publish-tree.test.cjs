@@ -683,7 +683,8 @@ test("every mark is by lowercased path and a missing previous file is deleted", 
   const marks = categorizeChanges(
     [change("Mods/A.jar", "modified"), change("mods/new.jar", "added")],
     ghosts,
-    previous
+    previous,
+    viewOf(ctxOf(["mods/A.jar", "mods/new.jar"]), draftOf())
   );
   assert.equal(marks.get("mods/a.jar"), "modified");
   assert.equal(marks.get("mods/new.jar"), "added");
@@ -701,7 +702,12 @@ test("every mark is by lowercased path and a missing previous file is deleted", 
 });
 
 test("a new project has no deleted files", () => {
-  const marks = categorizeChanges([change("a.txt", "added")], [ghostOf("b.txt")], null);
+  const marks = categorizeChanges(
+    [change("a.txt", "added")],
+    [ghostOf("b.txt")],
+    null,
+    viewOf(ctxOf(["a.txt"]), draftOf())
+  );
   assert.deepEqual(Array.from(marks.keys()), ["a.txt"]);
 });
 
@@ -714,13 +720,73 @@ test("a directory counts the marked files below it at every level", () => {
       change("root.txt", "added"),
     ],
     [],
-    null
+    null,
+    viewOf(
+      ctxOf(["mods/a.jar", "mods/sub/b.jar", "config/c.cfg", "root.txt"]),
+      draftOf()
+    )
   );
   const counts = dirChangeCounts(marks);
   assert.equal(counts.get("mods"), 2);
   assert.equal(counts.get("mods/sub"), 1);
   assert.equal(counts.get("config"), 1);
   assert.equal(counts.has("root.txt"), false);
+});
+
+test("a new file only counts as added while the draft publishes it", () => {
+  const context = ctxOf(["saves/w/r.mca", "mods/new.jar", "mods/a.jar"]);
+  const changes = [
+    change("saves/w/r.mca", "added"),
+    change("mods/new.jar", "added"),
+    change("mods/a.jar", "modified"),
+  ];
+  const previous = release([before("mods/a.jar")]);
+  const draft = draftOf([rule("saves", "dir", "ignore")]);
+  const marksOf = (d) =>
+    categorizeChanges(changes, [], previous, viewOf(context, d));
+
+  let marks = marksOf(draft);
+  assert.equal(marks.has("saves/w/r.mca"), false);
+  assert.equal(marks.get("mods/new.jar"), "added");
+  assert.equal(countCategories(marks).added, 1);
+  assert.equal(countCategories(marks).modified, 1);
+
+  // Publishing the ignored file brings it into "added"; ignoring it again removes it.
+  const published = setFileState(context, draft, "saves/w/r.mca", "include");
+  marks = marksOf(published);
+  assert.equal(marks.get("saves/w/r.mca"), "added");
+  assert.equal(countCategories(marks).added, 2);
+  assert.equal(dirChangeCounts(marks).get("saves/w"), 1);
+  const back = setFileState(context, published, "saves/w/r.mca", "ignore");
+  assert.equal(marksOf(back).has("saves/w/r.mca"), false);
+});
+
+test("a new file under the previous release's ignore rule is added only once published", () => {
+  const context = ctxOf(["config/x.cfg"]);
+  const changes = [change("config/x.cfg", "added")];
+  const previous = release([], [rule("config", "dir", "ignore")]);
+  const covered = draftOf(previous.rules);
+  assert.equal(
+    categorizeChanges(changes, [], previous, viewOf(context, covered)).has(
+      "config/x.cfg"
+    ),
+    false
+  );
+  const published = setFileState(context, covered, "config/x.cfg", "include");
+  assert.equal(
+    categorizeChanges(changes, [], previous, viewOf(context, published)).get(
+      "config/x.cfg"
+    ),
+    "added"
+  );
+});
+
+test("a new project marks only the files it publishes as added", () => {
+  const context = ctxOf(["a.txt", "saves/s.dat"]);
+  const changes = [change("a.txt", "added"), change("saves/s.dat", "added")];
+  const draft = draftOf([rule("saves", "dir", "ignore")]);
+  const marks = categorizeChanges(changes, [], null, viewOf(context, draft));
+  assert.deepEqual(Array.from(marks.keys()), ["a.txt"]);
 });
 
 const treeFixture = () => {
@@ -736,7 +802,8 @@ const treeFixture = () => {
       change("config/d.cfg", "toggled"),
     ],
     context.ghosts,
-    previous
+    previous,
+    viewOf(context, draftOf())
   );
   return { nodes: buildPublishNodes(context), marks };
 };
