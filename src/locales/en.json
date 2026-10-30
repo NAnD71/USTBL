@@ -3451,7 +3451,7 @@
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "Changes to this file conflict between the local and new version",
+      "modifiedLocallyChangedRemotely": "Local changes and the new version’s changes to this file conflict",
       "modifiedLocallyRemovedRemotely": "Modified locally, but this file is no longer included in the new version",
       "deletedLocallyChangedRemotely": "Deleted locally, but the new version has a modified copy",
       "unmanagedFileInTheWay": "The new version adds a same-named file and will replace this one",
@@ -3500,7 +3500,7 @@
     },
     "rollback": {
       "hint": "You can undo the last update and restore files and the loader to their previous state.",
-      "confirm": "Changes you made to these files after the update will be overwritten; you can undo the update to restore them"
+      "confirm": "Changes you made to these files after the update will be overwritten; undoing returns them to their pre-update state."
     }
   },
   "ModpackLocalChangesModal": {
@@ -3550,7 +3550,7 @@
       "next": {
         "whole": "Next update: restore the entire file to the modpack state",
         "spots": "Next update: sync these {{count}} changes with the latest modpack; keep other changes",
-        "added": "Updates do not affect it; directly replace it when the new version has a same-named file"
+        "added": "Updates leave it alone, unless the new version has a file with the same name, which replaces it directly"
       }
     },
     "publishHint": {

@@ -3476,7 +3476,7 @@
       "confirmRollback": "Confirmer l'annulation"
     },
     "toast": {
-      "loaderPending": "Le chargeur de mods est réinstallé ; consultez la page téléchargements et envois pour suivre la progression",
+      "loaderPending": "Réinstallation du chargeur de mods en cours ; consultez la page téléchargements et envois pour suivre la progression",
       "planChanged": "Le plan de mise à jour a changé ; reprenez le traitement des conflits"
     },
     "unlink": {
@@ -3550,7 +3550,7 @@
       "next": {
         "whole": "Prochaine mise à jour : restaurer tout le fichier selon le modpack",
         "spots": "Prochaine mise à jour : synchroniser ces {{count}} modifications avec le dernier modpack, en conservant les autres",
-        "added": "Les mises à jour ne le modifient pas ; remplacez-le directement si la nouvelle version contient un fichier du même nom"
+        "added": "Les mises à jour n’y touchent pas, sauf si la nouvelle version contient un fichier du même nom, qui le remplace directement"
       }
     },
     "publishHint": {
