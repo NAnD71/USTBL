@@ -4,7 +4,6 @@ import {
   Center,
   HStack,
   IconButton,
-  Switch,
   Tag,
   TagLabel,
   TagLeftIcon,
@@ -25,6 +24,7 @@ import {
   LuX,
 } from "react-icons/lu";
 import { BeatLoader } from "react-spinners";
+import BlockToggle from "@/components/common/block-toggle";
 import Empty from "@/components/common/empty";
 import PublishChangeDiff from "@/components/common/publish-change-diff";
 import TreeView, { TreeNode } from "@/components/common/tree-view";
@@ -126,6 +126,19 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
       }));
     return convert(filterNodes(nodes, marks, filter));
   }, [nodes, marks, filter]);
+  const expandedFilterIds = useMemo(() => {
+    if (!filtered) return new Set<string>();
+    const ids = new Set<string>();
+    const visit = (list: TreeNode<PublishNode>[]) =>
+      list.forEach((node) => {
+        if (node.children?.length) {
+          ids.add(node.id);
+          visit(node.children);
+        }
+      });
+    visit(tree);
+    return ids;
+  }, [filtered, tree]);
 
   const label = (state: ShownState) => t(`PublishModpackModal.tree.${state}`);
 
@@ -160,20 +173,15 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
               </Tooltip>
             ))}
             <Box flex="1" />
-            <Switch
-              size="sm"
-              isChecked={filter.onlyChanged}
-              onChange={(event) =>
-                setFilter((prev) => ({
-                  ...prev,
-                  onlyChanged: event.target.checked,
-                }))
+            <BlockToggle
+              checked={filter.onlyChanged}
+              onChange={(checked) =>
+                setFilter((prev) => ({ ...prev, onlyChanged: checked }))
               }
+              aria-label={t("PublishModpackModal.tree.filter.onlyChanged")}
             >
-              <Text fontSize="xs">
-                {t("PublishModpackModal.tree.filter.onlyChanged")}
-              </Text>
-            </Switch>
+              {t("PublishModpackModal.tree.filter.onlyChanged")}
+            </BlockToggle>
           </HStack>
           {previous === null && (
             <Text fontSize="xs" className="secondary-text">
@@ -182,9 +190,22 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
           )}
         </VStack>
       )}
-      <Text fontSize="xs" className="secondary-text" mb={2}>
-        {t("PublishModpackModal.tree.legend")}
-      </Text>
+      <HStack
+        fontSize="xs"
+        className="secondary-text"
+        mb={2}
+        spacing={3}
+        flexWrap="wrap"
+      >
+        {(["include", "ignore", "delete"] as const).map((state) => (
+          <HStack key={state} spacing={1}>
+            <Box color={`${STATE_STYLE[state].colorScheme}.500`}>
+              {STATE_STYLE[state].icon}
+            </Box>
+            <Text>{t(`PublishModpackModal.tree.hint.${state}`)}</Text>
+          </HStack>
+        ))}
+      </HStack>
       <Box maxH="xs" overflowY="auto">
         {isLoading ? (
           <Center py={4}>
@@ -194,6 +215,8 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
           <TreeView
             nodes={tree}
             defaultExpandedDepth={filtered ? Number.MAX_SAFE_INTEGER : 0}
+            preserveExpanded
+            additionalExpandedIds={expandedFilterIds}
             renderNode={({ node: { data } }) => (
               <PublishTreeRow
                 instanceId={instanceId}
@@ -283,18 +306,17 @@ const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
             </>
           }
         >
-          <Button
+          <IconButton
             size="xs"
             variant={state === "include" ? "solid" : "outline"}
             colorScheme={style.colorScheme}
-            leftIcon={style.icon}
-            minW="16"
+            icon={style.icon}
+            minW="0"
+            px={2}
             flexShrink={0}
             aria-label={description}
             onClick={apply}
-          >
-            {label(state)}
-          </Button>
+          />
         </Tooltip>
         <Text
           className="ellipsis-text"
@@ -367,17 +389,15 @@ const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
         {!isDir && !data.ghost && state === "include" ? (
           <Tooltip label={t("PublishModpackModal.tree.onceHint")}>
             <Box flexShrink={0}>
-              <Switch
-                size="sm"
-                isChecked={view.isOnce(data.path)}
-                onChange={(event) =>
-                  onDraftChange((prev) =>
-                    setOnce(prev, data.path, event.target.checked)
-                  )
+              <BlockToggle
+                checked={view.isOnce(data.path)}
+                onChange={(checked) =>
+                  onDraftChange((prev) => setOnce(prev, data.path, checked))
                 }
+                aria-label={t("PublishModpackModal.tree.once")}
               >
-                <Text fontSize="xs">{t("PublishModpackModal.tree.once")}</Text>
-              </Switch>
+                {t("PublishModpackModal.tree.once")}
+              </BlockToggle>
             </Box>
           </Tooltip>
         ) : null}

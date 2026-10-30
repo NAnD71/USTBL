@@ -1,6 +1,7 @@
 import { Box, HStack, IconButton, VStack } from "@chakra-ui/react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
+import { mergeExpandedIds } from "@/utils/tree-expansion";
 
 export interface TreeNode<T = unknown> {
   id: string;
@@ -26,6 +27,9 @@ interface TreeViewProps<T = unknown> {
   indentSize?: number;
   spacing?: number;
   defaultExpandedDepth?: number;
+  preserveExpanded?: boolean;
+  additionalExpandedIds?: Set<string>;
+  leafPlaceholderWidth?: number;
 }
 
 const collectExpandedIdsByDepth = <T,>(
@@ -43,6 +47,7 @@ const collectExpandedIdsByDepth = <T,>(
   });
   return expandedIds;
 };
+const EMPTY_EXPANDED_IDS = new Set<string>();
 
 export const buildStructTreeNodes = (
   data: unknown,
@@ -71,12 +76,22 @@ const TreeView = <T,>({
   indentSize = 3,
   spacing = 1,
   defaultExpandedDepth = 0,
+  preserveExpanded = false,
+  additionalExpandedIds = EMPTY_EXPANDED_IDS,
+  leafPlaceholderWidth = 24,
 }: TreeViewProps<T>) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+  const firstRender = useRef(true);
 
   useEffect(() => {
-    setExpandedIds(collectExpandedIdsByDepth(nodes, defaultExpandedDepth));
-  }, [nodes, defaultExpandedDepth]);
+    const defaults = collectExpandedIdsByDepth(nodes, defaultExpandedDepth);
+    setExpandedIds((current) => {
+      if (!preserveExpanded || firstRender.current)
+        return new Set([...defaults, ...additionalExpandedIds]);
+      return mergeExpandedIds(current, nodes, defaults, additionalExpandedIds);
+    });
+    firstRender.current = false;
+  }, [nodes, defaultExpandedDepth, preserveExpanded, additionalExpandedIds]);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -112,9 +127,9 @@ const TreeView = <T,>({
               variant="ghost"
               onClick={() => toggleExpanded(node.id)}
             />
-          ) : (
-            <Box w="24px" flexShrink={0} />
-          )}
+          ) : leafPlaceholderWidth > 0 ? (
+            <Box w={`${leafPlaceholderWidth}px`} flexShrink={0} />
+          ) : null}
           <Box flex="1" minW={0}>
             {renderNode({ node, depth, isLeaf, isExpanded })}
           </Box>
