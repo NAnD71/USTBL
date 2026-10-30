@@ -3286,82 +3286,82 @@
     },
     "tree": {
       "legend": {
-        "include": "Publish this change",
-        "ignore": "Changes in this file/directory will not affect user updates",
-        "delete": "Delete this file/directory when players update",
-        "cycle": "Click the icon to cycle through three states; file settings override directory settings"
+        "include": "Publier cette modification",
+        "ignore": "Les modifications de ce fichier/dossier ne seront pas appliquées lors des mises à jour utilisateur",
+        "delete": "Supprimer ce fichier/dossier lors de la mise à jour du joueur",
+        "cycle": "Cliquer sur l’icône pour passer entre trois états ; les réglages du fichier priment sur ceux du dossier"
       },
-      "include": "Publish",
+      "include": "Publier",
       "ignore": "Ignorer",
       "delete": "Supprimer",
       "remove": "Retirer",
       "mixed": "Mixte",
       "once": "Première installation seulement",
-      "onceHint": "Include this file only on first install; it is not updated or restored after deletion",
+      "onceHint": "Joindre ce fichier uniquement à la première installation ; il ne sera ensuite ni mis à jour ni réinstallé s’il est supprimé",
       "restore": "Rétablir l'héritage",
-      "restoreHint": "Remove the separate setting and follow the parent directory",
+      "restoreHint": "Supprimer le réglage particulier et suivre le dossier parent",
       "disabled": "Désactivé",
-      "missing": "Deleted locally",
-      "conflict": "Enabled and disabled (.disabled) variants coexist",
+      "missing": "Supprimé localement",
+      "conflict": "Les versions activée et désactivée (.disabled) coexistent",
       "toggle": "{{name}} : actuellement {{state}}, cliquez pour passer à {{next}}",
       "hint": {
-        "include": "This change will be merged with the player’s corresponding file during updates",
-        "ignore": "This change will not be published; players who have the file keep their local changes, and others will not receive it",
-        "delete": "The client will back up and delete the corresponding player-side file",
-        "remove": "Stop publishing this file. Unmodified player files are deleted; modified ones prompt during update.",
-        "mixed": "Files in this directory have different settings"
+        "include": "Cette modification sera tentée en fusion avec le fichier correspondant du joueur lors de la mise à jour",
+        "ignore": "Cette modification ne sera pas publiée ; les joueurs possédant ce fichier conservent leurs changements locaux, les autres ne le reçoivent pas",
+        "delete": "Le client sauvegardera puis supprimera le fichier correspondant chez le joueur",
+        "remove": "Annuler la publication de ce fichier. Les fichiers inchangés seront supprimés ; les fichiers modifiés demanderont confirmation.",
+        "mixed": "Les fichiers du dossier ont plusieurs états"
       },
       "clickTo": "Cliquez pour passer à {{next}}",
       "change": {
         "modified": "Modifié",
         "added": "Ajouté",
         "toggled": "État activé",
-        "onceChanged": "First-install only · changed",
+        "onceChanged": "Première installation uniquement · modifié",
         "deleted": "Supprimé"
       },
       "changeHint": {
         "modified": "Le contenu diffère de la version précédente.",
         "added": "La version précédente n'a pas ce fichier.",
-        "toggled": "The mod state changed to enabled or disabled",
-        "onceChanged": "Marked first-install only, but its contents changed. Keep the mark: only new players get the new contents; remove it: all players get them on update.",
-        "deleted": "Present in the previous version, now deleted locally."
+        "toggled": "L’état du mod est passé à activé ou désactivé",
+        "onceChanged": "Marqué comme première installation uniquement, son contenu a changé. Garder le marqueur : seuls les nouveaux joueurs reçoivent le nouveau contenu ; le retirer : tous le recevront lors de la mise à jour.",
+        "deleted": "Présent dans la version précédente, supprimé localement."
       },
       "filter": {
         "title": "Changements :",
         "onlyChanged": "Changements seulement"
       },
-      "noPrevious": "First publication; all files are new.",
+      "noPrevious": "Première publication : tout est nouveau.",
       "dirChanges": "{{count}} changement(s)",
       "localIgnored": "Ignoré localement",
-      "localIgnoredHint": "A file/directory change ignored by the publisher in “View changes”. It is still handled according to these settings, including this publisher instance’s update behavior.",
+      "localIgnoredHint": "Modification de fichier/dossier ignorée par le responsable de la publication dans « Voir les changements ». Elle sera tout de même traitée selon ces réglages pour cette instance.",
       "diff": {
         "show": "Afficher les différences",
         "hide": "Masquer les différences",
-        "differs": "Non-text or too large; file size {{previous}}→{{local}}",
-        "formatOnly": "Only line endings or other formatting differ",
-        "unavailable": "Unable to get the previous version; try again later"
+        "differs": "Non textuel ou trop volumineux ; taille {{previous}}→{{local}}",
+        "formatOnly": "Seuls les sauts de ligne ou autres formats diffèrent",
+        "unavailable": "Impossible d’obtenir la version précédente, réessayez plus tard"
       },
-      "localDelete": "Delete (including locally)",
-      "localDeleteHint": "After publishing, this file will be backed up and deleted both here and on the player side.",
+      "localDelete": "Supprimer (y compris localement)",
+      "localDeleteHint": "Après publication, ce fichier sera sauvegardé puis supprimé ici et chez le joueur.",
       "localDeleteCount": "{{count}} fichiers supprimés localement"
     },
     "skipped": "{{count}} fichier(s) du lanceur exclu(s)",
     "adoption": {
-      "keptOther": "This instance follows another non-publishing modpack and remains unchanged.",
-      "notIsolated": "Version isolation is disabled; this instance will not follow the published modpack.",
-      "localChanged": "The instance differs from the published version, so it is not linked to this version and will be handled by version contents on the next update.",
-      "recordFailed": "Published, but the instance association could not be recorded.",
+      "keptOther": "Cette instance suit un autre modpack non publié et reste inchangée.",
+      "notIsolated": "L’isolation des versions est désactivée ; cette instance ne suivra pas le modpack publié.",
+      "localChanged": "该实例与刚发布的版本不一致（例如标为删除的文件仍在磁盘上），未将其关联到此版本，下次更新会按版本内容处理。",
+      "recordFailed": "Publié, mais l’association de cette instance n’a pas pu être enregistrée.",
       "localDeleted": "{{count}} fichiers locaux supprimés selon les règles, sauvegarde dans .ustbl-update/publish-deleted",
       "deleteFailed": "La version publiée n’a pas été suivie car la suppression d’un fichier local a échoué. La sauvegarde est conservée."
     },
     "started": {
       "title": "Envoi démarré",
-      "description": "Uploading in the background; see the downloads page for progress."
+      "description": "Envoi en arrière-plan ; consultez la page des téléchargements."
     },
     "summary": {
-      "title": "Change summary",
-      "isNew": "First publication.",
-      "same": "Exactly the same as the previous version ({{count}} files).",
+      "title": "Résumé des modifications",
+      "isNew": "Première publication.",
+      "same": "Identique à la version précédente ({{count}} fichiers).",
       "more": "…et {{count}} de plus",
       "added": "{{count}} fichier(s) ajouté(s)",
       "modified": "{{count}} fichier(s) modifié(s)",
@@ -3374,13 +3374,13 @@
       "onceOff": "{{count}} qui ne sont plus en première installation uniquement",
       "rulesAdded": "{{count}} règle(s) ajoutée(s)",
       "rulesRemoved": "{{count}} règle(s) retirée(s)",
-      "rulesChanged": "{{count}} rule changes",
+      "rulesChanged": "{{count}} modifications de règles",
       "hint": {
-        "onceUpdated": "New players only receive the modified file",
-        "removed": "Unmodified player files are deleted; modified ones prompt.",
-        "ignored": "Existing player files stay unchanged; new installs do not receive them.",
-        "deleted": "The file is deleted on the player side.",
-        "toggled": "Players who did not change the state follow it; those who did keep theirs.",
+        "onceUpdated": "Les nouveaux joueurs recevront uniquement le fichier modifié",
+        "removed": "Les fichiers non modifiés sont supprimés ; les fichiers modifiés demandent confirmation.",
+        "ignored": "Les fichiers déjà présents restent inchangés ; les nouvelles installations ne les reçoivent pas.",
+        "deleted": "Le fichier sera supprimé chez le joueur.",
+        "toggled": "Les joueurs n’ayant pas modifié l’état le suivent ; les autres conservent le leur.",
         "rulesChanged": "Règles passées de ignorer à supprimer, ou l'inverse.",
         "localDeleted": "Ces fichiers seront aussi supprimés localement après la publication (sauvegarde préalable) ; passez-les en ignorer pour les conserver."
       },
@@ -3433,14 +3433,14 @@
       "delete": "{{count}} supprimé(s)",
       "disable": "{{count}} désactivé(s)",
       "enable": "{{count}} activé(s)",
-      "retire": "Stop managing {{count}}",
+      "retire": "Mettre en sommeil {{count}}",
       "loaderChange": "Le chargeur de mods passera de {{from}} à {{to}}",
-      "conflicts": "{{count}} files conflict with your changes; keep local by default and handle them individually",
+      "conflicts": "{{count}} fichiers sont en conflit avec vos modifications ; conserver le local par défaut et les traiter individuellement",
       "autoMerged": "{{count}} fusionnés automatiquement",
       "showAll": "Tout afficher (encore {{count}})",
       "reinstallRequired": "{{latest}} modifie la chaîne de composants du pack et ne peut pas être appliquée sur place. Réinstallez le pack",
       "restored": "Restaurer les modifications ignorées {{count}}",
-      "restoredDescription": "Locally ignored changes sync with the new version, including same-named file replacements.",
+      "restoredDescription": "Les modifications ignorées localement seront synchronisées avec la nouvelle version, y compris le remplacement de fichiers du même nom.",
       "restoredKind": {
         "add": "Ajout",
         "update": "Mise à jour",
@@ -3454,8 +3454,8 @@
       "modifiedLocallyChangedRemotely": "Vous l'avez modifié et la nouvelle version aussi",
       "modifiedLocallyRemovedRemotely": "Vous l'avez modifié et la nouvelle version ne l'inclut plus",
       "deletedLocallyChangedRemotely": "Vous l'avez supprimé et la nouvelle version l'a modifié",
-      "unmanagedFileInTheWay": "The new version adds a same-named file and will replace this one",
-      "remanage": "The modpack manages it again, but your contents differ from the new version"
+      "unmanagedFileInTheWay": "La nouvelle version ajoute un fichier du même nom et remplacera celui-ci",
+      "remanage": "Le modpack le gère de nouveau, mais votre contenu diffère de la nouvelle version"
     },
     "choice": {
       "keepLocal": "Garder le local",
@@ -3507,21 +3507,21 @@
       "title": "Modifications locales : {{name}}"
     },
     "loading": "Comparaison des fichiers locaux…",
-    "empty": "No local changes",
+    "empty": "Aucune modification locale",
     "comparedTo": "Comparé à : {{label}}",
-    "countingRule": "Lists local changes: modifications, deletions, enabled state, and new files in mods, resource packs, and shaders.",
-    "incomplete": "Unable to get the previous version’s change rules; try again",
+    "countingRule": "Liste les modifications locales : modifications, suppressions, état activé, et nouveaux fichiers dans les mods, packs de ressources et shaders.",
+    "incomplete": "Impossible d’obtenir les règles de modification précédentes ; réessayez",
     "class": {
       "modified": "Modifié",
       "deleted": "Supprimé",
-      "toggled": "Enabled state",
+      "toggled": "État activé",
       "added": "Nouveau"
     },
     "disabled": "Désactivé",
-    "toggledTag": "Enabled/disabled state changed",
+    "toggledTag": "État activé/désactivé modifié",
     "noDiff": {
-      "notText": "Non-text or too large; differences are not shown",
-      "baseMissing": "No copy from installation exists; differences cannot be shown",
+      "notText": "Fichier non textuel ou trop volumineux ; différence non affichée",
+      "baseMissing": "Aucune copie de l’installation ; impossible d’afficher la différence",
       "bothVariants": "Un fichier et sa variante .disabled existent tous les deux. Supprimez l'un des deux"
     },
     "button": {
@@ -3531,39 +3531,39 @@
       "spot": "Ignorer cet endroit",
       "file": "Ignorer tout le fichier",
       "added": "Ignorer",
-      "spotHint": "No longer shown or counted. This spot will sync with the modpack on the next update.",
-      "fileHint": "No longer shown or counted; let the update system handle this file. On the next update it is synced to the modpack, including deleted files.",
-      "addedHint": "This local addition is no longer shown or counted. A same-named file in a new version replaces it directly.",
+      "spotHint": "N’est plus affiché ni compté. Cette partie sera synchronisée avec le modpack lors de la prochaine mise à jour.",
+      "fileHint": "N’est plus affiché ni compté ; confiez ce fichier au système de mise à jour. Il sera synchronisé avec le modpack, y compris les fichiers supprimés.",
+      "addedHint": "Cet ajout local n’est plus affiché ni compté. Un fichier du même nom dans la nouvelle version le remplacera directement.",
       "publishUnaffected": "Sans effet sur la publication."
     },
     "ignored": {
-      "title": "Ignored ({{count}})",
-      "description": "Handled according to the latest modpack state on the next update (backed up); you can undo “ignore” at any time.",
+      "title": "Ignoré ({{count}})",
+      "description": "Traité selon l’état le plus récent du modpack lors de la prochaine mise à jour (sauvegarde incluse) ; « Ignorer » peut être annulé à tout moment.",
       "wholeFile": "Fichier entier",
       "spots": "Endroits : {{count}}",
       "lines": "Lignes {{from}}–{{to}}",
       "undo": "Annuler",
       "undoAll": "Tout annuler",
       "addedFile": "Nouveau fichier",
-      "undoHint": "Show and count again; your changes are kept normally on update",
+      "undoHint": "Réafficher et compter ; vos modifications seront conservées lors de la mise à jour",
       "next": {
-        "whole": "Next update: restore the entire file to the modpack state",
-        "spots": "Next update: sync these {{count}} changes with the latest modpack; keep other changes",
-        "added": "Leave it unchanged; directly replace it if the new version has the same-named file"
+        "whole": "Prochaine mise à jour : restaurer tout le fichier selon le modpack",
+        "spots": "Prochaine mise à jour : synchroniser ces {{count}} modifications avec le dernier modpack, en conservant les autres",
+        "added": "Ne pas le modifier ; le remplacer directement si la nouvelle version contient un fichier du même nom"
       }
     },
     "publishHint": {
       "updateFirst": "Une version plus récente est en ligne. Mettez à jour avant de publier"
     },
     "next": {
-      "modified": "Both the new version and local copy changed this file; conflicts will prompt you",
-      "deleted": "Keep it deleted until a new version requires this file",
+      "modified": "La nouvelle version et la copie locale ont modifié ce fichier ; les conflits demanderont une intervention",
+      "deleted": "Le laisser supprimé jusqu’à ce qu’une nouvelle version en ait besoin",
       "toggled": "Votre état est conservé.",
-      "added": "Unaffected by updates; prompt if a new version has the same-named file"
+      "added": "Sans effet sur la mise à jour ; demander confirmation si une nouvelle version contient un fichier du même nom"
     },
     "willDelete": {
       "title": "Supprimés à la prochaine mise à jour ({{count}})",
-      "description": "These files are covered by the previous deletion rule. If the new version retains it, the files are backed up and deleted."
+      "description": "Ces fichiers sont couverts par la règle de suppression précédente. Si la nouvelle version la conserve, ils seront sauvegardés puis supprimés."
     }
   },
   "InstanceSyncPage": {
