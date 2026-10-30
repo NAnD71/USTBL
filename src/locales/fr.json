@@ -3382,7 +3382,7 @@
         "deleted": "Le fichier sera supprimé chez le joueur.",
         "toggled": "Les joueurs n’ayant pas modifié l’état le suivent ; les autres conservent le leur.",
         "rulesChanged": "Règles passées de ignorer à supprimer, ou l'inverse.",
-        "localDeleted": "Ces fichiers seront aussi supprimés localement après la publication (sauvegarde préalable) ; passez-les en ignorer pour les conserver."
+        "localDeleted": "Ces fichiers seront aussi sauvegardés puis supprimés localement après la publication."
       },
       "localDeleted": "{{count}} fichiers supprimés localement"
     }

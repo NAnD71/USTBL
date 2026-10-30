@@ -3382,7 +3382,7 @@
         "deleted": "The file is deleted on the player side.",
         "toggled": "Players who did not change the state follow it; those who did keep theirs.",
         "rulesChanged": "Rules that switched between ignore and delete.",
-        "localDeleted": "These files will also be deleted locally after publishing (backed up first); change them to ignore if you want to keep them."
+        "localDeleted": "These files will also be backed up and deleted locally after publishing."
       },
       "localDeleted": "{{count}} also deleted locally"
     }
