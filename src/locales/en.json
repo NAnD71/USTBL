@@ -3387,7 +3387,8 @@
         "onceOff": "No longer first install only; updated with the version.",
         "rulesAdded": "Ignore or delete rules new in this version.",
         "rulesRemoved": "Rules of the previous version this one no longer carries.",
-        "rulesChanged": "Rules that switched between ignore and delete."
+        "rulesChanged": "Rules that switched between ignore and delete.",
+        "localDeleted": "These files will also be deleted locally after publishing (backed up first); change them to ignore if you want to keep them."
       },
       "localDeleted": "{{count}} also deleted locally"
     }

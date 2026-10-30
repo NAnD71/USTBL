@@ -804,7 +804,16 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
       const notes = [
         skipped > 0 ? t("PublishModpackModal.skipped", { count: skipped }) : "",
         adoption && adoption !== "followed"
-          ? t(`PublishModpackModal.adoption.${adoption}`)
+          ? [
+              t(`PublishModpackModal.adoption.${adoption}`),
+              locallyDeleted > 0
+                ? t("PublishModpackModal.adoption.followedWithDeletes", {
+                    count: locallyDeleted,
+                  })
+                : "",
+            ]
+              .filter(Boolean)
+              .join(" ")
           : locallyDeleted > 0
             ? t("PublishModpackModal.adoption.followedWithDeletes", {
                 count: locallyDeleted,
