@@ -2783,6 +2783,7 @@
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "This version changes the modpack's component chain and cannot be applied in place; install it again",
             "MODPACK_UPDATE_LINE_GONE": "The platform no longer lists this line of the modpack",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "The files of this version are temporarily unavailable on the platform. Try again later",
+            "MODPACK_PUBLISH_PREVIOUS_UNAVAILABLE": "Temporarily unable to retrieve the previous version's content",
             "MODPACK_UPDATE_MERGE_INVALID": "The selected blocks produce an invalid configuration. Adjust your choices and try again",
             "MODPACK_INSTALL_STAGING_MISMATCH": "The saved download belongs to another install plan and was cleared",
             "MODPACK_INSTALL_INTERRUPTED": "The installation was interrupted; continue it from the task page",
@@ -3332,7 +3333,8 @@
         "show": "Show diff",
         "hide": "Hide diff",
         "differs": "The content differs. Previous version {{previous}}, local {{local}}.",
-        "formatOnly": "The text is the same; only line endings or similar formatting differ. Previous version {{previous}}, local {{local}}."
+        "formatOnly": "The text is the same; only line endings or similar formatting differ. Previous version {{previous}}, local {{local}}.",
+        "unavailable": "Temporarily unable to retrieve the previous version's content."
       }
     },
     "skipped": "{{count}} launcher file(s) were left out",

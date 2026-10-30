@@ -2783,6 +2783,7 @@
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "新版本更改了整合包的组件链，无法就地更新，请重新安装",
             "MODPACK_UPDATE_LINE_GONE": "平台上已不存在该整合包的这条线",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "平台上暂时取不到此版本所需的文件，请稍后重试",
+            "MODPACK_PUBLISH_PREVIOUS_UNAVAILABLE": "暂时取不到上一版的内容",
             "MODPACK_UPDATE_MERGE_INVALID": "按块选择后配置文件的格式无效，请调整选择后重试",
             "MODPACK_INSTALL_STAGING_MISMATCH": "已保存的下载属于其他安装计划，已清理",
             "MODPACK_INSTALL_INTERRUPTED": "安装已中断，请从任务页继续",
@@ -3332,7 +3333,8 @@
         "show": "查看差异",
         "hide": "收起差异",
         "differs": "内容不同。上一版 {{previous}}，本地 {{local}}。",
-        "formatOnly": "文本内容相同，只有换行等格式不同。上一版 {{previous}}，本地 {{local}}。"
+        "formatOnly": "文本内容相同，只有换行等格式不同。上一版 {{previous}}，本地 {{local}}。",
+        "unavailable": "暂时取不到上一版的内容。"
       }
     },
     "skipped": "有 {{count}} 个启动器文件被排除",
