@@ -3349,7 +3349,7 @@
     "adoption": {
       "keptOther": "Cette instance suit un autre modpack non publié et reste inchangée.",
       "notIsolated": "L’isolation des versions est désactivée ; cette instance ne suivra pas le modpack publié.",
-      "localChanged": "该实例与刚发布的版本不一致（例如标为删除的文件仍在磁盘上），未将其关联到此版本，下次更新会按版本内容处理。",
+      "localChanged": "L'instance ne correspond pas à la version publiée (par exemple un fichier marqué Supprimer est toujours sur le disque) ; elle n'y a pas été liée. La prochaine mise à jour s'appuiera sur le contenu de la version.",
       "recordFailed": "Publié, mais l’association de cette instance n’a pas pu être enregistrée.",
       "localDeleted": "{{count}} fichiers locaux supprimés selon les règles, sauvegarde dans .ustbl-update/publish-deleted",
       "deleteFailed": "La version publiée n’a pas été suivie car la suppression d’un fichier local a échoué. La sauvegarde est conservée."

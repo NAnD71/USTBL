@@ -3349,7 +3349,7 @@
     "adoption": {
       "keptOther": "This instance follows another non-publishing modpack and remains unchanged.",
       "notIsolated": "Version isolation is disabled; this instance will not follow the published modpack.",
-      "localChanged": "The instance differs from the published version, so it is not linked to this version and will be handled by version contents on the next update.",
+      "localChanged": "The instance does not match the version just published (for example a file marked Delete is still on disk), so it was not linked to it. The next update will handle it from the version's contents.",
       "recordFailed": "Published, but the instance association could not be recorded.",
       "localDeleted": "{{count}} local files were deleted by the deletion rules. Backup: .ustbl-update/publish-deleted",
       "deleteFailed": "The published version was not followed because deleting a local file failed. The backup was kept."
