@@ -3416,7 +3416,7 @@
       "available": "New version available: {{latest}}",
       "upToDate": "Already up to date",
       "paused": "Updates paused",
-      "notFollowing": "This instance does not follow a modpack",
+      "notFollowing": "This instance is not following a modpack",
       "needsRepair": "This instance needs repair before updates can be checked",
       "unknown": "Unable to get updates for now; try again later",
       "waitingLoader": "Wait for the mod loader to finish installing before checking for updates",
