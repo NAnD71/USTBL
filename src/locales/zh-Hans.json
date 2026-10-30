@@ -3415,9 +3415,9 @@
       "applying": "正在更新，请勿关闭启动器…",
       "available": "有新版本：{{latest}}",
       "upToDate": "已是最新版本",
-      "paused": "已暂停跟随该整合包的更新",
-      "notFollowing": "此实例未关联可跟随的整合包",
-      "needsRepair": "该实例暂时无法对比更新，需要先修复",
+      "paused": "已暂停跟随更新",
+      "notFollowing": "此实例没有跟随整合包",
+      "needsRepair": "此实例需要修复后才能检查更新",
       "unknown": "暂时无法获取更新，请稍后重试",
       "waitingLoader": "等待模组加载器安装完成后才能检查更新",
       "localChanges": "有 {{count}} 处本地改动"
@@ -3447,7 +3447,7 @@
         "delete": "删除",
         "disable": "禁用",
         "enable": "启用",
-        "retire": "不再管理"
+        "retire": "休眠"
       }
     },
     "conflictKind": {

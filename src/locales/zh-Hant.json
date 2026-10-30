@@ -3415,9 +3415,9 @@
       "applying": "正在更新，請勿關閉啟動器…",
       "available": "有新版本：{{latest}}",
       "upToDate": "已是最新版本",
-      "paused": "已暫停跟隨該整合包的更新",
-      "notFollowing": "此實例未關聯可跟隨的整合包",
-      "needsRepair": "該實例暫時無法比對更新，需要先修復",
+      "paused": "已暫停跟隨更新",
+      "notFollowing": "此實例沒有跟隨整合包",
+      "needsRepair": "此實例需要修復後才能檢查更新",
       "unknown": "暫時無法獲取更新，請稍後重試",
       "waitingLoader": "等待模組載入器安裝完成後才能檢查更新",
       "localChanges": "有 {{count}} 處本機改動"
@@ -3447,7 +3447,7 @@
         "delete": "刪除",
         "disable": "停用",
         "enable": "啟用",
-        "retire": "不再管理"
+        "retire": "休眠"
       }
     },
     "conflictKind": {
