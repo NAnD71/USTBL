@@ -591,7 +591,7 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
           <Text fontSize="xs-sm">
             {t("UpdateModpackModal.plan.loaderChange", {
               from: plan.loaderChange.from.version,
-              to: plan.loaderChange.to.version,
+              to: plan.loaderChange.to.version,`r`n              loader: plan.loaderChange.to.type,
             })}
           </Text>
         )}

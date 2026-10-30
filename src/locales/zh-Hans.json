@@ -2832,9 +2832,9 @@
             "MODPACK_UPDATE_UNSUPPORTED": "此实例暂不支持自动更新",
             "MODPACK_UPDATE_RUNNING": "游戏正在运行，请先关闭游戏再更新整合包",
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "新版本更改了整合包的组件链，无法就地更新，请重新安装",
-            "MODPACK_UPDATE_LINE_GONE": "平台上已不存在该整合包的这条线",
+            "MODPACK_UPDATE_LINE_GONE": "平台上已没有这个整合包的这条版本线",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "平台上暂时取不到此版本所需的文件，请稍后重试",
-            "MODPACK_UPDATE_MERGE_INVALID": "按块选择后配置文件的格式无效，请调整选择后重试"
+            "MODPACK_UPDATE_MERGE_INVALID": "按你的选择合并后，配置文件格式不对，请换个选择再试"
           }
         }
       },
@@ -2854,7 +2854,7 @@
         "error": {
           "title": "解除跟随失败",
           "description": {
-            "MODPACK_UPDATE_UNLINK_PENDING": "上次更新尚未完成，请先恢复或回滚后再解除跟随"
+            "MODPACK_UPDATE_UNLINK_PENDING": "上次更新没有完成，请先恢复或撤销再解除跟随"
           }
         }
       },
@@ -2876,9 +2876,9 @@
             "MODPACK_UPDATE_UNSUPPORTED": "此实例暂不支持自动更新",
             "MODPACK_UPDATE_RUNNING": "游戏正在运行，请先关闭游戏再更新整合包",
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "新版本更改了整合包的组件链，无法就地更新，请重新安装",
-            "MODPACK_UPDATE_LINE_GONE": "平台上已不存在该整合包的这条线",
+            "MODPACK_UPDATE_LINE_GONE": "平台上已没有这个整合包的这条版本线",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "平台上暂时取不到此版本所需的文件，请稍后重试",
-            "MODPACK_UPDATE_MERGE_INVALID": "按块选择后配置文件的格式无效，请调整选择后重试"
+            "MODPACK_UPDATE_MERGE_INVALID": "按你的选择合并后，配置文件格式不对，请换个选择再试"
           }
         }
       },
@@ -3412,14 +3412,14 @@
     "status": {
       "checking": "正在检查更新…",
       "planning": "正在对比新版本与本地文件…",
-      "applying": "正在更新整合包，请勿关闭启动器…",
+      "applying": "正在更新，请勿关闭启动器…",
       "available": "有新版本：{{latest}}",
       "upToDate": "已是最新版本",
-      "paused": "已暂停跟随该整合包的更新",
-      "notFollowing": "此实例未关联可跟随的整合包",
-      "needsRepair": "该实例暂时无法对比更新，需要先修复",
-      "unknown": "暂时无法获取更新信息，请稍后重试",
-      "waitingLoader": "正在等待模组加载器安装完成，完成后再检查更新",
+      "paused": "已暂停跟随更新",
+      "notFollowing": "此实例没有跟随整合包",
+      "needsRepair": "此实例需要修复后才能检查更新",
+      "unknown": "暂时无法获取更新，请稍后重试",
+      "waitingLoader": "等待模组加载器安装完成后才能检查更新",
       "localChanges": "有 {{count}} 处本地改动"
     },
     "label": {
@@ -3434,12 +3434,12 @@
       "disable": "禁用 {{count}}",
       "enable": "启用 {{count}}",
       "retire": "休眠 {{count}}",
-      "loaderChange": "模组加载器将从 {{from}} 切换到 {{to}}",
+      "loaderChange": "{{loader}} 将从 {{from}} 切换到 {{to}}",
       "conflicts": "{{count}} 个文件和你的修改冲突，默认保留本地，可以逐个处理",
       "autoMerged": "自动合并 {{count}}",
       "showAll": "显示全部（还有 {{count}} 项）",
-      "reinstallRequired": "{{latest}} 更改了整合包的组件链，无法就地更新，请重新安装该整合包",
-      "restored": "还原已忽略的改动 {{count}}",
+      "reinstallRequired": "{{latest}} 更改了实例的组件链，不能直接更新，请重新安装",
+      "restored": "覆盖已忽略的改动 {{count}}",
       "restoredDescription": "本地忽略过的改动，将与新版本内容同步。包含新版本同名文件替换。",
       "restoredKind": {
         "add": "新增",
@@ -3447,21 +3447,21 @@
         "delete": "删除",
         "disable": "禁用",
         "enable": "启用",
-        "retire": "不再管理"
+        "retire": "休眠"
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "你修改过，新版本也改了它",
-      "modifiedLocallyRemovedRemotely": "你修改过，新版本已不再包含它",
-      "deletedLocallyChangedRemotely": "你删除了它，新版本更新了它",
+      "modifiedLocallyChangedRemotely": "本地和新版本在此文件的变动发生冲突",
+      "modifiedLocallyRemovedRemotely": "本地修改了此文件，新版本不再包含此文件",
+      "deletedLocallyChangedRemotely": "本地删除了此文件，新版本有此文件的修改版",
       "unmanagedFileInTheWay": "新版本新增同名文件，会对此文件进行替换",
-      "remanage": "整合包重新管理它，但你的内容和新版本不一样"
+      "remanage": "整合包重新管理它，但本地的内容和新版本不一样"
     },
     "choice": {
       "keepLocal": "保留本地",
       "takeRemote": "使用新版本",
       "revealFile": "在文件夹中显示",
-      "hunk": "第 {{number}} 处冲突（基线第 {{from}}-{{to}} 行）",
+      "hunk": "第 {{number}} 处冲突（原文件第 {{from}}-{{to}} 行）",
       "allKeepLocal": "全部保留本地",
       "allTakeRemote": "全部使用新版本",
       "localSide": "本地",
@@ -3476,30 +3476,31 @@
       "confirmRollback": "确认撤销"
     },
     "toast": {
-      "loaderPending": "模组加载器需要重新安装，请在下载页查看进度",
-      "planChanged": "更新计划已变化，请重新选择冲突"
+      "loaderPending": "正在重装模组加载器，进度见下载与上传页面",
+      "planChanged": "更新计划变更，请重新处理冲突"
     },
     "unlink": {
       "button": "解除跟随",
       "confirmTitle": "解除跟随整合包",
-      "confirmBody": "解除后不再检查该整合包的更新，也不会删除任何游戏文件。之后可以重新安装或重新发布来再次关联。",
+      "confirmBody": "不再检查这个整合包的更新，游戏文件不会删除。之后重新安装或重新发布可以再次跟随。",
       "success": "已解除跟随"
     },
     "reason": {
-      "MODPACK_UPDATE_UNLINK_PENDING": "上次更新尚未完成，请先恢复或回滚后再解除跟随",
-      "MODPACK_UPDATE_BOTH_VARIANTS": "同名文件及其 .disabled 变体同时存在，请删除其中一个后再更新",
-      "MODPACK_UPDATE_LINE_GONE": "平台上已不存在该整合包的这条线",
+      "MODPACK_UPDATE_UNLINK_PENDING": "上次更新没有完成，请先恢复或撤销再解除跟随",
+      "MODPACK_UPDATE_BOTH_VARIANTS": "启用和禁用（.disabled）版本同时存在，删掉一个再更新",
+      "MODPACK_UPDATE_LINE_GONE": "平台上已没有这个整合包的这条版本线",
       "MODPACK_UPDATE_PREPARE_CANCELLED": "更新预览已取消",
-      "MODPACK_UPDATE_UNSUPPORTED": "该实例缺少可用的安装记录或未开启版本隔离",
-      "MODPACK_UPDATE_NOT_ISOLATED": "该实例没有开启版本隔离，无法安全对比更新。请在实例设置中开启后重试",
-      "MODPACK_UPDATE_BASELINE_MISSING": "该实例缺少整合包的安装记录或记录已损坏，无法对比更新",
+      "MODPACK_UPDATE_UNSUPPORTED": "此实例没有安装记录或未开启版本隔离",
+      "MODPACK_UPDATE_NOT_ISOLATED": "此实例没开版本隔离，无法检查更新。请在实例设置里开启后重试",
+      "MODPACK_UPDATE_BASELINE_MISSING": "此实例的安装记录缺失或损坏，无法检查更新",
       "MODPACK_UPDATE_PACK_UNAVAILABLE": "平台上暂时取不到此版本所需的文件，请稍后重试",
-      "MODPACK_UPDATE_MERGE_INVALID": "按块选择后配置文件的格式无效，请调整选择后重试",
-      "MODPACK_UPDATE_LOCATE_LOCATING": "无法定位整合包文件，请检查网络后重试"
+      "MODPACK_UPDATE_MERGE_INVALID": "按你的选择合并后，配置文件格式不对，请换个选择再试",
+      "MODPACK_UPDATE_LOCATE_LOCATING": "无法定位整合包文件，请检查网络后重试",
+      "MODPACK_UPDATE_BUSY": "整合包正在更新，请等待完成"
     },
     "rollback": {
-      "hint": "可以撤销上一次整合包更新，把文件和加载器恢复成更新前的样子。",
-      "confirm": "撤销会覆盖更新之后你对这些文件做的修改，且只能撤销一次。"
+      "hint": "可以撤销上次更新，文件和加载器会恢复到更新前。",
+      "confirm": "更新后你对这些文件的修改会被覆盖，可以撤销回更新前。"
     }
   },
   "ModpackLocalChangesModal": {
@@ -3514,7 +3515,7 @@
     "class": {
       "modified": "修改",
       "deleted": "删除",
-      "toggled": "启用状态",
+      "toggled": "启用/禁用",
       "added": "新增"
     },
     "disabled": "已禁用",
@@ -3549,7 +3550,7 @@
       "next": {
         "whole": "下次更新：整个文件恢复成整合包的样子",
         "spots": "下次更新：这 {{count}} 处改动会与最新版整合包同步，其他改动保留",
-        "added": "更新不动它；新版本带同名文件时直接替换"
+        "added": "更新不会影响该文件，除非新版本带同名文件时直接替换"
       }
     },
     "publishHint": {

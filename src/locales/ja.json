@@ -2832,9 +2832,9 @@
             "MODPACK_UPDATE_UNSUPPORTED": "このインスタンスは自動更新できません",
             "MODPACK_UPDATE_RUNNING": "ゲームが実行中です。Modパックを更新する前に閉じてください",
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "新しいバージョンはコンポーネント構成を変更するため、そのまま更新できません。再インストールしてください",
-            "MODPACK_UPDATE_LINE_GONE": "プラットフォームにこのモッドパックのラインはもうありません",
+            "MODPACK_UPDATE_LINE_GONE": "このモッドパックのバージョン系列はプラットフォームに存在しません",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "このバージョンのファイルはプラットフォーム上で一時的に利用できません。しばらくしてからやり直してください",
-            "MODPACK_UPDATE_MERGE_INVALID": "選択したブロックでは設定形式が無効になります。選択を変更して再試行してください"
+            "MODPACK_UPDATE_MERGE_INVALID": "選択をマージした後の設定ファイル形式が無効です。別の選択を試してください"
           }
         }
       },
@@ -2854,7 +2854,7 @@
         "error": {
           "title": "追従の解除に失敗しました",
           "description": {
-            "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。先に復旧またはロールバックしてから解除してください"
+            "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。追従解除の前に復元またはロールバックしてください"
           }
         }
       },
@@ -2876,9 +2876,9 @@
             "MODPACK_UPDATE_UNSUPPORTED": "このインスタンスは自動更新できません",
             "MODPACK_UPDATE_RUNNING": "ゲームが実行中です。Modパックを更新する前に閉じてください",
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "新しいバージョンはコンポーネント構成を変更するため、そのまま更新できません。再インストールしてください",
-            "MODPACK_UPDATE_LINE_GONE": "プラットフォームにこのモッドパックのラインはもうありません",
+            "MODPACK_UPDATE_LINE_GONE": "このモッドパックのバージョン系列はプラットフォームに存在しません",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "このバージョンのファイルはプラットフォーム上で一時的に利用できません。しばらくしてからやり直してください",
-            "MODPACK_UPDATE_MERGE_INVALID": "選択したブロックでは設定形式が無効になります。選択を変更して再試行してください"
+            "MODPACK_UPDATE_MERGE_INVALID": "選択をマージした後の設定ファイル形式が無効です。別の選択を試してください"
           }
         }
       },
@@ -3412,14 +3412,14 @@
     "status": {
       "checking": "更新を確認しています…",
       "planning": "新しいバージョンとローカルファイルを比較しています…",
-      "applying": "モッドパックを更新しています。ランチャーを閉じないでください…",
+      "applying": "更新中です。ランチャーを閉じないでください…",
       "available": "新しいバージョンがあります：{{latest}}",
       "upToDate": "最新です",
       "paused": "このモッドパックの追従は一時停止中です",
       "notFollowing": "このインスタンスは追従するモッドパックに関連付けられていません",
       "needsRepair": "このインスタンスは修復するまで更新を比較できません",
-      "unknown": "更新情報を取得できませんでした。後でもう一度お試しください",
-      "waitingLoader": "MODローダーのインストール完了を待っています。完了後に更新を確認します",
+      "unknown": "現在更新を取得できません。もう一度お試しください",
+      "waitingLoader": "更新を確認する前に、modローダーのインストール完了をお待ちください",
       "localChanges": "ローカルの変更：{{count}} 件"
     },
     "label": {
@@ -3434,12 +3434,12 @@
       "disable": "無効化 {{count}}",
       "enable": "有効化 {{count}}",
       "retire": "休止 {{count}}",
-      "loaderChange": "MODローダーを {{from}} から {{to}} に切り替えます",
+      "loaderChange": "{{loader}}が{{from}}から{{to}}に切り替わります",
       "conflicts": "{{count}}個のファイルが変更と競合しています。初期設定はローカルを保持し、個別に処理できます",
       "autoMerged": "自動マージ {{count}}",
       "showAll": "すべて表示（あと {{count}} 件）",
-      "reinstallRequired": "{{latest}} はコンポーネント構成を変更するため、そのまま更新できません。モッドパックを再インストールしてください",
-      "restored": "無視した変更を元に戻す {{count}}",
+      "reinstallRequired": "{{latest}}でインスタンスのコンポーネント構成が変わったため直接更新できません。再インストールしてください",
+      "restored": "無視した変更を上書き {{count}}",
       "restoredDescription": "ローカルで無視した変更を新バージョンと同期します。同名ファイルの置き換えも含みます。",
       "restoredKind": {
         "add": "追加",
@@ -3451,17 +3451,17 @@
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "あなたが編集し、新バージョンでも変更されています",
-      "modifiedLocallyRemovedRemotely": "あなたが編集し、新バージョンには含まれません",
-      "deletedLocallyChangedRemotely": "あなたが削除し、新バージョンで変更されています",
+      "modifiedLocallyChangedRemotely": "このファイルでローカルと新バージョンの変更が競合しています",
+      "modifiedLocallyRemovedRemotely": "このファイルはローカルで変更されていますが、新バージョンには含まれません",
+      "deletedLocallyChangedRemotely": "このファイルはローカルで削除されていますが、新バージョンに変更版があります",
       "unmanagedFileInTheWay": "新バージョンに同名ファイルが追加され、このファイルを置き換えます",
-      "remanage": "モッドパックが再び管理しますが、内容が新バージョンと異なります"
+      "remanage": "モッドパックが再び管理しますが、ローカルの内容が新バージョンと異なります"
     },
     "choice": {
       "keepLocal": "ローカルを保持",
       "takeRemote": "新バージョンを使用",
       "revealFile": "フォルダーに表示",
-      "hunk": "競合 {{number}}（ベースライン {{from}}-{{to}} 行）",
+      "hunk": "競合 {{number}}（元ファイルの{{from}}～{{to}}行）",
       "allKeepLocal": "すべてローカルを保持",
       "allTakeRemote": "すべて新しいバージョンを使用",
       "localSide": "ローカル",
@@ -3476,30 +3476,31 @@
       "confirmRollback": "取り消しを確定"
     },
     "toast": {
-      "loaderPending": "MODローダーの再インストールが必要です。ダウンロードページをご確認ください",
-      "planChanged": "更新プランが変わりました。競合の解決方法をもう一度選んでください"
+      "loaderPending": "modローダーを再インストール中です。進捗はダウンロードとアップロードのページで確認できます",
+      "planChanged": "更新計画が変わりました。競合をもう一度処理してください"
     },
     "unlink": {
       "button": "追従を解除",
       "confirmTitle": "モッドパックの追従を解除",
-      "confirmBody": "解除すると、このモッドパックの更新確認は行われなくなります。ゲームファイルは削除されません。後で再インストールや再公開で再度関連付けできます。",
+      "confirmBody": "このモッドパックの更新確認を停止し、ゲームファイルも削除しません。再インストールまたは再公開すれば再び追従できます。",
       "success": "追従を解除しました"
     },
     "reason": {
-      "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。先に復旧またはロールバックしてから解除してください",
-      "MODPACK_UPDATE_BOTH_VARIANTS": "同名ファイルとその .disabled 変体が同時に存在します。どちらかを削除してから更新してください",
-      "MODPACK_UPDATE_LINE_GONE": "プラットフォームにこのモッドパックのラインはもうありません",
+      "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。追従解除の前に復元またはロールバックしてください",
+      "MODPACK_UPDATE_BOTH_VARIANTS": "有効版と無効版（.disabled）が同時に存在します。更新前に一つ削除してください",
+      "MODPACK_UPDATE_LINE_GONE": "このモッドパックのバージョン系列はプラットフォームに存在しません",
       "MODPACK_UPDATE_PREPARE_CANCELLED": "更新プレビューはキャンセルされました",
-      "MODPACK_UPDATE_UNSUPPORTED": "このインスタンスには利用できるインストール記録がないか、バージョン分離が無効です",
-      "MODPACK_UPDATE_NOT_ISOLATED": "このインスタンスはバージョン分離が無効のため、安全に比較できません。インスタンス設定で有効にして再試行してください",
-      "MODPACK_UPDATE_BASELINE_MISSING": "このインスタンスにはモッドパックのインストール記録がないか、記録が破損しているため比較できません",
+      "MODPACK_UPDATE_UNSUPPORTED": "このインスタンスにはインストール記録がないか、バージョン分離が無効です",
+      "MODPACK_UPDATE_NOT_ISOLATED": "バージョン分離が無効のため更新を確認できません。インスタンス設定で有効にして再試行してください",
+      "MODPACK_UPDATE_BASELINE_MISSING": "このインスタンスのインストール記録がないか壊れているため、更新を確認できません",
       "MODPACK_UPDATE_PACK_UNAVAILABLE": "このバージョンのファイルはプラットフォーム上で一時的に利用できません。しばらくしてからやり直してください",
-      "MODPACK_UPDATE_MERGE_INVALID": "選択したブロックでは設定形式が無効になります。選択を変更して再試行してください",
-      "MODPACK_UPDATE_LOCATE_LOCATING": "Modパックのファイルを特定できませんでした。接続を確認して再試行してください。"
+      "MODPACK_UPDATE_MERGE_INVALID": "選択をマージした後の設定ファイル形式が無効です。別の選択を試してください",
+      "MODPACK_UPDATE_LOCATE_LOCATING": "モッドパックのファイルを見つけられません。ネットワークを確認して再試行してください",
+      "MODPACK_UPDATE_BUSY": "モッドパックを更新中です。完了までお待ちください"
     },
     "rollback": {
-      "hint": "前回のモッドパック更新を取り消し、ファイルとローダーを更新前の状態に戻せます。",
-      "confirm": "取り消すと、更新後にこれらのファイルへ加えた変更は上書きされます。1 回だけ実行できます。"
+      "hint": "前回の更新を取り消し、ファイルとローダーを更新前の状態に戻せます。",
+      "confirm": "更新後にこれらのファイルへ加えた変更は上書きされます。更新前に戻せます。"
     }
   },
   "ModpackLocalChangesModal": {
@@ -3514,7 +3515,7 @@
     "class": {
       "modified": "変更",
       "deleted": "削除",
-      "toggled": "有効状態",
+      "toggled": "有効／無効",
       "added": "新規"
     },
     "disabled": "無効",
@@ -3549,7 +3550,7 @@
       "next": {
         "whole": "次回更新：ファイル全体をモッドパックの状態に戻します",
         "spots": "次回更新：この{{count}}か所を最新版のモッドパックと同期し、その他の変更は保持します",
-        "added": "更新では変更しません。新バージョンに同名ファイルがあれば直接置き換えます"
+        "added": "更新の影響を受けません。新バージョンに同名ファイルがあれば直接置き換えます"
       }
     },
     "publishHint": {

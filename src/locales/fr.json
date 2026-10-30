@@ -2832,9 +2832,9 @@
             "MODPACK_UPDATE_UNSUPPORTED": "Cette instance ne peut pas être mise à jour automatiquement",
             "MODPACK_UPDATE_RUNNING": "Le jeu est en cours d’exécution ; fermez-le avant de mettre à jour le pack de mods",
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "Cette version modifie la chaîne de composants du pack et ne peut pas être appliquée sur place ; réinstallez-la",
-            "MODPACK_UPDATE_LINE_GONE": "La plateforme ne propose plus cette ligne du pack",
+            "MODPACK_UPDATE_LINE_GONE": "Cette ligne de versions du modpack n’est plus disponible sur la plateforme",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "Les fichiers de cette version sont momentanément indisponibles sur la plateforme. Réessayez plus tard",
-            "MODPACK_UPDATE_MERGE_INVALID": "Les blocs sélectionnés produisent une configuration invalide. Modifiez vos choix et réessayez"
+            "MODPACK_UPDATE_MERGE_INVALID": "Le format de configuration est invalide après la fusion de vos choix ; essayez un autre choix"
           }
         }
       },
@@ -2854,7 +2854,7 @@
         "error": {
           "title": "Échec du retrait du suivi",
           "description": {
-            "MODPACK_UPDATE_UNLINK_PENDING": "La dernière mise à jour n'est pas terminée. Restaurez-la ou annulez-la avant de retirer le suivi"
+            "MODPACK_UPDATE_UNLINK_PENDING": "La dernière mise à jour est incomplète ; restaurez-la ou annulez-la avant de supprimer le suivi"
           }
         }
       },
@@ -2876,9 +2876,9 @@
             "MODPACK_UPDATE_UNSUPPORTED": "Cette instance ne peut pas être mise à jour automatiquement",
             "MODPACK_UPDATE_RUNNING": "Le jeu est en cours d’exécution ; fermez-le avant de mettre à jour le pack de mods",
             "MODPACK_UPDATE_REINSTALL_REQUIRED": "Cette version modifie la chaîne de composants du pack et ne peut pas être appliquée sur place ; réinstallez-la",
-            "MODPACK_UPDATE_LINE_GONE": "La plateforme ne propose plus cette ligne du pack",
+            "MODPACK_UPDATE_LINE_GONE": "Cette ligne de versions du modpack n’est plus disponible sur la plateforme",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "Les fichiers de cette version sont momentanément indisponibles sur la plateforme. Réessayez plus tard",
-            "MODPACK_UPDATE_MERGE_INVALID": "Les blocs sélectionnés produisent une configuration invalide. Modifiez vos choix et réessayez"
+            "MODPACK_UPDATE_MERGE_INVALID": "Le format de configuration est invalide après la fusion de vos choix ; essayez un autre choix"
           }
         }
       },
@@ -3412,14 +3412,14 @@
     "status": {
       "checking": "Recherche de mises à jour…",
       "planning": "Comparaison de la nouvelle version avec les fichiers locaux…",
-      "applying": "Mise à jour du pack. Ne fermez pas le lanceur…",
+      "applying": "Mise à jour en cours ; ne fermez pas le lanceur…",
       "available": "Nouvelle version disponible : {{latest}}",
       "upToDate": "Déjà à jour",
       "paused": "Le suivi de ce pack est en pause",
       "notFollowing": "Cette instance ne suit aucun pack",
       "needsRepair": "Cette instance ne peut pas être comparée tant qu'elle n'est pas réparée",
-      "unknown": "Impossible d'obtenir les informations de mise à jour. Réessayez plus tard",
-      "waitingLoader": "En attente de la fin de l'installation du chargeur de mods avant de vérifier les mises à jour",
+      "unknown": "Impossible d’obtenir les mises à jour pour le moment ; réessayez plus tard",
+      "waitingLoader": "Attendez la fin de l’installation du chargeur de mods avant de vérifier les mises à jour",
       "localChanges": "Modifications locales : {{count}}"
     },
     "label": {
@@ -3434,12 +3434,12 @@
       "disable": "{{count}} désactivé(s)",
       "enable": "{{count}} activé(s)",
       "retire": "Mettre en sommeil {{count}}",
-      "loaderChange": "Le chargeur de mods passera de {{from}} à {{to}}",
+      "loaderChange": "{{loader}} passera de {{from}} à {{to}}",
       "conflicts": "{{count}} fichiers sont en conflit avec vos modifications ; conserver le local par défaut et les traiter individuellement",
       "autoMerged": "{{count}} fusionnés automatiquement",
       "showAll": "Tout afficher (encore {{count}})",
-      "reinstallRequired": "{{latest}} modifie la chaîne de composants du pack et ne peut pas être appliquée sur place. Réinstallez le pack",
-      "restored": "Restaurer les modifications ignorées {{count}}",
+      "reinstallRequired": "{{latest}} a modifié la chaîne de composants de l’instance et ne peut pas être mis à jour directement ; réinstallez-la",
+      "restored": "Remplacer les modifications ignorées {{count}}",
       "restoredDescription": "Les modifications ignorées localement seront synchronisées avec la nouvelle version, y compris le remplacement de fichiers du même nom.",
       "restoredKind": {
         "add": "Ajout",
@@ -3451,17 +3451,17 @@
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "Vous l'avez modifié et la nouvelle version aussi",
-      "modifiedLocallyRemovedRemotely": "Vous l'avez modifié et la nouvelle version ne l'inclut plus",
-      "deletedLocallyChangedRemotely": "Vous l'avez supprimé et la nouvelle version l'a modifié",
+      "modifiedLocallyChangedRemotely": "Les modifications locales et celles de la nouvelle version entrent en conflit pour ce fichier",
+      "modifiedLocallyRemovedRemotely": "Vous avez modifié ce fichier, mais la nouvelle version ne l’inclut plus",
+      "deletedLocallyChangedRemotely": "Vous avez supprimé ce fichier, mais la nouvelle version en contient une copie modifiée",
       "unmanagedFileInTheWay": "La nouvelle version ajoute un fichier du même nom et remplacera celui-ci",
-      "remanage": "Le modpack le gère de nouveau, mais votre contenu diffère de la nouvelle version"
+      "remanage": "Le modpack le gère de nouveau, mais votre contenu local diffère de la nouvelle version"
     },
     "choice": {
       "keepLocal": "Garder le local",
       "takeRemote": "Utiliser la nouvelle version",
       "revealFile": "Afficher dans le dossier",
-      "hunk": "Conflit {{number}} (lignes de base {{from}}-{{to}})",
+      "hunk": "Conflit {{number}} (lignes {{from}}–{{to}} du fichier original)",
       "allKeepLocal": "Tout garder en local",
       "allTakeRemote": "Tout prendre de la nouvelle version",
       "localSide": "Local",
@@ -3476,30 +3476,31 @@
       "confirmRollback": "Confirmer l'annulation"
     },
     "toast": {
-      "loaderPending": "Le chargeur de mods doit être réinstallé. Consultez la page des téléchargements",
-      "planChanged": "Le plan de mise à jour a changé. Choisissez de nouveau comment résoudre les conflits"
+      "loaderPending": "Le chargeur de mods est réinstallé ; consultez la page téléchargements et envois pour suivre la progression",
+      "planChanged": "Le plan de mise à jour a changé ; reprenez le traitement des conflits"
     },
     "unlink": {
       "button": "Ne plus suivre",
       "confirmTitle": "Ne plus suivre le pack",
-      "confirmBody": "Le lanceur ne vérifiera plus les mises à jour de ce pack et aucun fichier de jeu ne sera supprimé. Vous pourrez le réinstaller ou le republier pour le réassocier.",
+      "confirmBody": "Les mises à jour de ce modpack ne seront plus vérifiées et aucun fichier de jeu ne sera supprimé. Réinstallez ou republiez-le plus tard pour le suivre à nouveau.",
       "success": "Suivi retiré"
     },
     "reason": {
-      "MODPACK_UPDATE_UNLINK_PENDING": "La dernière mise à jour n'est pas terminée. Restaurez-la ou annulez-la avant de retirer le suivi",
-      "MODPACK_UPDATE_BOTH_VARIANTS": "Un fichier et sa variante .disabled existent tous les deux. Supprimez l'un des deux avant de mettre à jour",
-      "MODPACK_UPDATE_LINE_GONE": "La plateforme ne propose plus cette ligne du pack",
+      "MODPACK_UPDATE_UNLINK_PENDING": "La dernière mise à jour est incomplète ; restaurez-la ou annulez-la avant de supprimer le suivi",
+      "MODPACK_UPDATE_BOTH_VARIANTS": "Les versions activée et désactivée (.disabled) existent simultanément ; supprimez-en une avant la mise à jour",
+      "MODPACK_UPDATE_LINE_GONE": "Cette ligne de versions du modpack n’est plus disponible sur la plateforme",
       "MODPACK_UPDATE_PREPARE_CANCELLED": "L'aperçu de la mise à jour a été annulé",
-      "MODPACK_UPDATE_UNSUPPORTED": "Cette instance n'a pas d'enregistrement d'installation utilisable ou l'isolation de version est désactivée",
-      "MODPACK_UPDATE_NOT_ISOLATED": "L'isolation de version est désactivée pour cette instance, la comparaison n'est pas sûre. Activez-la dans les paramètres de l'instance puis réessayez",
-      "MODPACK_UPDATE_BASELINE_MISSING": "Cette instance n'a pas d'enregistrement d'installation du pack, ou il est endommagé ; comparaison impossible",
+      "MODPACK_UPDATE_UNSUPPORTED": "Cette instance n’a pas d’enregistrement d’installation ou l’isolation des versions est désactivée",
+      "MODPACK_UPDATE_NOT_ISOLATED": "L’isolation des versions est désactivée, impossible de vérifier les mises à jour. Activez-la dans les réglages de l’instance puis réessayez",
+      "MODPACK_UPDATE_BASELINE_MISSING": "L’enregistrement d’installation de cette instance est absent ou endommagé ; impossible de vérifier les mises à jour",
       "MODPACK_UPDATE_PACK_UNAVAILABLE": "Les fichiers de cette version sont momentanément indisponibles sur la plateforme. Réessayez plus tard",
-      "MODPACK_UPDATE_MERGE_INVALID": "Les blocs sélectionnés produisent une configuration invalide. Modifiez vos choix et réessayez",
-      "MODPACK_UPDATE_LOCATE_LOCATING": "Impossible de localiser les fichiers du pack de mods. Vérifiez votre connexion et réessayez."
+      "MODPACK_UPDATE_MERGE_INVALID": "Le format de configuration est invalide après la fusion de vos choix ; essayez un autre choix",
+      "MODPACK_UPDATE_LOCATE_LOCATING": "Impossible de localiser le fichier du modpack ; vérifiez votre réseau puis réessayez",
+      "MODPACK_UPDATE_BUSY": "Le modpack est en cours de mise à jour ; veuillez patienter"
     },
     "rollback": {
-      "hint": "Vous pouvez annuler la dernière mise à jour du pack et rétablir fichiers et chargeur comme avant.",
-      "confirm": "L'annulation écrase les modifications faites sur ces fichiers depuis la mise à jour, et ne peut se faire qu'une fois."
+      "hint": "Vous pouvez annuler la dernière mise à jour et restaurer les fichiers et le chargeur à leur état précédent.",
+      "confirm": "Les modifications apportées à ces fichiers après la mise à jour seront écrasées ; vous pouvez revenir à l’état précédent."
     }
   },
   "ModpackLocalChangesModal": {
@@ -3514,7 +3515,7 @@
     "class": {
       "modified": "Modifié",
       "deleted": "Supprimé",
-      "toggled": "État activé",
+      "toggled": "Activé/désactivé",
       "added": "Nouveau"
     },
     "disabled": "Désactivé",
@@ -3549,7 +3550,7 @@
       "next": {
         "whole": "Prochaine mise à jour : restaurer tout le fichier selon le modpack",
         "spots": "Prochaine mise à jour : synchroniser ces {{count}} modifications avec le dernier modpack, en conservant les autres",
-        "added": "Ne pas le modifier ; le remplacer directement si la nouvelle version contient un fichier du même nom"
+        "added": "Sans effet sur les mises à jour ; le remplacer directement si la nouvelle version contient un fichier du même nom"
       }
     },
     "publishHint": {
