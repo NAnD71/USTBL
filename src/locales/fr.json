@@ -3284,7 +3284,12 @@
       "packing": "Création du paquet des nouveautés"
     },
     "tree": {
-      "legend": "Inclure : publié avec la version. Ignorer : cette version n'y touche pas, les joueurs gardent le leur. Supprimer : retiré à la mise à jour des joueurs. Cliquez sur le bouton d'état pour changer ; l'état d'un dossier s'applique à tous ses fichiers, sauf ceux réglés individuellement.",
+      "legend": {
+        "include": "Publié avec la version",
+        "ignore": "Cette version n'y touche pas, les joueurs gardent le leur",
+        "delete": "Retiré à la mise à jour des joueurs",
+        "cycle": "Cliquez sur l'icône pour changer ; l'état d'un dossier s'applique à ses fichiers sauf ceux réglés individuellement"
+      },
       "include": "Inclure",
       "ignore": "Ignorer",
       "delete": "Supprimer",
