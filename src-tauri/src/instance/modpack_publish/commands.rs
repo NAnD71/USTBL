@@ -419,11 +419,7 @@ pub async fn fetch_campus_modpack_previous_release(
   instance_id: String,
   project: String,
 ) -> USTBLResult<Option<PreviousRelease>> {
-  let valid = !project.is_empty()
-    && project
-      .chars()
-      .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_');
-  if !valid {
+  if !is_project_slug(&project) {
     return Err(InstanceError::ModpackUpdateUnsupported.into());
   }
   let instance = instance_of(&app, &instance_id)?;
@@ -532,12 +528,12 @@ pub async fn diff_campus_modpack_publish_file(
   previous_version_id: String,
   previous_project_id: String,
 ) -> USTBLResult<Option<Vec<DiffHunk>>> {
-  if safe_relative(&path).is_err()
-    || !is_sha1(&previous_sha1)
-    || previous_version_id.is_empty()
-    || !previous_version_id.chars().all(|c| c.is_ascii_digit())
-    || !is_project_slug(&previous_project_id)
-  {
+  if !valid_publish_diff_inputs(
+    &path,
+    &previous_sha1,
+    &previous_version_id,
+    &previous_project_id,
+  ) {
     return Err(InstanceError::ModpackUpdateUnsupported.into());
   }
   let instance = instance_of(&app, &instance_id)?;
@@ -561,18 +557,17 @@ pub async fn diff_campus_modpack_publish_file(
       .is_none()
   {
     match crate::instance::modpack_update::commands::recover_publish_base(
-        &app,
-        &instance,
-        &previous_project_id,
-        &previous_version_id,
-        &path,
-        &previous_sha1,
-      )
-      .await
-      {
-        Ok(Some(())) => {}
-        Ok(None) => {}
-        Err(_) => return Err(InstanceError::ModpackPublishPreviousUnavailable.into()),
+      &app,
+      &instance,
+      &previous_project_id,
+      &previous_version_id,
+      &path,
+      &previous_sha1,
+    )
+    .await
+    {
+      Ok(Some(())) | Ok(None) => {}
+      Err(_) => return Err(InstanceError::ModpackPublishPreviousUnavailable.into()),
     }
   }
   tokio::task::spawn_blocking(move || super::changes::file_diff(&root, &path, &previous_sha1))
@@ -1336,6 +1331,10 @@ fn adopt_instance_identity(instance: &mut Instance, origin: InstanceOrigin, vers
 mod tests {
   use super::*;
 
+  use crate::instance::models::misc::ModLoaderType;
+  use crate::instance::modpack_update::remote::{RemoteModpack, RuleKind, RuleState};
+  use std::path::PathBuf;
+
   #[test]
   fn publish_diff_inputs_are_rejected_before_filesystem_access() {
     let sha1 = "a".repeat(40);
@@ -1345,9 +1344,6 @@ mod tests {
     assert!(!valid_publish_diff_inputs("config/a.cfg", &sha1, "1", "bad/project"));
     assert!(valid_publish_diff_inputs("config/a.cfg", &sha1, "1", "project_name-2"));
   }
-  use crate::instance::models::misc::ModLoaderType;
-  use crate::instance::modpack_update::remote::{RemoteModpack, RuleKind, RuleState};
-  use std::path::PathBuf;
 
   fn instance_dir(files: &[(&str, &str)]) -> PathBuf {
     let root = std::env::temp_dir().join(format!("ustbl-publish-test-{}", uuid::Uuid::new_v4()));
