@@ -3556,7 +3556,7 @@
       "updateFirst": "A newer version is online. Update before publishing"
     },
     "next": {
-      "modified": "If both the new version and the local copy changed the same file and conflict, you will be prompted to resolve it.",
+      "modified": "If both the new version and local copy changed the same text/file and conflict, you will be prompted; non-conflicting text changes are merged.",
       "deleted": "Keep it deleted until a new version requires this file",
       "toggled": "Your state is kept.",
       "added": "Unaffected by updates; prompt if a new version has the same-named file"

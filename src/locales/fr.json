@@ -3556,7 +3556,7 @@
       "updateFirst": "Une version plus récente est en ligne. Mettez à jour avant de publier"
     },
     "next": {
-      "modified": "Si la nouvelle version et la copie locale ont toutes deux été modifiées sur le même fichier et qu’un conflit survient, vous serez invité à le résoudre.",
+      "modified": "Si la nouvelle version et la copie locale ont été modifiées sur le même texte/fichier et entrent en conflit, vous serez invité à intervenir ; les changements textuels sans conflit sont fusionnés.",
       "deleted": "Le laisser supprimé jusqu’à ce qu’une nouvelle version en ait besoin",
       "toggled": "Votre état est conservé.",
       "added": "Sans effet sur la mise à jour ; demander confirmation si une nouvelle version contient un fichier du même nom"
