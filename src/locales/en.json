@@ -3351,7 +3351,7 @@
       "notIsolated": "Version isolation is off for this instance, so it was not linked to this modpack.",
       "localChanged": "The instance does not match the version just published (for example a file marked Delete is still on disk), so it was not linked to it. The next update will handle it from the version's contents.",
       "recordFailed": "The version was published, but the instance could not be linked to it. The next check compares as usual.",
-      "followedWithDeletes": "Followed this version; {{count}} local files were deleted by its rules. Backup: .ustbl-update/publish-deleted",
+      "localDeleted": "{{count}} local files were deleted by the deletion rules. Backup: .ustbl-update/publish-deleted",
       "deleteFailed": "The published version was not followed because deleting a local file failed. The backup was kept."
     },
     "started": {

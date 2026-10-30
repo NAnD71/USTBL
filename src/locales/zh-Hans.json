@@ -3351,7 +3351,7 @@
       "notIsolated": "该实例未开启版本隔离，未将其关联到此整合包。",
       "localChanged": "该实例与刚发布的版本不一致（例如标为删除的文件仍在磁盘上），未将其关联到此版本，下次更新会按版本内容处理。",
       "recordFailed": "版本已发布，但未能记录该实例与此版本的关联，下次检查将按常规比较。",
-      "followedWithDeletes": "已跟随这一版，按删除规则删除了本机 {{count}} 个文件，备份在 .ustbl-update/publish-deleted",
+      "localDeleted": "按删除规则删除了本机 {{count}} 个文件，备份在 .ustbl-update/publish-deleted",
       "deleteFailed": "删除本机文件失败，未跟随这一版；备份已保留。"
     },
     "started": {

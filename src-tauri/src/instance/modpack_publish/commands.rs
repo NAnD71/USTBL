@@ -554,7 +554,7 @@ pub async fn diff_campus_modpack_publish_file(
     .map_err(|error| USTBLError(error.to_string()))?;
   }
   if crate::instance::helpers::modpack::base_store::load(&root, &previous_sha1.to_lowercase())?
-      .is_none()
+    .is_none()
   {
     match crate::instance::modpack_update::commands::recover_publish_base(
       &app,
@@ -1227,7 +1227,9 @@ fn backup_and_delete_publish_files(root: &Path, paths: &[String]) -> USTBLResult
   for path in paths {
     if let Err(error) = fs::remove_file(root.join(path)) {
       log::warn!("Could not remove published delete target {path}: {error}");
-      return Err(USTBLError(format!("删除发布者本机文件失败：{path}: {error}")));
+      return Err(USTBLError(format!(
+        "删除发布者本机文件失败：{path}: {error}"
+      )));
     }
   }
   Ok(paths.len())
@@ -1312,7 +1314,8 @@ async fn try_adopt(
     &instance.version_path,
     &release::Release::from_remote(&remote),
   )
-  .await {
+  .await
+  {
     log::warn!("Could not save published release record: {error:?}");
     return Ok((Adoption::RecordFailed, locally_deleted));
   }
@@ -1320,7 +1323,8 @@ async fn try_adopt(
   if let Err(error) = store_instance(app, &instance.id, move |stored| {
     adopt_instance_identity(stored, new_origin, label);
   })
-  .await {
+  .await
+  {
     log::warn!("Could not save published instance identity: {error:?}");
     return Ok((Adoption::RecordFailed, locally_deleted));
   }
@@ -1344,11 +1348,36 @@ mod tests {
   #[test]
   fn publish_diff_inputs_are_rejected_before_filesystem_access() {
     let sha1 = "a".repeat(40);
-    assert!(!valid_publish_diff_inputs("../config/a.cfg", &sha1, "1", "project"));
-    assert!(!valid_publish_diff_inputs("config/a.cfg", "../base", "1", "project"));
-    assert!(!valid_publish_diff_inputs("config/a.cfg", &sha1, "1x", "project"));
-    assert!(!valid_publish_diff_inputs("config/a.cfg", &sha1, "1", "bad/project"));
-    assert!(valid_publish_diff_inputs("config/a.cfg", &sha1, "1", "project_name-2"));
+    assert!(!valid_publish_diff_inputs(
+      "../config/a.cfg",
+      &sha1,
+      "1",
+      "project"
+    ));
+    assert!(!valid_publish_diff_inputs(
+      "config/a.cfg",
+      "../base",
+      "1",
+      "project"
+    ));
+    assert!(!valid_publish_diff_inputs(
+      "config/a.cfg",
+      &sha1,
+      "1x",
+      "project"
+    ));
+    assert!(!valid_publish_diff_inputs(
+      "config/a.cfg",
+      &sha1,
+      "1",
+      "bad/project"
+    ));
+    assert!(valid_publish_diff_inputs(
+      "config/a.cfg",
+      &sha1,
+      "1",
+      "project_name-2"
+    ));
   }
 
   fn instance_dir(files: &[(&str, &str)]) -> PathBuf {
@@ -1639,7 +1668,10 @@ mod tests {
       ignores: Default::default(),
       ignores_on_disk: Default::default(),
     };
-    let remote = published(&[], vec![rule("mods/a.jar", RuleKind::File, RuleState::Delete)]);
+    let remote = published(
+      &[],
+      vec![rule("mods/a.jar", RuleKind::File, RuleState::Delete)],
+    );
     let paths = publish_delete_paths(&root, &compared, &remote).unwrap();
     assert_eq!(paths, ["mods/a.jar.disabled"]);
     let _ = fs::remove_dir_all(root);
@@ -1668,10 +1700,16 @@ mod tests {
       ignores: Default::default(),
       ignores_on_disk: Default::default(),
     };
-    let delete = published(&[], vec![rule("old/stale.zip", RuleKind::File, RuleState::Delete)]);
+    let delete = published(
+      &[],
+      vec![rule("old/stale.zip", RuleKind::File, RuleState::Delete)],
+    );
     assert!(is_fast_forward_after_delete_rules(&compared, &delete));
 
-    let ignore = published(&[], vec![rule("old/stale.zip", RuleKind::File, RuleState::Ignore)]);
+    let ignore = published(
+      &[],
+      vec![rule("old/stale.zip", RuleKind::File, RuleState::Ignore)],
+    );
     assert!(!is_fast_forward_after_delete_rules(&compared, &ignore));
 
     let unmentioned = published(&[], Vec::new());
@@ -1727,8 +1765,13 @@ mod tests {
       ignores: Default::default(),
       ignores_on_disk: Default::default(),
     };
-    let remote = published(&[], vec![rule("config/old.txt", RuleKind::File, RuleState::Ignore)]);
-    assert!(publish_delete_paths(&root, &compared, &remote).unwrap().is_empty());
+    let remote = published(
+      &[],
+      vec![rule("config/old.txt", RuleKind::File, RuleState::Ignore)],
+    );
+    assert!(publish_delete_paths(&root, &compared, &remote)
+      .unwrap()
+      .is_empty());
     let _ = fs::remove_dir_all(root);
   }
 
