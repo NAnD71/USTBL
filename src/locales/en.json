@@ -3315,9 +3315,10 @@
       "change": {
         "modified": "Modified",
         "added": "Added",
-        "toggled": "Enabled state",
         "onceChanged": "First-install only · changed",
-        "deleted": "Deleted"
+        "deleted": "Deleted",
+        "enable": "Enable",
+        "disable": "Disable"
       },
       "changeHint": {
         "modified": "The content differs from the previous version.",
@@ -3369,7 +3370,6 @@
       "removed": "{{count}} file(s) removed",
       "ignored": "{{count}} file(s) set to ignore",
       "deleted": "{{count}} file(s) set to delete",
-      "toggled": "{{count}} enabled state change(s)",
       "onceOn": "{{count}} set to first install only",
       "onceOff": "{{count}} no longer first install only",
       "rulesAdded": "{{count}} rule(s) added",
@@ -3384,7 +3384,9 @@
         "rulesChanged": "Rules that switched between ignore and delete.",
         "localDeleted": "These files will also be backed up and deleted locally after publishing."
       },
-      "localDeleted": "{{count}} also deleted locally"
+      "localDeleted": "{{count}} also deleted locally",
+      "enable": "{{count}} enabled",
+      "disable": "{{count}} disabled"
     }
   },
   "InstallCampusModpackModal": {
@@ -3515,11 +3517,11 @@
     "class": {
       "modified": "Modified",
       "deleted": "Deleted",
-      "toggled": "Enabled/disabled",
-      "added": "New"
+      "added": "New",
+      "enable": "Enabled",
+      "disable": "Disabled"
     },
     "disabled": "Disabled",
-    "toggledTag": "Enabled/disabled state changed",
     "noDiff": {
       "notText": "Non-text or too large; differences are not shown",
       "baseMissing": "No copy from installation exists; differences cannot be shown",

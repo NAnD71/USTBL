@@ -112,6 +112,8 @@ export interface ModpackDiffHunk {
 export type ModpackChangeClass =
   | "modified"
   | "deleted"
+  | "enable"
+  | "disable"
   /** Only the disabled state differs from the release. */
   | "toggled"
   /** A first-install file that changed or is gone; only new players see it. */

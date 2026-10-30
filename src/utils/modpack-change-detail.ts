@@ -12,7 +12,8 @@ export const OPEN_LIMIT = 5;
 export const CLASS_ORDER: ModpackChangeClass[] = [
   "modified",
   "deleted",
-  "toggled",
+  "enable",
+  "disable",
   "added",
 ];
 
@@ -21,6 +22,11 @@ const ALL_CLASSES: ModpackChangeClass[] = [
   "onceChanged",
   "addedExcluded",
 ];
+
+export const displayClass = (
+  entry: ModpackChangeDetailEntry
+): ModpackChangeClass =>
+  entry.toggled ? (entry.disabled ? "disable" : "enable") : entry.class;
 
 const isAdded = (entry: ModpackChangeDetailEntry): boolean =>
   entry.class === "added" || entry.class === "addedExcluded";
@@ -35,7 +41,7 @@ export const countByClass = (
   const counts = Object.fromEntries(
     ALL_CLASSES.map((name) => [name, 0])
   ) as Record<ModpackChangeClass, number>;
-  for (const entry of entries) counts[entry.class] += 1;
+  for (const entry of entries) counts[displayClass(entry)] += 1;
   return counts;
 };
 
@@ -48,7 +54,7 @@ export const splitByGroup = (entries: ModpackChangeDetailEntry[]) => ({
   main: entries.filter(
     (entry) =>
       entry.counted &&
-      CLASS_ORDER.includes(entry.class) &&
+      CLASS_ORDER.includes(displayClass(entry)) &&
       !isRuleDeleted(entry)
   ),
   willDelete: entries.filter(isRuleDeleted),
@@ -58,7 +64,7 @@ export const filterEntries = (
   entries: ModpackChangeDetailEntry[],
   filter: ModpackChangeClass | null
 ): ModpackChangeDetailEntry[] =>
-  filter ? entries.filter((entry) => entry.class === filter) : entries;
+  filter ? entries.filter((entry) => displayClass(entry) === filter) : entries;
 export interface ChangeTreeNode {
   /** The path as the first entry under it spells it. */
   path: string;

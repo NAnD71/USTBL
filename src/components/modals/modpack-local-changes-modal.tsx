@@ -48,6 +48,7 @@ import {
   OPEN_LIMIT,
   buildChangeTree,
   countByClass,
+  displayClass,
   expandedDepth,
   filterEntries,
   isRuleDeleted,
@@ -65,6 +66,8 @@ const CLASS_COLORS: Record<ModpackChangeClass, string> = {
   modified: "orange",
   deleted: "red",
   toggled: "gray",
+  enable: "gray",
+  disable: "gray",
   onceChanged: "purple",
   added: "green",
   addedExcluded: "gray",
@@ -362,17 +365,15 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
           defaultOpen={openFiles}
           tags={
             <>
-              <Badge colorScheme={CLASS_COLORS[entry.class]} flexShrink={0}>
+              <Badge
+                colorScheme={CLASS_COLORS[displayClass(entry)]}
+                flexShrink={0}
+              >
                 {t(
-                  `ModpackLocalChangesModal.class.${entry.class === "addedExcluded" ? "added" : entry.class}`
+                  `ModpackLocalChangesModal.class.${displayClass(entry) === "addedExcluded" ? "added" : displayClass(entry)}`
                 )}
               </Badge>
-              {entry.class === "modified" && entry.toggled && (
-                <Badge flexShrink={0}>
-                  {t("ModpackLocalChangesModal.toggledTag")}
-                </Badge>
-              )}
-              {entry.disabled && (
+              {entry.disabled && displayClass(entry) !== "disable" && (
                 <Badge flexShrink={0}>
                   {t("ModpackLocalChangesModal.disabled")}
                 </Badge>

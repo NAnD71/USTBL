@@ -971,10 +971,24 @@ test("a file whose enabled state differs is toggled even when the content does t
     change("mods/on.jar", "toggled"),
     change("mods/both.jar", "modified"),
   ]);
-  assert.deepEqual(summary.toggled.sort(), ["mods/both.jar", "mods/off.jar", "mods/on.jar"]);
+  assert.deepEqual(summary.enable.sort(), ["mods/on.jar"]);
+  assert.deepEqual(summary.disable.sort(), ["mods/both.jar", "mods/off.jar"]);
   assert.deepEqual(summary.modified, ["mods/both.jar"]);
 });
 
+test("summary splits enabled and disabled state changes", () => {
+  const context = ctxOf([
+    { path: "mods/on.jar", disabled: false },
+    { path: "mods/off.jar", disabled: true },
+  ]);
+  const previous = release([
+    before("mods/on.jar", { disabled: true }),
+    before("mods/off.jar", { disabled: false }),
+  ]);
+  const summary = summarizePublish(context, draftOf(), previous, []);
+  assert.deepEqual(summary.enable, ["mods/on.jar"]);
+  assert.deepEqual(summary.disable, ["mods/off.jar"]);
+});
 test("a locally deleted file keeps the summary visible when content is unchanged", () => {
   const context = ctxOf(["config/remove.cfg"]);
   const previous = release([before("config/remove.cfg")]);
