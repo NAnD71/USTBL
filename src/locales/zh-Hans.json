@@ -3433,7 +3433,7 @@
       "delete": "删除 {{count}}",
       "disable": "禁用 {{count}}",
       "enable": "启用 {{count}}",
-      "retire": "不再管理 {{count}}",
+      "retire": "休眠 {{count}}",
       "loaderChange": "模组加载器将从 {{from}} 切换到 {{to}}",
       "conflicts": "{{count}} 个文件和你的修改冲突，默认保留本地，可以逐个处理",
       "autoMerged": "自动合并 {{count}}",

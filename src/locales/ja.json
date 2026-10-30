@@ -3286,82 +3286,82 @@
     },
     "tree": {
       "legend": {
-        "include": "バージョンと一緒に公開",
-        "ignore": "このバージョンでは触れず、プレイヤーの内容を保持",
-        "delete": "プレイヤーの更新時に削除",
-        "cycle": "アイコンをクリックして切り替えます。フォルダーの状態は個別設定を除く配下のファイルに適用されます"
+        "include": "Publish this change",
+        "ignore": "Changes in this file/directory will not affect user updates",
+        "delete": "Delete this file/directory when players update",
+        "cycle": "Click the icon to cycle through three states; file settings override directory settings"
       },
-      "include": "含める",
+      "include": "Publish",
       "ignore": "無視",
       "delete": "削除",
       "remove": "除外",
       "mixed": "混在",
       "once": "初回インストールのみ",
-      "onceHint": "プレイヤーの初回インストール時のみ配置し、以後は更新せず、削除されても復元しません",
+      "onceHint": "Include this file only on first install; it is not updated or restored after deletion",
       "restore": "継承に戻す",
-      "restoreHint": "ここの設定を外し、上位フォルダーの設定に従います",
+      "restoreHint": "Remove the separate setting and follow the parent directory",
       "disabled": "無効",
-      "missing": "ディスクにありません",
-      "conflict": "有効ファイルと無効ファイルが両方あります",
+      "missing": "Deleted locally",
+      "conflict": "Enabled and disabled (.disabled) variants coexist",
       "toggle": "{{name}}：現在は「{{state}}」、クリックで「{{next}}」に切り替え",
       "hint": {
-        "include": "このバージョンと一緒にプレイヤーへ配布し、モッドパックが管理します：ない場合はインストール、ある場合はこのバージョンに更新します。プレイヤーが変更していれば統合し、統合できない場合は競合として表示します。",
-        "ignore": "このバージョンはこのファイルに触れません：プレイヤーが持っているものはそのまま、持っていないプレイヤーには配布されません。",
-        "delete": "プレイヤー側のこの場所のファイルは削除されます（フォルダーの場合は配下のファイル）。プレイヤーが自分で置いたものも含みます。削除前にバックアップされ、ロールバックできます。",
-        "remove": "このバージョンには含まれなくなります：変更していないプレイヤーでは削除、変更したプレイヤーには更新時に確認、モッドパックが管理していない場合は何もしません。",
-        "mixed": "配下のファイルの状態が異なります。"
+        "include": "This change will be merged with the player’s corresponding file during updates",
+        "ignore": "This change will not be published; players who have the file keep their local changes, and others will not receive it",
+        "delete": "The client will back up and delete the corresponding player-side file",
+        "remove": "Stop publishing this file. Unmodified player files are deleted; modified ones prompt during update.",
+        "mixed": "Files in this directory have different settings"
       },
       "clickTo": "クリックで「{{next}}」に切り替え",
       "change": {
         "modified": "変更",
         "added": "追加",
         "toggled": "有効状態",
-        "onceChanged": "初回のみの変更",
+        "onceChanged": "First-install only · changed",
         "deleted": "削除"
       },
       "changeHint": {
         "modified": "前のバージョンと内容が異なります。",
         "added": "前のバージョンにはこのファイルがありません。",
-        "toggled": "内容は前のバージョンと同じで、有効・無効の状態だけが異なります。",
-        "onceChanged": "前のバージョンでは「初回インストールのみ」でしたが、内容が異なります。そのままなら新規インストールのプレイヤーだけが新しい内容を受け取り、印を外すと導入済みのプレイヤーも更新時に受け取ります。",
-        "deleted": "前のバージョンにはあるファイルが、ディスク上にありません。"
+        "toggled": "The mod state changed to enabled or disabled",
+        "onceChanged": "Marked first-install only, but its contents changed. Keep the mark: only new players get the new contents; remove it: all players get them on update.",
+        "deleted": "Present in the previous version, now deleted locally."
       },
       "filter": {
         "title": "変更：",
         "onlyChanged": "変更のみ表示"
       },
-      "noPrevious": "比較できる前のバージョンがないため、すべて追加として扱います。",
+      "noPrevious": "First publication; all files are new.",
       "dirChanges": "{{count}} 件の変更",
       "localIgnored": "ローカルで無視",
-      "localIgnoredHint": "プレイヤー側の設定で、このパソコンでの表示と更新にだけ影響し、公開には影響しません。このファイルはここでの状態のまま配信されます。",
+      "localIgnoredHint": "A file/directory change ignored by the publisher in “View changes”. It is still handled according to these settings, including this publisher instance’s update behavior.",
       "diff": {
         "show": "差分を表示",
         "hide": "差分を閉じる",
-        "differs": "内容が異なります。前のバージョン {{previous}}、ローカル {{local}}。",
-        "formatOnly": "テキストは同じで、改行などの書式だけが異なります。前のバージョン {{previous}}、ローカル {{local}}。",
-        "unavailable": "前バージョンの内容を一時的に取得できません。"
+        "differs": "Non-text or too large; file size {{previous}}→{{local}}",
+        "formatOnly": "Only line endings or other formatting differ",
+        "unavailable": "Unable to get the previous version; try again later"
       },
-      "localDelete": "このパソコンからも削除",
-      "localDeleteHint": "公開後、このパソコンのファイルも削除します（先にバックアップ）。残すには無視に変更してください",
+      "localDelete": "Delete (including locally)",
+      "localDeleteHint": "After publishing, this file will be backed up and deleted both here and on the player side.",
       "localDeleteCount": "ローカルから {{count}} 個削除"
     },
     "skipped": "{{count}} 個のランチャーファイルを除外しました",
     "adoption": {
-      "keptOther": "このインスタンスは既に別のモッドパックまたはラインを追従しているため、ソース記録は変更しませんでした。",
-      "notIsolated": "このインスタンスはバージョン分離が無効のため、このモッドパックには関連付けませんでした。",
-      "localChanged": "このインスタンスは公開したバージョンと一致しません（例：削除に設定したファイルがディスクに残っています）。バージョンには関連付けませんでした。次回の更新でバージョンの内容に従って処理されます。",
-      "recordFailed": "バージョンは公開されましたが、インスタンスとの関連付けを記録できませんでした。次回の確認では通常どおり比較します。",
+      "keptOther": "This instance follows another non-publishing modpack and remains unchanged.",
+      "notIsolated": "Version isolation is disabled; this instance will not follow the published modpack.",
+      "localChanged": "The instance differs from the published version, so it is not linked to this version and will be handled by version contents on the next update.",
+      "recordFailed": "Published, but the instance association could not be recorded.",
       "localDeleted": "削除ルールによりローカルの {{count}} 個のファイルを削除しました。バックアップ: .ustbl-update/publish-deleted",
       "deleteFailed": "ローカルファイルの削除に失敗したため、このバージョンには追従しませんでした。バックアップは保持されています。"
     },
     "started": {
       "title": "アップロードを開始しました",
-      "description": "バックグラウンドで続行します。進行状況はダウンロードページで確認できます。"
+      "description": "Uploading in the background; see the downloads page for progress."
     },
     "summary": {
-      "title": "今回の配信と前のバージョンの差",
-      "isNew": "比較できる前のバージョンがないため、以下はすべて追加です。",
-      "same": "配信内容は前のバージョンと同じです（{{count}} ファイル）。",
+      "title": "Change summary",
+      "isNew": "First publication.",
+      "same": "Exactly the same as the previous version ({{count}} files).",
       "more": "…ほか {{count}} 件",
       "added": "追加 {{count}} ファイル",
       "modified": "変更 {{count}} ファイル",
@@ -3374,13 +3374,13 @@
       "onceOff": "初回のみを解除 {{count}} 件",
       "rulesAdded": "ルール追加 {{count}} 件",
       "rulesRemoved": "ルール削除 {{count}} 件",
-      "rulesChanged": "ルールの状態変更 {{count}} 件",
+      "rulesChanged": "{{count}} rule changes",
       "hint": {
-        "onceUpdated": "これらは「初回インストールのみ」のままで、新しい内容は新規インストールのプレイヤーだけが受け取ります。",
-        "removed": "前のバージョンにあり、今回は含まれません。変更していないプレイヤーでは削除され、変更したプレイヤーには更新時に確認します。",
-        "ignored": "前のバージョンにあり、今回は無視に変更されました。プレイヤーの手元はそのままで、持っていない人には配られません。",
-        "deleted": "前のバージョンにあり、今回は削除に変更されました。プレイヤーのファイルが削除されます。",
-        "toggled": "有効・無効の状態が前のバージョンと異なります。変更していないプレイヤーは追従し、自分で変更した状態は保持されます。",
+        "onceUpdated": "New players only receive the modified file",
+        "removed": "Unmodified player files are deleted; modified ones prompt.",
+        "ignored": "Existing player files stay unchanged; new installs do not receive them.",
+        "deleted": "The file is deleted on the player side.",
+        "toggled": "Players who did not change the state follow it; those who did keep theirs.",
         "rulesChanged": "無視と削除の間で状態が変わったルール。",
         "localDeleted": "公開後、このファイルもローカルから削除されます（先にバックアップ）；残す場合は無視に変更してください"
       },
@@ -3433,14 +3433,14 @@
       "delete": "削除 {{count}}",
       "disable": "無効化 {{count}}",
       "enable": "有効化 {{count}}",
-      "retire": "休眠化 {{count}}",
+      "retire": "Stop managing {{count}}",
       "loaderChange": "MODローダーを {{from}} から {{to}} に切り替えます",
-      "conflicts": "{{count}} 個のファイルがローカルの変更と競合しています。処理を選択してください（既定はローカルを保持）",
+      "conflicts": "{{count}} files conflict with your changes; keep local by default and handle them individually",
       "autoMerged": "自動マージ {{count}}",
       "showAll": "すべて表示（あと {{count}} 件）",
       "reinstallRequired": "{{latest}} はコンポーネント構成を変更するため、そのまま更新できません。モッドパックを再インストールしてください",
       "restored": "無視した変更を元に戻す {{count}}",
-      "restoredDescription": "無視した変更です。今回の更新でモッドパックの内容に戻します（戻す前にバックアップ）。新バージョンの同じパスのファイルに置き換えられる新規ファイルもここに含まれます。",
+      "restoredDescription": "Locally ignored changes sync with the new version, including same-named file replacements.",
       "restoredKind": {
         "add": "追加",
         "update": "更新",
@@ -3454,8 +3454,8 @@
       "modifiedLocallyChangedRemotely": "あなたが編集し、新バージョンでも変更されています",
       "modifiedLocallyRemovedRemotely": "あなたが編集し、新バージョンには含まれません",
       "deletedLocallyChangedRemotely": "あなたが削除し、新バージョンで変更されています",
-      "unmanagedFileInTheWay": "モッドパック外の同名ファイルがあります",
-      "remanage": "以前は管理対象外でしたが再管理され、内容は記録とも新バージョンとも異なります"
+      "unmanagedFileInTheWay": "The new version adds a same-named file and will replace this one",
+      "remanage": "The modpack manages it again, but your contents differ from the new version"
     },
     "choice": {
       "keepLocal": "ローカルを保持",
@@ -3507,21 +3507,21 @@
       "title": "ローカルの変更：{{name}}"
     },
     "loading": "ローカルファイルを比較しています…",
-    "empty": "前のバージョンから変更はありません",
+    "empty": "No local changes",
     "comparedTo": "比較対象：{{label}}",
-    "countingRule": "次回の更新に関わるローカルの変更だけを表示します：変更・削除・有効/無効の切り替え、および mods、resourcepacks、shaderpacks 内の新規ファイル。正規化後の内容だけを比較するため、改行や更新日時だけの違いは変更に含めません。",
-    "incomplete": "前のバージョンのルールを今は取得できないため、削除されるファイルが一覧から漏れている可能性があります。オンラインで開き直すと補完されます。",
+    "countingRule": "Lists local changes: modifications, deletions, enabled state, and new files in mods, resource packs, and shaders.",
+    "incomplete": "Unable to get the previous version’s change rules; try again",
     "class": {
       "modified": "変更",
       "deleted": "削除",
-      "toggled": "有効/無効の切り替え",
+      "toggled": "Enabled state",
       "added": "新規"
     },
     "disabled": "無効",
-    "toggledTag": "有効/無効も異なる",
+    "toggledTag": "Enabled/disabled state changed",
     "noDiff": {
-      "notText": "テキストファイルではないか大きすぎるため、内容の差分は表示しません",
-      "baseMissing": "インストール時の内容が保存されていないため、差分を表示できません",
+      "notText": "Non-text or too large; differences are not shown",
+      "baseMissing": "No copy from installation exists; differences cannot be shown",
       "bothVariants": "同名ファイルとその .disabled 変体が同時に存在します。どちらかを削除してください"
     },
     "button": {
@@ -3531,39 +3531,39 @@
       "spot": "ここを無視",
       "file": "ファイル全体を無視",
       "added": "無視",
-      "spotHint": "この箇所は表示されず、ローカルの変更にも数えません。次回の更新でランチャーに任せます：この箇所はモッドパックの内容に戻ります（戻す前にバックアップ）。それまでは自分の内容のままです。",
-      "fileHint": "このファイルは表示されず、ローカルの変更にも数えません。次回の更新でランチャーに任せます：ファイルはモッドパックの内容に戻り、削除したものは再インストールされ、有効/無効はモッドパックに従います（戻す前にバックアップ）。",
-      "addedHint": "このファイルは表示されず、ローカルの変更にも数えません。更新では触りません。新バージョンに同じパスのファイルがある場合だけ、確認なしで新しい方に置き換えます（置き換える前にバックアップ）。",
+      "spotHint": "No longer shown or counted. This spot will sync with the modpack on the next update.",
+      "fileHint": "No longer shown or counted; let the update system handle this file. On the next update it is synced to the modpack, including deleted files.",
+      "addedHint": "This local addition is no longer shown or counted. A same-named file in a new version replaces it directly.",
       "publishUnaffected": "公開には影響しません。"
     },
     "ignored": {
-      "title": "無視済み（{{count}} 件）",
-      "description": "無視した項目は上には表示されず、ローカルの変更にも数えません。次回の更新でランチャーが処理し、結果は各項目に書かれています。いつでも元に戻せます。",
+      "title": "Ignored ({{count}})",
+      "description": "Handled according to the latest modpack state on the next update (backed up); you can undo “ignore” at any time.",
       "wholeFile": "ファイル全体",
       "spots": "{{count}} 箇所",
       "lines": "{{from}}–{{to}} 行目",
       "undo": "元に戻す",
       "undoAll": "すべて元に戻す",
       "addedFile": "新規ファイル",
-      "undoHint": "再び表示して数えます。次回の更新でも自分の変更を通常どおり残します。",
+      "undoHint": "Show and count again; your changes are kept normally on update",
       "next": {
-        "whole": "次回の更新で：ファイルはモッドパックの内容に戻り、削除したものは再インストールされ、有効/無効はモッドパックに従います（戻す前にバックアップ）。",
-        "spots": "次回の更新で：これらの箇所はモッドパックの内容に戻り、そのあと新バージョンと通常どおりマージされます。無視していない変更は残ります（戻す前にバックアップ）。",
-        "added": "更新ではこのファイルに触りません。新バージョンに同じパスのファイルがある場合は、新しい方に置き換えます（置き換える前にバックアップ）。"
+        "whole": "Next update: restore the entire file to the modpack state",
+        "spots": "Next update: sync these {{count}} changes with the latest modpack; keep other changes",
+        "added": "Leave it unchanged; directly replace it if the new version has the same-named file"
       }
     },
     "publishHint": {
       "updateFirst": "新しいバージョンが公開されています。先に更新してください"
     },
     "next": {
-      "modified": "新バージョンがこのファイルを変更していなければ、自分の内容を残します。変更している場合、テキストは自動でマージし、同じ箇所を両方が変更したときは確認します。テキスト以外は直接確認します。新バージョンに含まれなくなった場合は、残すか削除するかを確認します。",
-      "deleted": "新バージョンが変更していなければ、削除のままです。変更している場合は確認します。",
+      "modified": "Both the new version and local copy changed this file; conflicts will prompt you",
+      "deleted": "Keep it deleted until a new version requires this file",
       "toggled": "自分の状態を残します。",
-      "added": "更新では触りません。新バージョンに同じパスのファイルがある場合は確認します。"
+      "added": "Unaffected by updates; prompt if a new version has the same-named file"
     },
     "willDelete": {
       "title": "次回の更新で削除（{{count}} 件）",
-      "description": "これらのファイルはモッドパックに含まれず、前のバージョンの削除ルールの対象です。新バージョンがそのルールを残している場合は削除されます（削除前にバックアップ）。"
+      "description": "These files are covered by the previous deletion rule. If the new version retains it, the files are backed up and deleted."
     }
   },
   "InstanceSyncPage": {

@@ -3286,30 +3286,30 @@
     },
     "tree": {
       "legend": {
-        "include": "发布此变动",
-        "ignore": "此文件/目录下的变动不会作用于用户更新",
-        "delete": "玩家更新时同步删除此文件/目录",
-        "cycle": "点击图标三态切换，文件级设置优先级高于目录级设置"
+        "include": "發布此變動",
+        "ignore": "此文件/目錄下的變動不會作用於用户更新",
+        "delete": "玩家更新時同步刪除此文件/目錄",
+        "cycle": "点击图標三态切換，文件級設置優先級高於目錄級設置"
       },
-      "include": "发布",
+      "include": "發布",
       "ignore": "忽略",
       "delete": "刪除",
       "remove": "移除",
       "mixed": "混合",
       "once": "僅首次安裝",
-      "onceHint": "只在首次安装时附带此文件，之后不会更新，如若删除也不会补齐",
+      "onceHint": "只在首次安装時附带此文件，之後不會更新，如若刪除也不會补齐",
       "restore": "恢復繼承",
-      "restoreHint": "去掉单独设置，跟随父目录",
+      "restoreHint": "去掉单独設置，跟隨父目錄",
       "disabled": "已停用",
-      "missing": "本地已删除",
-      "conflict": "启用和禁用（.disabled）并存",
+      "missing": "本地已刪除",
+      "conflict": "啟用和禁用（.disabled）并存",
       "toggle": "{{name}}：目前為「{{state}}」，點擊切換為「{{next}}」",
       "hint": {
-        "include": "此变动会在更新时尝试与玩家对应文件合并",
-        "ignore": "此变动不会被发布，有此文件的玩家相应本地改动会被保留，或不会收到此文件",
-        "delete": "此变动会导致玩家侧客户端进行对应文件的备份后删除",
-        "remove": "取消此文件的发布。玩家未修改此文件会直接删除，否则更新时询问。",
-        "mixed": "目录下文件设置有多种状态"
+        "include": "此變動會在更新時尝试與玩家對應文件合并",
+        "ignore": "此變動不會被發布，有此文件的玩家相應本地改動會被保留，或不會收到此文件",
+        "delete": "此變動會導致玩家侧客户端進行對應文件的备份後刪除",
+        "remove": "取消此文件的發布。玩家未修改此文件會直接刪除，否則更新時詢問。",
+        "mixed": "目錄下文件設置有多种狀态"
       },
       "clickTo": "點擊切換為「{{next}}」",
       "change": {
@@ -3322,46 +3322,46 @@
       "changeHint": {
         "modified": "內容和上一版不同。",
         "added": "上一版沒有這個檔案。",
-        "toggled": "模组状态更改为启用或禁用",
-        "onceChanged": "标了仅首次安装，内容变了。保持标记：只有新装的玩家拿到新内容；去掉标记：所有玩家更新时都会拿到。",
-        "deleted": "上一版存在，本地已删除。"
+        "toggled": "模组狀态更改為啟用或禁用",
+        "onceChanged": "標了仅首次安装，內容變了。保持標记：只有新装的玩家拿到新內容；去掉標记：所有玩家更新時都會拿到。",
+        "deleted": "上一版存在，本地已刪除。"
       },
       "filter": {
         "title": "改動：",
         "onlyChanged": "只看改動"
       },
-      "noPrevious": "首次发布，全部新增。",
+      "noPrevious": "首次發布，全部新增。",
       "dirChanges": "{{count}} 處改動",
       "localIgnored": "本機已忽略",
-      "localIgnoredHint": "发布者在“查看改动”里忽略的文件/目录改动。仍会按设置处理发布，处理的是发布者实例本身的更新行为。",
+      "localIgnoredHint": "發布者在“查看改動”裡忽略的文件/目錄改動。仍會按設置處理發布，處理的是發布者实例本身的更新行為。",
       "diff": {
         "show": "查看差異",
         "hide": "收起差異",
         "differs": "非文本或文件太大，文件大小 {{previous}}→{{local}}",
-        "formatOnly": "仅换行等格式不同",
-        "unavailable": "无法获取上一版，请稍后再试"
+        "formatOnly": "仅換行等格式不同",
+        "unavailable": "無法获取上一版，请稍後再试"
       },
-      "localDelete": "删除（连带本地）",
-      "localDeleteHint": "发布后本机连同玩家侧该文件都会被备份后删除。",
+      "localDelete": "刪除（連带本地）",
+      "localDeleteHint": "發布後本机連同玩家侧该文件都會被备份後刪除。",
       "localDeleteCount": "本機也會刪除 {{count}} 個檔案"
     },
     "skipped": "有 {{count}} 個啟動器檔案被排除",
     "adoption": {
-      "keptOther": "此实例跟随的其他非发布项目整合包，保持不变。",
-      "notIsolated": "实例未开启版本隔离，不会跟随所发布的整合包项目。",
-      "localChanged": "该实例与刚发布的版本不一致（例如标为删除的文件仍在磁盘上），未将其关联到此版本，下次更新会按版本内容处理。",
-      "recordFailed": "版本已发布，但未能记录该实例与此版本的关联。",
+      "keptOther": "此实例跟隨的其他非發布項目整合包，保持不變。",
+      "notIsolated": "实例未開啟版本隔离，不會跟隨所發布的整合包項目。",
+      "localChanged": "该实例與刚發布的版本不一致（例如標為刪除的文件仍在磁盘上），未将其關联到此版本，下次更新會按版本內容處理。",
+      "recordFailed": "版本已發布，但未能记錄该实例與此版本的關联。",
       "localDeleted": "按刪除規則刪除了本機 {{count}} 個檔案，備份在 .ustbl-update/publish-deleted",
       "deleteFailed": "刪除本機檔案失敗，未跟隨這一版；備份已保留。"
     },
     "started": {
       "title": "已開始上傳整合包",
-      "description": "在后台上传，进度见下载页。"
+      "description": "在後台上傳，進度见下载頁。"
     },
     "summary": {
-      "title": "变动汇总",
-      "isNew": "首次发布。",
-      "same": "和上一版完全相同（{{count}} 个文件）。",
+      "title": "變動汇总",
+      "isNew": "首次發布。",
+      "same": "和上一版完全相同（{{count}} 個文件）。",
       "more": "…還有 {{count}} 項",
       "added": "新增 {{count}} 個檔案",
       "modified": "修改 {{count}} 個檔案",
@@ -3374,13 +3374,13 @@
       "onceOff": "不再僅首次安裝 {{count}} 個",
       "rulesAdded": "新增規則 {{count}} 條",
       "rulesRemoved": "去掉規則 {{count}} 條",
-      "rulesChanged": "规则改动 {{count}} 条",
+      "rulesChanged": "規則改動 {{count}} 條",
       "hint": {
-        "onceUpdated": "新玩家只能拿到修改后的此文件",
-        "removed": "玩家没改过的删掉，改过的询问。",
-        "ignored": "玩家已有的不动，新装的拿不到。",
-        "deleted": "玩家那里会删掉。",
-        "toggled": "玩家没改过的跟着变，自己改过的保留。",
+        "onceUpdated": "新玩家只能拿到修改後的此文件",
+        "removed": "玩家沒改過的刪掉，改過的詢問。",
+        "ignored": "玩家已有的不動，新装的拿不到。",
+        "deleted": "玩家那裡會刪掉。",
+        "toggled": "玩家沒改過的跟着變，自己改過的保留。",
         "rulesChanged": "在忽略和刪除之間改了狀態的規則。",
         "localDeleted": "發布後本機的這些檔案也會刪除（先備份）；想自己保留請改為忽略"
       },
@@ -3433,14 +3433,14 @@
       "delete": "刪除 {{count}}",
       "disable": "停用 {{count}}",
       "enable": "啟用 {{count}}",
-      "retire": "不再管理 {{count}}",
+      "retire": "休眠 {{count}}",
       "loaderChange": "模組載入器將從 {{from}} 切換到 {{to}}",
-      "conflicts": "{{count}} 个文件和你的修改冲突，默认保留本地，可以逐个处理",
+      "conflicts": "{{count}} 個文件和你的修改冲突，默認保留本地，可以逐個處理",
       "autoMerged": "自動合併 {{count}}",
       "showAll": "顯示全部（還有 {{count}} 項）",
       "reinstallRequired": "{{latest}} 更改了整合包的組件鏈，無法就地更新，請重新安裝該整合包",
       "restored": "還原已忽略的改動 {{count}}",
-      "restoredDescription": "本地忽略过的改动，将与新版本内容同步。包含新版本同名文件替换。",
+      "restoredDescription": "本地忽略過的改動，将與新版本內容同步。包含新版本同名文件替換。",
       "restoredKind": {
         "add": "新增",
         "update": "更新",
@@ -3454,8 +3454,8 @@
       "modifiedLocallyChangedRemotely": "你修改過，新版本也改了它",
       "modifiedLocallyRemovedRemotely": "你修改過，新版本已不再包含它",
       "deletedLocallyChangedRemotely": "你刪除了它，新版本更新了它",
-      "unmanagedFileInTheWay": "新版本新增同名文件，会对此文件进行替换",
-      "remanage": "整合包重新管理它，但你的内容和新版本不一样"
+      "unmanagedFileInTheWay": "新版本新增同名文件，會對此文件進行替換",
+      "remanage": "整合包重新管理它，但你的內容和新版本不一样"
     },
     "choice": {
       "keepLocal": "保留本機",
@@ -3507,21 +3507,21 @@
       "title": "本機改動：{{name}}"
     },
     "loading": "正在比對本機檔案…",
-    "empty": "没有本地改动",
+    "empty": "沒有本地改動",
     "comparedTo": "比對的版本：{{label}}",
-    "countingRule": "列出本地改动：修改、删除、启用状态，以及 mods、资源包、光影里的新文件。",
-    "incomplete": "无法获取上一版改动规则，请重试",
+    "countingRule": "列出本地改動：修改、刪除、啟用狀态，以及 mods、资源包、光影裡的新文件。",
+    "incomplete": "無法获取上一版改動規則，请重试",
     "class": {
       "modified": "修改",
       "deleted": "刪除",
-      "toggled": "启用状态",
+      "toggled": "啟用狀态",
       "added": "新增"
     },
     "disabled": "已停用",
-    "toggledTag": "启用/禁用状态改变",
+    "toggledTag": "啟用/禁用狀态改變",
     "noDiff": {
-      "notText": "非文本或文件太大，不显示差异",
-      "baseMissing": "没有安装时的副本，无法显示差异",
+      "notText": "非文本或文件太大，不顯示差异",
+      "baseMissing": "沒有安装時的副本，無法顯示差异",
       "bothVariants": "同名檔案及其 .disabled 變體同時存在，請刪除其中一個"
     },
     "button": {
@@ -3531,39 +3531,39 @@
       "spot": "忽略此處",
       "file": "忽略整個檔案",
       "added": "忽略",
-      "spotHint": "不再显示、不计入改动。下次更新时此处会与整合包的内容同步。",
-      "fileHint": "不再显示、不计入改动，将此文件交由更新系统处理。下次更新时整个文件同步到整合包的样子，会装回已删除的文件。",
-      "addedHint": "此本地新增不再显示、不计入改动。更新时，新版本带了同名文件时将直接替换。",
+      "spotHint": "不再顯示、不计入改動。下次更新時此處會與整合包的內容同步。",
+      "fileHint": "不再顯示、不计入改動，将此文件交由更新系统處理。下次更新時整個文件同步到整合包的样子，會装回已刪除的文件。",
+      "addedHint": "此本地新增不再顯示、不计入改動。更新時，新版本带了同名文件時将直接替換。",
       "publishUnaffected": "不影響發布。"
     },
     "ignored": {
       "title": "已忽略（{{count}}）",
-      "description": "下次更新时按整合包最新状态的处理（会备份），随时可以撤销“忽略”。此处的忽略等同于将后续对应文件/目录的处理交给启动器。",
+      "description": "下次更新時按整合包最新狀态的處理（會备份），隨時可以撤销“忽略”。此處的忽略等同於将後續對應文件/目錄的處理交给啟動器。",
       "wholeFile": "整個檔案",
       "spots": "{{count}} 處",
       "lines": "第 {{from}}–{{to}} 行",
       "undo": "撤銷",
       "undoAll": "全部撤銷",
       "addedFile": "新增檔案",
-      "undoHint": "重新显示并计数，更新时照常保留你的改动",
+      "undoHint": "重新顯示并计數，更新時照常保留你的改動",
       "next": {
-        "whole": "下次更新：整个文件恢复成整合包的样子",
-        "spots": "下次更新：这 {{count}} 处改动会与最新版整合包同步，其他改动保留",
-        "added": "更新不动它；新版本带同名文件时直接替换"
+        "whole": "下次更新：整個文件恢復成整合包的样子",
+        "spots": "下次更新：這 {{count}} 處改動會與最新版整合包同步，其他改動保留",
+        "added": "更新不動它；新版本带同名文件時直接替換"
       }
     },
     "publishHint": {
       "updateFirst": "線上已有新版本，請先更新再發布"
     },
     "next": {
-      "modified": "新版本与本地在同一个文件发生了变动，如若冲突会提醒处理",
-      "deleted": "保持删除，直至新版本更新对此文件有要求",
+      "modified": "新版本與本地在同一個文件發生了變動，如若冲突會提醒處理",
+      "deleted": "保持刪除，直至新版本更新對此文件有要求",
       "toggled": "保留你的狀態。",
-      "added": "不受更新影响；新版本有同名文件时会询问"
+      "added": "不受更新影响；新版本有同名文件時會詢問"
     },
     "willDelete": {
       "title": "下次更新會刪除（{{count}}）",
-      "description": "这些文件在上一版本删除规则的范围内。如果新版本还有对应删除规则，更新将备份后删除对应文件。"
+      "description": "這些文件在上一版本刪除規則的范围內。如果新版本還有對應刪除規則，更新将备份後刪除對應文件。"
     }
   },
   "InstanceSyncPage": {

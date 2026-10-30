@@ -3333,7 +3333,7 @@
       "noPrevious": "First publication; all files are new.",
       "dirChanges": "{{count}} change(s)",
       "localIgnored": "Ignored locally",
-      "localIgnoredHint": "This is a player-side setting. It only affects what this computer shows and how it updates, not publishing: the file is still pushed in the state set here.",
+      "localIgnoredHint": "A file/directory change ignored by the publisher in “View changes”. It is still handled according to these settings, including this publisher instance’s update behavior.",
       "diff": {
         "show": "Show diff",
         "hide": "Hide diff",
