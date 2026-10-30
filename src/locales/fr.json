@@ -3376,17 +3376,11 @@
       "rulesRemoved": "{{count}} règle(s) retirée(s)",
       "rulesChanged": "{{count}} règle(s) ayant changé d'état",
       "hint": {
-        "added": "Absents de la version précédente ; celle-ci les apporte.",
-        "modified": "Le contenu diffère de la version précédente ; les joueurs le reçoivent à la mise à jour.",
         "onceUpdated": "Ces fichiers restent en première installation uniquement : seules les nouvelles installations reçoivent le nouveau contenu.",
         "removed": "Présents dans la version précédente, plus inclus : supprimés chez les joueurs qui ne les ont pas modifiés, avec une question à la mise à jour pour les autres.",
         "ignored": "Présents dans la version précédente, désormais ignorés : les joueurs gardent ce qu'ils ont, les autres ne les reçoivent pas.",
         "deleted": "Présents dans la version précédente, désormais à supprimer : les fichiers des joueurs sont supprimés.",
         "toggled": "L'état activé ou désactivé diffère de la version précédente : les joueurs qui ne l'ont pas changé suivent, les changements des joueurs sont conservés.",
-        "onceOn": "Désormais en première installation uniquement ; plus mis à jour ensuite.",
-        "onceOff": "Ne sont plus en première installation uniquement ; mis à jour avec la version.",
-        "rulesAdded": "Règles d'ignorance ou de suppression nouvelles dans cette version.",
-        "rulesRemoved": "Règles de la version précédente que celle-ci ne porte plus.",
         "rulesChanged": "Règles passées de ignorer à supprimer, ou l'inverse.",
         "localDeleted": "Ces fichiers seront aussi supprimés localement après la publication (sauvegarde préalable) ; passez-les en ignorer pour les conserver."
       },
@@ -3516,7 +3510,6 @@
     "empty": "Aucune modification depuis la version précédente",
     "comparedTo": "Comparé à : {{label}}",
     "countingRule": "Seules les modifications locales concernées par la prochaine mise à jour sont listées : fichiers modifiés, supprimés ou dont l'activation change, et nouveaux fichiers sous mods, resourcepacks et shaderpacks. Seul le contenu normalisé est comparé : une différence de fin de ligne ou d'horodatage n'est pas une modification.",
-    "filterHint": "Cliquez sur une catégorie pour n'afficher qu'elle ; cliquez à nouveau pour annuler.",
     "incomplete": "Les règles de la version précédente sont indisponibles pour le moment : des fichiers qui seront supprimés peuvent manquer dans cette liste. Rouvrez cette fenêtre en ligne pour la compléter.",
     "class": {
       "modified": "Modifié",
@@ -3570,8 +3563,7 @@
     },
     "willDelete": {
       "title": "Supprimés à la prochaine mise à jour ({{count}})",
-      "description": "Ces fichiers ne sont pas dans le modpack mais sont couverts par une règle de suppression de la version précédente : si la nouvelle version garde cette règle, ils sont supprimés (sauvegarde préalable).",
-      "note": "Si la nouvelle version garde cette règle de suppression, la mise à jour supprime ce fichier (sauvegarde préalable)."
+      "description": "Ces fichiers ne sont pas dans le modpack mais sont couverts par une règle de suppression de la version précédente : si la nouvelle version garde cette règle, ils sont supprimés (sauvegarde préalable)."
     }
   },
   "InstanceSyncPage": {

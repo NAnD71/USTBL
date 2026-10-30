@@ -339,7 +339,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
       <Text fontSize="xs" className="secondary-text" px={3} py={2}>
         {t(
           isRuleDeleted(entry)
-            ? "ModpackLocalChangesModal.willDelete.note"
+            ? "ModpackLocalChangesModal.willDelete.description"
             : `ModpackLocalChangesModal.next.${entry.class}`
         )}
         {entry.size !== undefined &&
@@ -448,7 +448,8 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
             ? "ModpackLocalChangesModal.ignored.next.added"
             : item.whole
               ? "ModpackLocalChangesModal.ignored.next.whole"
-              : "ModpackLocalChangesModal.ignored.next.spots"
+              : "ModpackLocalChangesModal.ignored.next.spots",
+          { count: item.regions.length }
         )}
       </Text>
       {!item.whole && item.regions.length > 0 && (
@@ -571,7 +572,6 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                       )}
                     </Wrap>
                     <Text fontSize="xs" className="secondary-text">
-                      {t("ModpackLocalChangesModal.filterHint")}{" "}
                       {t("ModpackLocalChangesModal.countingRule")}
                     </Text>
                   </>
