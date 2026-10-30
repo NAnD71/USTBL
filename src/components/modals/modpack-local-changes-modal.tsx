@@ -336,16 +336,14 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const renderBody = (entry: ModpackChangeDetailEntry) => (
     <>
       {/* What the next update does with this entry. */}
-      <Text fontSize="xs" className="secondary-text" px={3} py={2}>
-        {t(
-          isRuleDeleted(entry)
-            ? "ModpackLocalChangesModal.willDelete.description"
-            : `ModpackLocalChangesModal.next.${entry.class}`
-        )}
-        {entry.size !== undefined &&
-          entry.class === "added" &&
-          ` (${formatByteSize(entry.size)})`}
-      </Text>
+      {!isRuleDeleted(entry) && (
+        <Text fontSize="xs" className="secondary-text" px={3} py={2}>
+          {t(`ModpackLocalChangesModal.next.${entry.class}`)}
+          {entry.size !== undefined &&
+            entry.class === "added" &&
+            ` (${formatByteSize(entry.size)})`}
+        </Text>
+      )}
       {renderDiff(entry)}
     </>
   );
