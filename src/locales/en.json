@@ -3495,7 +3495,7 @@
       "MODPACK_UPDATE_BASELINE_MISSING": "This instance’s installation record is missing or damaged, so updates cannot be checked",
       "MODPACK_UPDATE_PACK_UNAVAILABLE": "The files of this version are temporarily unavailable on the platform. Try again later",
       "MODPACK_UPDATE_MERGE_INVALID": "The configuration format is invalid after merging your choices; try a different choice",
-      "MODPACK_UPDATE_LOCATE_LOCATING": "The modpack file could not be located; check your network and try again",
+      "MODPACK_UPDATE_LOCATE_LOCATING": "Could not locate the modpack files. Check your connection and try again.",
       "MODPACK_UPDATE_BUSY": "The modpack is updating; please wait until it finishes"
     },
     "rollback": {

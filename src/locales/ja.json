@@ -3495,7 +3495,7 @@
       "MODPACK_UPDATE_BASELINE_MISSING": "このインスタンスのインストール記録がないか壊れているため、更新を確認できません",
       "MODPACK_UPDATE_PACK_UNAVAILABLE": "このバージョンのファイルはプラットフォーム上で一時的に利用できません。しばらくしてからやり直してください",
       "MODPACK_UPDATE_MERGE_INVALID": "選択をマージした後の設定ファイル形式が無効です。別の選択を試してください",
-      "MODPACK_UPDATE_LOCATE_LOCATING": "モッドパックのファイルを見つけられません。ネットワークを確認して再試行してください",
+      "MODPACK_UPDATE_LOCATE_LOCATING": "Modパックのファイルを特定できませんでした。接続を確認して再試行してください。",
       "MODPACK_UPDATE_BUSY": "モッドパックを更新中です。完了までお待ちください"
     },
     "rollback": {

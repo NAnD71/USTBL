@@ -3495,7 +3495,7 @@
       "MODPACK_UPDATE_BASELINE_MISSING": "L’enregistrement d’installation de cette instance est absent ou endommagé ; impossible de vérifier les mises à jour",
       "MODPACK_UPDATE_PACK_UNAVAILABLE": "Les fichiers de cette version sont momentanément indisponibles sur la plateforme. Réessayez plus tard",
       "MODPACK_UPDATE_MERGE_INVALID": "Le format de configuration est invalide après la fusion de vos choix ; essayez un autre choix",
-      "MODPACK_UPDATE_LOCATE_LOCATING": "Impossible de localiser le fichier du modpack ; vérifiez votre réseau puis réessayez",
+      "MODPACK_UPDATE_LOCATE_LOCATING": "Impossible de localiser les fichiers du pack de mods. Vérifiez votre connexion et réessayez.",
       "MODPACK_UPDATE_BUSY": "Le modpack est en cours de mise à jour ; veuillez patienter"
     },
     "rollback": {
