@@ -696,7 +696,8 @@ test("every mark is by lowercased path and a missing previous file is deleted", 
   assert.deepEqual(countCategories(marks), {
     modified: 1,
     added: 1,
-    toggled: 0,
+    enable: 0,
+    disable: 0,
     onceChanged: 0,
     deleted: 1,
   });
