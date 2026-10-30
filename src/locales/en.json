@@ -3545,7 +3545,7 @@
       "undo": "Undo",
       "undoAll": "Undo all",
       "addedFile": "New file",
-      "undoHint": "Show and count again; your changes are kept normally on update",
+      "undoHint": "Show and count it again; your changes will be kept normally during updates",
       "next": {
         "whole": "Next update: restore the entire file to the modpack state",
         "spots": "Next update: sync these {{count}} changes with the latest modpack; keep other changes",

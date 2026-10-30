@@ -3545,7 +3545,7 @@
       "undo": "Annuler",
       "undoAll": "Tout annuler",
       "addedFile": "Nouveau fichier",
-      "undoHint": "Réafficher et compter ; vos modifications seront conservées lors de la mise à jour",
+      "undoHint": "Réafficher et compter à nouveau ; vos modifications seront conservées normalement lors des mises à jour",
       "next": {
         "whole": "Prochaine mise à jour : restaurer tout le fichier selon le modpack",
         "spots": "Prochaine mise à jour : synchroniser ces {{count}} modifications avec le dernier modpack, en conservant les autres",
