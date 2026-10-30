@@ -3285,7 +3285,6 @@
       "packing": "Packing new content"
     },
     "tree": {
-      "legend": "Include: ships with the version. Ignore: this version leaves it alone and players keep theirs. Delete: removed on players' update. Click the state button to cycle; a folder's state applies to every file under it except those set individually.",
       "include": "Include",
       "ignore": "Ignore",
       "delete": "Delete",
@@ -3299,6 +3298,12 @@
       "missing": "No longer on disk",
       "conflict": "Both the enabled and disabled file exist",
       "toggle": "{{name}}: currently {{state}}, click to change to {{next}}",
+      "legend": {
+        "include": "Ships with the version",
+        "ignore": "This version leaves it alone and players keep theirs",
+        "delete": "Removed on players' update",
+        "cycle": "Click the icon to cycle; a folder's state applies to every file under it except those set individually"
+      },
       "hint": {
         "include": "Ships with this version and is managed by the modpack: installed where missing, updated to this version where present. Player edits are merged, and a conflict is shown when they cannot be.",
         "ignore": "This version leaves the file alone: players keep what they have, and players without it do not get it.",

@@ -1,7 +1,11 @@
 import { Box, HStack, IconButton, VStack } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
-import { mergeExpandedIds } from "@/utils/tree-expansion";
+import {
+  ExpansionHistory,
+  applyExpansionRequest,
+  syncExpandedState,
+} from "@/utils/tree-expansion";
 
 export interface TreeNode<T = unknown> {
   id: string;
@@ -28,7 +32,7 @@ interface TreeViewProps<T = unknown> {
   spacing?: number;
   defaultExpandedDepth?: number;
   preserveExpanded?: boolean;
-  additionalExpandedIds?: Set<string>;
+  expandRequest?: { ids: Set<string> };
   leafPlaceholderWidth?: number;
 }
 
@@ -47,8 +51,6 @@ const collectExpandedIdsByDepth = <T,>(
   });
   return expandedIds;
 };
-const EMPTY_EXPANDED_IDS = new Set<string>();
-
 export const buildStructTreeNodes = (
   data: unknown,
   parentId = "root"
@@ -77,21 +79,34 @@ const TreeView = <T,>({
   spacing = 1,
   defaultExpandedDepth = 0,
   preserveExpanded = false,
-  additionalExpandedIds = EMPTY_EXPANDED_IDS,
+  expandRequest,
   leafPlaceholderWidth = 24,
 }: TreeViewProps<T>) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
-  const firstRender = useRef(true);
+  const expansionHistory = useRef<ExpansionHistory>(new Map());
+  const lastExpandRequest = useRef<TreeViewProps<T>["expandRequest"]>();
 
   useEffect(() => {
     const defaults = collectExpandedIdsByDepth(nodes, defaultExpandedDepth);
     setExpandedIds((current) => {
-      if (!preserveExpanded || firstRender.current)
-        return new Set([...defaults, ...additionalExpandedIds]);
-      return mergeExpandedIds(current, nodes, defaults, additionalExpandedIds);
+      if (!preserveExpanded) return new Set([...defaults]);
+      return syncExpandedState(
+        expansionHistory.current,
+        current,
+        nodes,
+        defaults
+      );
     });
-    firstRender.current = false;
-  }, [nodes, defaultExpandedDepth, preserveExpanded, additionalExpandedIds]);
+    if (
+      preserveExpanded &&
+      expandRequest &&
+      lastExpandRequest.current !== expandRequest
+    ) {
+      applyExpansionRequest(expansionHistory.current, expandRequest.ids);
+      lastExpandRequest.current = expandRequest;
+      setExpandedIds((current) => new Set([...current, ...expandRequest.ids]));
+    }
+  }, [nodes, defaultExpandedDepth, preserveExpanded, expandRequest]);
 
   const toggleExpanded = useCallback((id: string) => {
     setExpandedIds((prev) => {
@@ -100,6 +115,9 @@ const TreeView = <T,>({
         next.delete(id);
       } else {
         next.add(id);
+      }
+      if (expansionHistory.current.has(id)) {
+        expansionHistory.current.set(id, next.has(id));
       }
       return next;
     });

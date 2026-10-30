@@ -1,5 +1,6 @@
 import { Box, HStack, Text } from "@chakra-ui/react";
 import { KeyboardEvent } from "react";
+import { useLauncherConfig } from "@/contexts/config";
 
 interface BlockToggleProps {
   checked: boolean;
@@ -15,6 +16,8 @@ const BlockToggle: React.FC<BlockToggleProps> = ({
   children,
   "aria-label": ariaLabel,
 }) => {
+  const { config } = useLauncherConfig();
+  const primaryColor = config.appearance.theme.primaryColor;
   const handleKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
     if (event.key === " " || event.key === "Enter") {
       event.preventDefault();
@@ -35,9 +38,9 @@ const BlockToggle: React.FC<BlockToggleProps> = ({
       px={2}
       py={1}
       borderWidth="1px"
-      borderColor={checked ? "blue.400" : "gray.300"}
+      borderColor={checked ? `${primaryColor}.400` : "gray.300"}
       borderRadius="sm"
-      color={checked ? "blue.600" : undefined}
+      color={checked ? `${primaryColor}.600` : undefined}
       whiteSpace="nowrap"
       flexShrink={0}
       cursor="pointer"
@@ -49,8 +52,8 @@ const BlockToggle: React.FC<BlockToggleProps> = ({
         h="12px"
         flexShrink={0}
         borderWidth="1px"
-        borderColor={checked ? "blue.500" : "gray.400"}
-        bg={checked ? "blue.500" : "transparent"}
+        borderColor={checked ? `${primaryColor}.500` : "gray.400"}
+        bg={checked ? `${primaryColor}.500` : "transparent"}
       />
     </HStack>
   );

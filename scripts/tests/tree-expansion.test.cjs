@@ -21,35 +21,58 @@ function load(file) {
   return module.exports;
 }
 
-const { mergeExpandedIds } = load("src/utils/tree-expansion.ts");
+const { applyExpansionRequest, syncExpandedState } = load(
+  "src/utils/tree-expansion.ts"
+);
 
-const tree = (ids) => ids.map((id) => ({ id, data: null, children: [] }));
+const tree = (ids) =>
+  ids.map((id) => ({
+    id,
+    data: null,
+    children: [{ id: `${id}/file`, data: null }],
+  }));
 
-test("existing expanded nodes remain expanded when nodes change", () => {
-  const result = mergeExpandedIds(new Set(["a"]), tree(["a", "b"]), new Set());
-  assert.deepEqual([...result], ["a"]);
-});
-
-test("new nodes receive the default expansion", () => {
-  const result = mergeExpandedIds(
-    new Set(["a"]),
-    tree(["a", "b"]),
-    new Set(["b"])
-  );
-  assert.deepEqual([...result].sort(), ["a", "b"]);
-});
-
-test("additional expansion only adds ids", () => {
-  const result = mergeExpandedIds(
-    new Set(["a"]),
-    tree(["a", "b"]),
+test("a user-collapsed default branch stays collapsed when nodes change", () => {
+  const history = new Map();
+  const nodes = tree(["a"]);
+  syncExpandedState(history, new Set(), nodes, new Set(["a"]));
+  history.set("a", false);
+  const result = syncExpandedState(
+    history,
     new Set(),
-    new Set(["b"])
+    tree(["a", "b"]),
+    new Set(["a", "b"])
   );
-  assert.deepEqual([...result].sort(), ["a", "b"]);
+  assert.deepEqual([...result], ["b"]);
 });
 
-test("an id that disappeared is treated as new when it returns", () => {
-  const result = mergeExpandedIds(new Set(["a"]), tree(["a"]), new Set(["a"]));
+test("a collapsed branch stays collapsed during filtered state changes", () => {
+  const history = new Map([["a", false]]);
+  const result = syncExpandedState(history, new Set(), tree(["a"]), new Set());
+  assert.deepEqual([...result], []);
+});
+
+test("a filtered-out branch keeps its expansion when it returns", () => {
+  const history = new Map([["a", true]]);
+  const result = syncExpandedState(history, new Set(), tree(["a"]), new Set());
   assert.deepEqual([...result], ["a"]);
+});
+
+test("a branch that never appeared uses the default depth", () => {
+  const result = syncExpandedState(
+    new Map(),
+    new Set(),
+    tree(["a"]),
+    new Set(["a"])
+  );
+  assert.deepEqual([...result], ["a"]);
+});
+
+test("the same expansion request is applied once by request identity", () => {
+  const history = new Map();
+  const request = new Set(["a"]);
+  applyExpansionRequest(history, request);
+  history.set("a", false);
+  applyExpansionRequest(history, request);
+  assert.equal(history.get("a"), true);
 });

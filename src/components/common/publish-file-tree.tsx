@@ -55,6 +55,7 @@ import {
   toggleCategory,
   viewOf,
 } from "@/utils/modpack-publish-tree";
+import { branchIds } from "@/utils/tree-expansion";
 
 const STATE_STYLE: Record<
   ShownState,
@@ -126,19 +127,14 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
       }));
     return convert(filterNodes(nodes, marks, filter));
   }, [nodes, marks, filter]);
-  const expandedFilterIds = useMemo(() => {
-    if (!filtered) return new Set<string>();
-    const ids = new Set<string>();
-    const visit = (list: TreeNode<PublishNode>[]) =>
-      list.forEach((node) => {
-        if (node.children?.length) {
-          ids.add(node.id);
-          visit(node.children);
-        }
-      });
-    visit(tree);
-    return ids;
-  }, [filtered, tree]);
+  // The request must change only when the filter changes, not when draft state rebuilds the tree.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const expandRequest = useMemo(
+    () => (filtered ? { ids: branchIds(tree) } : undefined),
+    // The request must change only when the filter changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [filter]
+  );
 
   const label = (state: ShownState) => t(`PublishModpackModal.tree.${state}`);
 
@@ -202,9 +198,13 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
             <Box color={`${STATE_STYLE[state].colorScheme}.500`}>
               {STATE_STYLE[state].icon}
             </Box>
-            <Text>{t(`PublishModpackModal.tree.hint.${state}`)}</Text>
+            <Text fontWeight="medium">
+              {t(`PublishModpackModal.tree.${state}`)}:{" "}
+              {t(`PublishModpackModal.tree.legend.${state}`)}
+            </Text>
           </HStack>
         ))}
+        <Text w="100%">{t("PublishModpackModal.tree.legend.cycle")}</Text>
       </HStack>
       <Box maxH="xs" overflowY="auto">
         {isLoading ? (
@@ -214,9 +214,9 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
         ) : tree.length > 0 ? (
           <TreeView
             nodes={tree}
-            defaultExpandedDepth={filtered ? Number.MAX_SAFE_INTEGER : 0}
+            defaultExpandedDepth={0}
             preserveExpanded
-            additionalExpandedIds={expandedFilterIds}
+            expandRequest={expandRequest}
             renderNode={({ node: { data } }) => (
               <PublishTreeRow
                 instanceId={instanceId}
