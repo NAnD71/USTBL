@@ -2854,7 +2854,7 @@
         "error": {
           "title": "Failed to unfollow",
           "description": {
-            "MODPACK_UPDATE_UNLINK_PENDING": "The previous update did not finish; restore or roll it back before unlinking"
+            "MODPACK_UPDATE_UNLINK_PENDING": "The previous update did not finish; restore or undo it before unlinking"
           }
         }
       },
@@ -3415,9 +3415,9 @@
       "applying": "Updating; do not close the launcher…",
       "available": "New version available: {{latest}}",
       "upToDate": "Already up to date",
-      "paused": "Following this modpack is paused",
+      "paused": "Updates paused",
       "notFollowing": "This instance does not follow a modpack",
-      "needsRepair": "This instance cannot be compared for updates until it is repaired",
+      "needsRepair": "This instance needs repair before updates can be checked",
       "unknown": "Unable to get updates for now; try again later",
       "waitingLoader": "Wait for the mod loader to finish installing before checking for updates",
       "localChanges": "Local changes: {{count}}"
@@ -3438,7 +3438,7 @@
       "conflicts": "{{count}} files conflict with your changes; keep local by default and handle them individually",
       "autoMerged": "{{count}} auto-merged",
       "showAll": "Show all ({{count}} more)",
-      "reinstallRequired": "{{latest}} changed the instance component chain and cannot be updated directly; reinstall it",
+      "reinstallRequired": "This instance cannot be updated directly because {{latest}} changed its component chain; reinstall it",
       "restored": "Overwrite ignored changes {{count}}",
       "restoredDescription": "Locally ignored changes sync with the new version, including same-named file replacements.",
       "restoredKind": {
@@ -3447,15 +3447,15 @@
         "delete": "Delete",
         "disable": "Disable",
         "enable": "Enable",
-        "retire": "Unmanage"
+        "retire": "Dormant"
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "Changes to this file conflict between local and new-version changes",
-      "modifiedLocallyRemovedRemotely": "You modified this file, but the new version no longer includes it",
-      "deletedLocallyChangedRemotely": "You deleted this file, but the new version has a modified copy",
+      "modifiedLocallyChangedRemotely": "Changes to this file conflict between the local and new version",
+      "modifiedLocallyRemovedRemotely": "Modified locally, but this file is no longer included in the new version",
+      "deletedLocallyChangedRemotely": "Deleted locally, but the new version has a modified copy",
       "unmanagedFileInTheWay": "The new version adds a same-named file and will replace this one",
-      "remanage": "The modpack manages it again, but your local contents differ from the new version"
+      "remanage": "The modpack manages it again, but local contents differ from the new version"
     },
     "choice": {
       "keepLocal": "Keep local",
@@ -3486,7 +3486,7 @@
       "success": "Unfollowed"
     },
     "reason": {
-      "MODPACK_UPDATE_UNLINK_PENDING": "The previous update did not finish; restore or roll it back before unlinking",
+      "MODPACK_UPDATE_UNLINK_PENDING": "The previous update did not finish; restore or undo it before unlinking",
       "MODPACK_UPDATE_BOTH_VARIANTS": "Enabled and disabled (.disabled) variants exist at the same time; delete one before updating",
       "MODPACK_UPDATE_LINE_GONE": "This modpack version line is no longer available on the platform",
       "MODPACK_UPDATE_PREPARE_CANCELLED": "The update preview was cancelled",
@@ -3500,7 +3500,7 @@
     },
     "rollback": {
       "hint": "You can undo the last update and restore files and the loader to their previous state.",
-      "confirm": "Changes you made to these files after the update will be overwritten; you can undo back to before the update."
+      "confirm": "Changes you made to these files after the update will be overwritten; you can undo the update to restore them"
     }
   },
   "ModpackLocalChangesModal": {
@@ -3550,7 +3550,7 @@
       "next": {
         "whole": "Next update: restore the entire file to the modpack state",
         "spots": "Next update: sync these {{count}} changes with the latest modpack; keep other changes",
-        "added": "Unaffected by updates; directly replace it if the new version has a same-named file"
+        "added": "Updates do not affect it; directly replace it when the new version has a same-named file"
       }
     },
     "publishHint": {

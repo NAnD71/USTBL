@@ -3415,9 +3415,9 @@
       "applying": "Mise à jour en cours ; ne fermez pas le lanceur…",
       "available": "Nouvelle version disponible : {{latest}}",
       "upToDate": "Déjà à jour",
-      "paused": "Le suivi de ce pack est en pause",
-      "notFollowing": "Cette instance ne suit aucun pack",
-      "needsRepair": "Cette instance ne peut pas être comparée tant qu'elle n'est pas réparée",
+      "paused": "Mises à jour en pause",
+      "notFollowing": "Cette instance ne suit aucun modpack",
+      "needsRepair": "Cette instance doit être réparée avant de vérifier les mises à jour",
       "unknown": "Impossible d’obtenir les mises à jour pour le moment ; réessayez plus tard",
       "waitingLoader": "Attendez la fin de l’installation du chargeur de mods avant de vérifier les mises à jour",
       "localChanges": "Modifications locales : {{count}}"
@@ -3438,7 +3438,7 @@
       "conflicts": "{{count}} fichiers sont en conflit avec vos modifications ; conserver le local par défaut et les traiter individuellement",
       "autoMerged": "{{count}} fusionnés automatiquement",
       "showAll": "Tout afficher (encore {{count}})",
-      "reinstallRequired": "{{latest}} a modifié la chaîne de composants de l’instance et ne peut pas être mis à jour directement ; réinstallez-la",
+      "reinstallRequired": "Cette instance ne peut pas être mise à jour directement, car {{latest}} a modifié sa chaîne de composants ; réinstallez-la",
       "restored": "Remplacer les modifications ignorées {{count}}",
       "restoredDescription": "Les modifications ignorées localement seront synchronisées avec la nouvelle version, y compris le remplacement de fichiers du même nom.",
       "restoredKind": {
@@ -3447,15 +3447,15 @@
         "delete": "Suppression",
         "disable": "Désactivation",
         "enable": "Activation",
-        "retire": "Fin de gestion"
+        "retire": "En sommeil"
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "Les modifications locales et celles de la nouvelle version entrent en conflit pour ce fichier",
-      "modifiedLocallyRemovedRemotely": "Vous avez modifié ce fichier, mais la nouvelle version ne l’inclut plus",
-      "deletedLocallyChangedRemotely": "Vous avez supprimé ce fichier, mais la nouvelle version en contient une copie modifiée",
+      "modifiedLocallyChangedRemotely": "Les modifications locales et celles de la nouvelle version de ce fichier sont en conflit",
+      "modifiedLocallyRemovedRemotely": "Modifié localement, mais ce fichier n’est plus inclus dans la nouvelle version",
+      "deletedLocallyChangedRemotely": "Supprimé localement, mais la nouvelle version en contient une copie modifiée",
       "unmanagedFileInTheWay": "La nouvelle version ajoute un fichier du même nom et remplacera celui-ci",
-      "remanage": "Le modpack le gère de nouveau, mais votre contenu local diffère de la nouvelle version"
+      "remanage": "Le modpack le gère de nouveau, mais le contenu local diffère de la nouvelle version"
     },
     "choice": {
       "keepLocal": "Garder le local",
@@ -3550,7 +3550,7 @@
       "next": {
         "whole": "Prochaine mise à jour : restaurer tout le fichier selon le modpack",
         "spots": "Prochaine mise à jour : synchroniser ces {{count}} modifications avec le dernier modpack, en conservant les autres",
-        "added": "Sans effet sur les mises à jour ; le remplacer directement si la nouvelle version contient un fichier du même nom"
+        "added": "Les mises à jour ne le modifient pas ; remplacez-le directement si la nouvelle version contient un fichier du même nom"
       }
     },
     "publishHint": {

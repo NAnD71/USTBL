@@ -2854,7 +2854,7 @@
         "error": {
           "title": "追従の解除に失敗しました",
           "description": {
-            "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。追従解除の前に復元またはロールバックしてください"
+            "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。追従解除の前に復元または取り消しを行ってください"
           }
         }
       },
@@ -3415,10 +3415,10 @@
       "applying": "更新中です。ランチャーを閉じないでください…",
       "available": "新しいバージョンがあります：{{latest}}",
       "upToDate": "最新です",
-      "paused": "このモッドパックの追従は一時停止中です",
-      "notFollowing": "このインスタンスは追従するモッドパックに関連付けられていません",
-      "needsRepair": "このインスタンスは修復するまで更新を比較できません",
-      "unknown": "現在更新を取得できません。もう一度お試しください",
+      "paused": "更新を一時停止中",
+      "notFollowing": "このインスタンスはモッドパックに追従していません",
+      "needsRepair": "更新を確認するにはインスタンスを修復してください",
+      "unknown": "現在更新を取得できません。しばらくしてからもう一度お試しください",
       "waitingLoader": "更新を確認する前に、modローダーのインストール完了をお待ちください",
       "localChanges": "ローカルの変更：{{count}} 件"
     },
@@ -3438,7 +3438,7 @@
       "conflicts": "{{count}}個のファイルが変更と競合しています。初期設定はローカルを保持し、個別に処理できます",
       "autoMerged": "自動マージ {{count}}",
       "showAll": "すべて表示（あと {{count}} 件）",
-      "reinstallRequired": "{{latest}}でインスタンスのコンポーネント構成が変わったため直接更新できません。再インストールしてください",
+      "reinstallRequired": "{{latest}}でコンポーネント構成が変わったため、このインスタンスは直接更新できません。再インストールしてください",
       "restored": "無視した変更を上書き {{count}}",
       "restoredDescription": "ローカルで無視した変更を新バージョンと同期します。同名ファイルの置き換えも含みます。",
       "restoredKind": {
@@ -3447,13 +3447,13 @@
         "delete": "削除",
         "disable": "無効化",
         "enable": "有効化",
-        "retire": "管理を外す"
+        "retire": "休眠"
       }
     },
     "conflictKind": {
-      "modifiedLocallyChangedRemotely": "このファイルでローカルと新バージョンの変更が競合しています",
-      "modifiedLocallyRemovedRemotely": "このファイルはローカルで変更されていますが、新バージョンには含まれません",
-      "deletedLocallyChangedRemotely": "このファイルはローカルで削除されていますが、新バージョンに変更版があります",
+      "modifiedLocallyChangedRemotely": "このファイルのローカルと新バージョンの変更が競合しています",
+      "modifiedLocallyRemovedRemotely": "ローカルで変更されていますが、新バージョンにはこのファイルが含まれません",
+      "deletedLocallyChangedRemotely": "ローカルで削除されていますが、新バージョンに変更版があります",
       "unmanagedFileInTheWay": "新バージョンに同名ファイルが追加され、このファイルを置き換えます",
       "remanage": "モッドパックが再び管理しますが、ローカルの内容が新バージョンと異なります"
     },
@@ -3486,7 +3486,7 @@
       "success": "追従を解除しました"
     },
     "reason": {
-      "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。追従解除の前に復元またはロールバックしてください",
+      "MODPACK_UPDATE_UNLINK_PENDING": "前回の更新が完了していません。追従解除の前に復元または取り消しを行ってください",
       "MODPACK_UPDATE_BOTH_VARIANTS": "有効版と無効版（.disabled）が同時に存在します。更新前に一つ削除してください",
       "MODPACK_UPDATE_LINE_GONE": "このモッドパックのバージョン系列はプラットフォームに存在しません",
       "MODPACK_UPDATE_PREPARE_CANCELLED": "更新プレビューはキャンセルされました",
@@ -3550,7 +3550,7 @@
       "next": {
         "whole": "次回更新：ファイル全体をモッドパックの状態に戻します",
         "spots": "次回更新：この{{count}}か所を最新版のモッドパックと同期し、その他の変更は保持します",
-        "added": "更新の影響を受けません。新バージョンに同名ファイルがあれば直接置き換えます"
+        "added": "更新の影響はありません。新バージョンに同名ファイルがあれば直接置き換えます"
       }
     },
     "publishHint": {
