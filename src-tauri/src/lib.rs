@@ -30,7 +30,7 @@ use std::sync::{LazyLock, Mutex, OnceLock};
 use storage::Storage;
 use tasks::monitor::TaskMonitor;
 use utils::portable::is_portable;
-use utils::web::build_ustbl_client;
+use utils::web::{build_no_redirect_client, build_ustbl_client};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 use tauri::path::BaseDirectory;
@@ -337,6 +337,7 @@ pub async fn run() -> i32 {
 
       let client = build_ustbl_client(app.handle(), true);
       app.manage(client);
+      app.manage(build_no_redirect_client(app.handle()));
 
       let launching_queue = Vec::<LaunchingState>::new();
       app.manage(Mutex::new(launching_queue));

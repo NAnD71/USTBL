@@ -36,13 +36,35 @@ use url::Url;
 /// let client = build_ustbl_client(&app, true);
 /// ```
 pub fn build_ustbl_client(app: &AppHandle, use_proxy: bool) -> Client {
-  build_client(app, use_proxy, Some(Duration::from_secs(30)))
+  build_client(app, use_proxy, Some(Duration::from_secs(30)), true)
 }
 
-fn build_client(app: &AppHandle, use_proxy: bool, read_timeout: Option<Duration>) -> Client {
+/// Same as [`build_ustbl_client`] (proxy included), but redirects are returned
+/// to the caller instead of followed. The downloader uses it to see the mirror's
+/// redirect and release the mirror slot before the transfer starts.
+pub struct NoRedirectClient(pub Client);
+
+pub fn build_no_redirect_client(app: &AppHandle) -> NoRedirectClient {
+  NoRedirectClient(build_client(
+    app,
+    true,
+    Some(Duration::from_secs(30)),
+    false,
+  ))
+}
+
+fn build_client(
+  app: &AppHandle,
+  use_proxy: bool,
+  read_timeout: Option<Duration>,
+  follow_redirects: bool,
+) -> Client {
   let mut builder = ClientBuilder::new()
     .connect_timeout(Duration::from_secs(10))
     .tcp_keepalive(Duration::from_secs(10));
+  if !follow_redirects {
+    builder = builder.redirect(tauri_plugin_http::reqwest::redirect::Policy::none());
+  }
   if let Some(timeout) = read_timeout {
     builder = builder.read_timeout(timeout);
   }
