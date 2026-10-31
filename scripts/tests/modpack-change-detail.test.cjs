@@ -131,6 +131,17 @@ test("toggle entries are counted and filtered by their resulting state", () => {
   assert.deepEqual(filterEntries(entries, "disable").map((e) => e.path), ["mods/off.jar"]);
 });
 
+test("modified and toggled entries stay in modified only", () => {
+  const entries = [
+    entry("mods/both.jar", "modified", { toggled: true, disabled: true }),
+  ];
+  assert.equal(countByClass(entries).modified, 1);
+  assert.equal(countByClass(entries).enable, 0);
+  assert.equal(countByClass(entries).disable, 0);
+  assert.deepEqual(filterEntries(entries, "modified"), entries);
+  assert.deepEqual(filterEntries(entries, "disable"), []);
+});
+
 test("buildChangeTree groups by directory and counts the entries below each", () => {
   const tree = buildChangeTree(splitByGroup(sample).main);
   assert.deepEqual(tree.map((n) => n.name), ["config", "mods"]);

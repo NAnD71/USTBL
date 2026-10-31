@@ -701,7 +701,7 @@ export const summarizePublish = (
     if (differs.has(key)) {
       (file.once ? summary.onceUpdated : summary.modified).push(file.path);
     }
-    if (file.disabled !== old.disabled && !differs.has(key))
+    if (file.disabled !== old.disabled)
       (file.disabled ? summary.disable : summary.enable).push(file.path);
     if (file.once && !old.once) summary.onceOn.push(file.path);
     if (!file.once && old.once) summary.onceOff.push(file.path);

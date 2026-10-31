@@ -982,7 +982,7 @@ test("a file whose enabled state differs is toggled even when the content does t
     change("mods/both.jar", "modified"),
   ]);
   assert.deepEqual(summary.enable.sort(), ["mods/on.jar"]);
-  assert.deepEqual(summary.disable.sort(), ["mods/off.jar"]);
+  assert.deepEqual(summary.disable.sort(), ["mods/both.jar", "mods/off.jar"]);
   assert.deepEqual(summary.modified, ["mods/both.jar"]);
 });
 
