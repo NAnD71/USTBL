@@ -120,7 +120,6 @@ test("filterEntries keeps one class of the body, or everything without a filter"
   );
   assert.equal(filterEntries(main, null), main);
 });
-
 test("toggle entries are counted and filtered by their resulting state", () => {
   const entries = [
     entry("mods/on.jar", "toggled", { toggled: true, disabled: false }),
@@ -131,6 +130,7 @@ test("toggle entries are counted and filtered by their resulting state", () => {
   assert.deepEqual(filterEntries(entries, "enable").map((e) => e.path), ["mods/on.jar"]);
   assert.deepEqual(filterEntries(entries, "disable").map((e) => e.path), ["mods/off.jar"]);
 });
+
 test("buildChangeTree groups by directory and counts the entries below each", () => {
   const tree = buildChangeTree(splitByGroup(sample).main);
   assert.deepEqual(tree.map((n) => n.name), ["config", "mods"]);

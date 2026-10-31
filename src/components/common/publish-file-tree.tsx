@@ -110,8 +110,15 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
   const nodes = useMemo(() => buildPublishNodes(context), [context]);
   const view = useMemo(() => viewOf(context, draft), [context, draft]);
   const marks = useMemo(
-    () => categorizeChanges(changes, context.ghosts, previous, view, context),
-    [changes, context.ghosts, previous, view, context]
+    () =>
+      categorizeChanges(
+        changes,
+        context.ghosts,
+        previous,
+        view,
+        new Map(context.files.map((file) => [keyOf(file.path), file.disabled]))
+      ),
+    [changes, context, previous, view]
   );
   const counts = useMemo(() => countCategories(marks), [marks]);
   const dirCounts = useMemo(() => dirChangeCounts(marks), [marks]);

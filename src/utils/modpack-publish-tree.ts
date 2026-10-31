@@ -481,7 +481,7 @@ export const categorizeChanges = (
   ghosts: GhostEntry[],
   previous: PreviousRelease | null,
   view: PublishView,
-  context?: PublishContext
+  disabledByPath: ReadonlyMap<string, boolean>
 ): Map<string, ChangeCategory> => {
   const marks = new Map<string, ChangeCategory>();
   for (const change of changes) {
@@ -491,13 +491,9 @@ export const categorizeChanges = (
     marks.set(
       keyOf(change.path),
       change.kind === "toggled"
-        ? context
-          ? context.files.find(
-              (file) => keyOf(file.path) === keyOf(change.path)
-            )?.disabled === false
-            ? "enable"
-            : "disable"
-          : "enable"
+        ? disabledByPath.get(keyOf(change.path)) === false
+          ? "enable"
+          : "disable"
         : change.kind
     );
   }
@@ -705,7 +701,7 @@ export const summarizePublish = (
     if (differs.has(key)) {
       (file.once ? summary.onceUpdated : summary.modified).push(file.path);
     }
-    if (file.disabled !== old.disabled)
+    if (file.disabled !== old.disabled && !differs.has(key))
       (file.disabled ? summary.disable : summary.enable).push(file.path);
     if (file.once && !old.once) summary.onceOn.push(file.path);
     if (!file.once && old.once) summary.onceOff.push(file.path);

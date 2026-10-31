@@ -33,7 +33,6 @@ import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { useToast } from "@/contexts/toast";
 import {
-  ModpackChangeClass,
   ModpackChangeDetail,
   ModpackChangeDetailEntry,
   ModpackIgnoredItem,
@@ -44,11 +43,11 @@ import { AccountService } from "@/services/account";
 import { ModpackUpdateService } from "@/services/modpack-update";
 import {
   CLASS_ORDER,
+  ChangeFilter,
   ChangeTreeNode,
   OPEN_LIMIT,
   buildChangeTree,
   countByClass,
-  displayClass,
   expandedDepth,
   filterEntries,
   isRuleDeleted,
@@ -62,10 +61,9 @@ interface ModpackLocalChangesModalProps extends Omit<ModalProps, "children"> {
   instanceName: string;
 }
 
-const CLASS_COLORS: Record<ModpackChangeClass, string> = {
+const CLASS_COLORS: Record<ChangeFilter, string> = {
   modified: "orange",
   deleted: "red",
-  toggled: "gray",
   enable: "gray",
   disable: "gray",
   onceChanged: "purple",
@@ -129,7 +127,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const [detail, setDetail] = useState<ModpackChangeDetail | null>(null);
   const [failed, setFailed] = useState(false);
   const [ignored, setIgnored] = useState<ModpackIgnoredItem[]>([]);
-  const [filter, setFilter] = useState<ModpackChangeClass | null>(null);
+  const [filter, setFilter] = useState<ChangeFilter | null>(null);
   const [busy, setBusy] = useState(false);
   const [vustbAccount, setVustbAccount] = useState<VustbAccount | null>(null);
 
@@ -357,6 +355,16 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
     withIgnore = true
   ) => {
     const reveal = revealPath(entry);
+    const labelClass: ChangeFilter =
+      entry.class === "modified"
+        ? "modified"
+        : entry.class === "toggled"
+          ? entry.disabled
+            ? "disable"
+            : "enable"
+          : entry.class === "addedExcluded"
+            ? "added"
+            : entry.class;
     return (
       <Box>
         <DiffFile
@@ -365,15 +373,17 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
           defaultOpen={openFiles}
           tags={
             <>
-              <Badge
-                colorScheme={CLASS_COLORS[displayClass(entry)]}
-                flexShrink={0}
-              >
-                {t(
-                  `ModpackLocalChangesModal.class.${displayClass(entry) === "addedExcluded" ? "added" : displayClass(entry)}`
-                )}
+              <Badge colorScheme={CLASS_COLORS[labelClass]} flexShrink={0}>
+                {t(`ModpackLocalChangesModal.class.${labelClass}`)}
               </Badge>
-              {entry.disabled && displayClass(entry) !== "disable" && (
+              {entry.class === "modified" && entry.toggled && (
+                <Badge colorScheme="gray" flexShrink={0}>
+                  {t(
+                    `ModpackLocalChangesModal.class.${entry.disabled ? "disable" : "enable"}`
+                  )}
+                </Badge>
+              )}
+              {entry.disabled && !entry.toggled && (
                 <Badge flexShrink={0}>
                   {t("ModpackLocalChangesModal.disabled")}
                 </Badge>
