@@ -4,6 +4,7 @@ import {
   ModpackChangeDetail,
   ModpackConflictChoice,
   ModpackIgnoredItem,
+  ModpackOptionalFile,
   ModpackUpdateCheck,
   ModpackUpdateFinished,
   ModpackUpdatePlan,
@@ -64,9 +65,25 @@ export class ModpackUpdateService {
    */
   @responseHandler("instance")
   static async prepareModpackUpdate(
-    instanceId: string
+    instanceId: string,
+    optionalChoice?: string[]
   ): Promise<InvokeResponse<ModpackUpdatePlan>> {
-    return await invoke("prepare_modpack_update", { instanceId });
+    return await invoke("prepare_modpack_update", {
+      instanceId,
+      optionalChoice,
+    });
+  }
+
+  /**
+   * The optional files of a platform modpack archive, before any instance
+   * exists. Empty when the pack has none.
+   */
+  @responseHandler("instance")
+  static async listModpackOptionalFiles(
+    url: string,
+    sha1: string
+  ): Promise<InvokeResponse<ModpackOptionalFile[]>> {
+    return await invoke("list_modpack_optional_files", { url, sha1 });
   }
 
   /**
@@ -88,12 +105,14 @@ export class ModpackUpdateService {
   static async applyModpackUpdate(
     instanceId: string,
     planHash: string,
-    choices: Record<string, ModpackConflictChoice>
+    choices: Record<string, ModpackConflictChoice>,
+    optionalChoice?: string[]
   ): Promise<InvokeResponse<ModpackUpdateStarted>> {
     return await invoke("apply_modpack_update", {
       instanceId,
       planHash,
       choices,
+      optionalChoice,
     });
   }
 
