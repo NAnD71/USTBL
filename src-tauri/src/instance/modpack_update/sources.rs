@@ -2963,6 +2963,50 @@ mod tests {
     let _ = fs::remove_dir_all(root);
   }
 
+  /// A picked archive is untrusted. A file it ships or asks for that would land
+  /// in the update folder, or outside the instance, must not get through: the
+  /// install validates the remote before it writes anything.
+  #[tokio::test]
+  async fn a_local_pack_cannot_reach_the_update_folder_or_leave_the_instance() {
+    let root = hashless_root();
+    let index = mrpack_index(r#""minecraft":"1.20.1""#);
+    for planted in [
+      ".ustbl-update/journal.json",
+      ".USTBL-UPDATE/backup/files/x.bat",
+    ] {
+      let entry = format!("overrides/{planted}");
+      let archive = local_zip(&[
+        ("modrinth.index.json", index.as_bytes()),
+        (entry.as_str(), br#"{"state":"committing"}"#),
+      ]);
+      let checked = offline_remote(&archive, &root, Vec::new())
+        .await
+        .and_then(|remote| remote.validate("inst"));
+      assert!(checked.is_err(), "{planted} was accepted");
+      let _ = fs::remove_file(archive);
+    }
+
+    let archive = local_zip(&[("modrinth.index.json", index.as_bytes())]);
+    let escaping = manifest_download(&root, "../escape.jar", Some(HELLO_SHA1), Some(5));
+    let checked = offline_remote(&archive, &root, vec![escaping])
+      .await
+      .and_then(|remote| remote.validate("inst"));
+    assert!(checked.is_err(), "a path leaving the instance was accepted");
+
+    // An absolute path replaces the instance root when joined; such a file is
+    // not one of the instance's and is left out.
+    let outside = std::env::temp_dir().join(format!("ustbl-outside-{}.jar", uuid::Uuid::new_v4()));
+    let mut absolute = manifest_download(&root, "mods/a.jar", Some(HELLO_SHA1), Some(5));
+    absolute.param.dest = outside.clone();
+    let remote = offline_remote(&archive, &root, vec![absolute])
+      .await
+      .unwrap();
+    assert!(remote.files.is_empty(), "{:?}", remote.files);
+    assert!(!outside.exists());
+    let _ = fs::remove_file(archive);
+    let _ = fs::remove_dir_all(root);
+  }
+
   #[tokio::test]
   async fn an_archive_that_is_none_of_the_formats_is_refused() {
     let root = hashless_root();
