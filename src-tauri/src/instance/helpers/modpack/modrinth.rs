@@ -46,6 +46,40 @@ pub struct ModrinthManifest {
   pub dependencies: HashMap<String, String>,
 }
 
+impl ModrinthManifest {
+  fn download_params(&self, instance_path: &Path) -> USTBLResult<Vec<ModpackDownload>> {
+    self
+      .files
+      .iter()
+      // This launcher is a client: files the format marks as unsupported on
+      // the client are never installed.
+      .filter(|file| {
+        file
+          .env
+          .as_ref()
+          .is_none_or(|env| env.client != "unsupported")
+      })
+      .map(|file| {
+        let download_url = file
+          .downloads
+          .first()
+          .ok_or(InstanceError::InvalidSourcePath)?;
+        Ok(ModpackDownload {
+          param: DownloadParam {
+            src: url::Url::parse(download_url).map_err(|_| InstanceError::InvalidSourcePath)?,
+            sha1: Some(file.hashes.sha1.clone()),
+            dest: instance_path.join(&file.path),
+            filename: None,
+            custom_headers: None,
+            transfer_options: Default::default(),
+          },
+          size: Some(file.file_size),
+        })
+      })
+      .collect::<USTBLResult<Vec<_>>>()
+  }
+}
+
 #[async_trait]
 impl ModpackManifest for ModrinthManifest {
   fn from_archive(file: &File) -> USTBLResult<Self> {
@@ -113,32 +147,75 @@ impl ModpackManifest for ModrinthManifest {
     _app: &AppHandle,
     instance_path: &Path,
   ) -> USTBLResult<Vec<ModpackDownload>> {
-    self
-      .files
-      .iter()
-      .map(|file| {
-        let download_url = file
-          .downloads
-          .first()
-          .ok_or(InstanceError::InvalidSourcePath)?;
-        Ok(ModpackDownload {
-          param: DownloadParam {
-            src: url::Url::parse(download_url).map_err(|_| InstanceError::InvalidSourcePath)?,
-            sha1: Some(file.hashes.sha1.clone()),
-            dest: instance_path.join(&file.path),
-            filename: None,
-            custom_headers: None,
-            transfer_options: Default::default(),
-          },
-          size: Some(file.file_size),
-        })
-      })
-      .collect::<USTBLResult<Vec<_>>>()
+    self.download_params(instance_path)
   }
 
   fn get_overrides_paths(&self) -> Vec<String> {
     // Format order: `overrides/` applies everywhere, `client-overrides/` is laid on
     // top of it. `server-overrides/` never applies to a client.
     vec!["overrides".to_string(), "client-overrides".to_string()]
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn manifest(files: serde_json::Value) -> ModrinthManifest {
+    serde_json::from_value(serde_json::json!({
+      "formatVersion": 1,
+      "game": "minecraft",
+      "versionId": "1",
+      "name": "pack",
+      "files": files,
+      "dependencies": { "minecraft": "1.20.1" },
+    }))
+    .unwrap()
+  }
+
+  fn file(path: &str, env: Option<(&str, &str)>) -> serde_json::Value {
+    let mut file = serde_json::json!({
+      "path": path,
+      "hashes": { "sha1": "a", "sha512": "b" },
+      "downloads": [format!("https://cdn.example/{path}")],
+      "fileSize": 3,
+    });
+    if let Some((client, server)) = env {
+      file["env"] = serde_json::json!({ "client": client, "server": server });
+    }
+    file
+  }
+
+  #[test]
+  fn files_unsupported_on_the_client_are_skipped() {
+    let pack = manifest(serde_json::json!([
+      file("mods/server-only.jar", Some(("unsupported", "required"))),
+      file("mods/both.jar", Some(("required", "required"))),
+      file("mods/optional.jar", Some(("optional", "unsupported"))),
+      file("mods/no-env.jar", None),
+    ]));
+    let root = Path::new("inst");
+    let dests: Vec<_> = pack
+      .download_params(root)
+      .unwrap()
+      .into_iter()
+      .map(|download| download.param.dest)
+      .collect();
+    assert_eq!(
+      dests,
+      vec![
+        root.join("mods/both.jar"),
+        root.join("mods/optional.jar"),
+        root.join("mods/no-env.jar"),
+      ]
+    );
+  }
+
+  #[test]
+  fn a_skipped_file_does_not_need_a_usable_download() {
+    let mut unsupported = file("mods/server-only.jar", Some(("unsupported", "required")));
+    unsupported["downloads"] = serde_json::json!([]);
+    let pack = manifest(serde_json::json!([unsupported]));
+    assert!(pack.download_params(Path::new("inst")).unwrap().is_empty());
   }
 }
