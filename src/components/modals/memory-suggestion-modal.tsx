@@ -14,6 +14,7 @@ import {
 import { useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useLauncherConfig } from "@/contexts/config";
+import { useGlobalData } from "@/contexts/global-data";
 import { useToast } from "@/contexts/toast";
 import { MemorySuggestion } from "@/models/memory-suggestion";
 import { MemorySuggestionService } from "@/services/memory-suggestion";
@@ -43,6 +44,7 @@ const MemorySuggestionModal: React.FC<MemorySuggestionModalProps> = ({
   const { t } = useTranslation();
   const toast = useToast();
   const { config } = useLauncherConfig();
+  const { getInstanceList } = useGlobalData();
   const primaryColor = config.appearance.theme.primaryColor;
   const keepRef = useRef<HTMLButtonElement>(null);
   const [isAnswering, setIsAnswering] = useState(false);
@@ -61,9 +63,15 @@ const MemorySuggestionModal: React.FC<MemorySuggestionModalProps> = ({
     );
     setIsAnswering(false);
     if (response.status !== "success") {
-      toast({ title: response.details, status: "error" });
+      toast({
+        title: response.message,
+        description: response.details,
+        status: "error",
+      });
       return;
     }
+    // The instance now uses its own settings; let the pages see it.
+    if (apply) getInstanceList(true);
     onAnswered(suggestion);
     modalProps.onClose();
   };

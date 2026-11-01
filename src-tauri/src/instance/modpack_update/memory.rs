@@ -240,9 +240,13 @@ pub fn prompt_for(
 
 /// Turn on the instance's own game settings, as the player would in the
 /// instance settings, and set only the memory: no automatic allocation, the
-/// given maximum. Without settings of its own the instance starts from a copy
-/// of the global ones.
+/// given maximum. An instance that is not using settings of its own starts from
+/// a copy of the global ones, even if it kept an older set from before: the
+/// player was promised that nothing but the memory changes.
 pub fn apply_to_instance(instance: &mut Instance, global: &GameConfig, memory_mb: u32) {
+  if !instance.use_spec_game_config {
+    instance.spec_game_config = None;
+  }
   instance.use_spec_game_config = true;
   let config = instance
     .spec_game_config
@@ -723,18 +727,37 @@ mod tests {
   }
 
   #[test]
-  fn applying_keeps_the_instances_own_settings() {
+  fn applying_keeps_the_instances_own_settings_in_use() {
     let mut own = global(false, 2048);
     own.game_window.resolution.width = 800;
     let mut target = instance();
     target.spec_game_config = Some(own);
-    target.use_spec_game_config = false;
+    target.use_spec_game_config = true;
 
     apply_to_instance(&mut target, &global(true, 1024), 4096);
 
     assert!(target.use_spec_game_config);
     let own = target.spec_game_config.unwrap();
     assert_eq!(own.game_window.resolution.width, 800);
+    assert_eq!(own.performance.max_mem_allocation, 4096);
+    assert!(!own.performance.auto_mem_allocation);
+  }
+
+  #[test]
+  fn applying_replaces_unused_settings_with_the_global_ones() {
+    let mut old = global(false, 2048);
+    old.game_window.resolution.width = 800;
+    let mut base = global(true, 1024);
+    base.game_window.resolution.width = 1920;
+    let mut target = instance();
+    target.spec_game_config = Some(old);
+    target.use_spec_game_config = false;
+
+    apply_to_instance(&mut target, &base, 4096);
+
+    assert!(target.use_spec_game_config);
+    let own = target.spec_game_config.unwrap();
+    assert_eq!(own.game_window.resolution.width, 1920);
     assert_eq!(own.performance.max_mem_allocation, 4096);
     assert!(!own.performance.auto_mem_allocation);
   }

@@ -2446,6 +2446,14 @@
           }
         }
       },
+      "answerMemorySuggestion": {
+        "error": {
+          "title": "Failed to update instance settings",
+          "description": {
+            "INSTANCE_NOT_FOUND_BY_ID": "Instance ID does not exist"
+          }
+        }
+      },
       "updateInstanceConfig": {
         "error": {
           "title": "Failed to update instance settings",
