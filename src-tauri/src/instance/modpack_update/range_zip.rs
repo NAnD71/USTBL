@@ -13,8 +13,6 @@
 //! archive, so nothing here tries to be lenient.
 
 // Wired into the update preview by the commits that follow.
-#![allow(dead_code)]
-
 use super::diff::FileKey;
 use async_trait::async_trait;
 use flate2::{Decompress, FlushDecompress, Status};

@@ -1918,6 +1918,29 @@ async fn plan_prepared(
   baseline: &ModpackBaseline,
   latest: &LatestVersion,
 ) -> USTBLResult<PlannedRun> {
+  // A platform pack is previewed through byte ranges of its archive when it
+  // can be; the archive itself is only downloaded when the update is confirmed.
+  if let Some(run) = super::preview_fetch::plan_by_ranges(
+    app,
+    &target.origin,
+    &target.root,
+    &target.instance.name,
+    baseline,
+    latest,
+    is_fresh(&target.origin),
+  )
+  .await
+  {
+    return Ok(PlannedRun {
+      version_id: run.remote.version_id.clone(),
+      label: run.remote.label.clone(),
+      diff: run.prepared.diff,
+      plan_hash: run.prepared.plan_hash,
+      loader_change: run.loader_change,
+      reinstall_required: false,
+      remote: run.remote,
+    });
+  }
   let remote = resolve_remote(
     app,
     &target.origin,

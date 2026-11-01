@@ -11,6 +11,7 @@ pub mod packs;
 pub mod plan;
 pub mod plan_cache;
 pub mod preview;
+pub mod preview_fetch;
 pub mod range_zip;
 pub mod release;
 pub mod remote;

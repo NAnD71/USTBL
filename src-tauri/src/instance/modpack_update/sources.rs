@@ -241,7 +241,7 @@ pub struct CampusSource {
   pub url: Option<String>,
 }
 
-fn plain_download(url: &str) -> USTBLResult<Box<DownloadParam>> {
+pub(super) fn plain_download(url: &str) -> USTBLResult<Box<DownloadParam>> {
   Ok(Box::new(DownloadParam {
     src: Url::parse(url).map_err(|_| InstanceError::ModpackUpdateRemoteInvalid)?,
     dest: PathBuf::new(),
@@ -461,7 +461,7 @@ impl RemoteCache {
 }
 
 /// The archive of an Archive payload: its sha1 and the path it is kept at.
-fn archive_path(root: &Path, sha1: &str) -> PathBuf {
+pub(super) fn archive_path(root: &Path, sha1: &str) -> PathBuf {
   remote_dir(root).join(format!("{sha1}.zip"))
 }
 
@@ -473,21 +473,27 @@ pub fn downloaded_archive(root: &Path, latest: &LatestVersion) -> Option<PathBuf
   path.is_file().then_some(path)
 }
 
+/// The cache of `version`, when one exists that describes it fetched into `root`.
+pub fn matching_remote_cache(
+  origin: &InstanceOrigin,
+  root: &Path,
+  version: &LatestVersion,
+) -> Option<RemoteCache> {
+  let bytes = fs::read(remote_cache_path(root, &version.version_id)).ok()?;
+  let cache: RemoteCache = serde_json::from_slice(&bytes).ok()?;
+  (cache.matches(origin, root, version) && !cache.remote.has_listed_files()).then_some(cache)
+}
+
 pub fn load_remote_cache(
   app: &AppHandle,
   origin: &InstanceOrigin,
   root: &Path,
   version: &LatestVersion,
 ) -> Option<RemoteModpack> {
-  let bytes = fs::read(remote_cache_path(root, &version.version_id)).ok()?;
-  let cache: RemoteCache = serde_json::from_slice(&bytes).ok()?;
-  if cache.matches(origin, root, version) && !cache.remote.has_listed_files() {
-    Some(RemoteModpack::from_stored(cache.remote, |version_id| {
-      PackSession::new(AppTransport::new(app.clone()), version_id)
-    }))
-  } else {
-    None
-  }
+  let cache = matching_remote_cache(origin, root, version)?;
+  Some(RemoteModpack::from_stored(cache.remote, |version_id| {
+    PackSession::new(AppTransport::new(app.clone()), version_id)
+  }))
 }
 
 pub fn write_remote_cache(root: &Path, cache: &RemoteCache) -> std::io::Result<()> {
@@ -775,7 +781,7 @@ pub fn campus_client(app: &AppHandle) -> reqwest::Client {
     .unwrap_or_else(|| crate::utils::web::build_campus_client(app))
 }
 
-fn remote_dir(root: &Path) -> PathBuf {
+pub(super) fn remote_dir(root: &Path) -> PathBuf {
   root.join(UPDATE_DIR).join("remote")
 }
 
