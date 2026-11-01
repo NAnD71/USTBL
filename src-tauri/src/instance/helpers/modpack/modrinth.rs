@@ -12,7 +12,7 @@ use crate::error::USTBLResult;
 use crate::instance::helpers::modpack::misc::{ModpackDownload, ModpackManifest, ModpackMetaInfo};
 use crate::instance::models::misc::{InstanceError, ModLoader, ModLoaderType};
 use crate::resource::models::OtherResourceSource;
-use crate::tasks::download::DownloadParam;
+use crate::tasks::download::{DownloadParam, DownloadTransferOptions};
 
 structstruck::strike! {
 #[strikethrough[derive(Deserialize, Serialize, Debug, Clone)]]
@@ -60,10 +60,16 @@ impl ModrinthManifest {
           .is_none_or(|env| env.client != "unsupported")
       })
       .map(|file| {
-        let download_url = file
+        let (download_url, others) = file
           .downloads
-          .first()
+          .split_first()
           .ok_or(InstanceError::InvalidSourcePath)?;
+        // The first address is the main source; the others are tried when it
+        // fails. An unusable extra address is not worth failing the pack for.
+        let fallbacks = others
+          .iter()
+          .filter_map(|other| url::Url::parse(other).ok())
+          .collect();
         Ok(ModpackDownload {
           param: DownloadParam {
             src: url::Url::parse(download_url).map_err(|_| InstanceError::InvalidSourcePath)?,
@@ -71,7 +77,7 @@ impl ModrinthManifest {
             dest: instance_path.join(&file.path),
             filename: None,
             custom_headers: None,
-            transfer_options: Default::default(),
+            transfer_options: DownloadTransferOptions::with_fallbacks(fallbacks),
           },
           size: Some(file.file_size),
         })
@@ -209,6 +215,68 @@ mod tests {
         root.join("mods/no-env.jar"),
       ]
     );
+  }
+
+  fn only_download(downloads: serde_json::Value) -> USTBLResult<ModpackDownload> {
+    let mut entry = file("mods/a.jar", None);
+    entry["downloads"] = downloads;
+    let mut params = manifest(serde_json::json!([entry])).download_params(Path::new("inst"))?;
+    Ok(params.remove(0))
+  }
+
+  #[test]
+  fn extra_addresses_become_fallback_sources() {
+    let download = only_download(serde_json::json!([
+      "https://cdn.example/a.jar",
+      "https://mirror.example/a.jar",
+      "https://other.example/a.jar",
+    ]))
+    .unwrap();
+    assert_eq!(download.param.src.as_str(), "https://cdn.example/a.jar");
+    let fallbacks: Vec<_> = download
+      .param
+      .transfer_options
+      .fallback_sources
+      .iter()
+      .map(|url| url.as_str())
+      .collect();
+    assert_eq!(
+      fallbacks,
+      [
+        "https://mirror.example/a.jar",
+        "https://other.example/a.jar"
+      ]
+    );
+  }
+
+  #[test]
+  fn a_single_address_keeps_the_default_transfer_options() {
+    let download = only_download(serde_json::json!(["https://cdn.example/a.jar"])).unwrap();
+    assert_eq!(download.param.transfer_options, Default::default());
+  }
+
+  #[test]
+  fn unusable_extra_addresses_are_skipped() {
+    let download = only_download(serde_json::json!([
+      "https://cdn.example/a.jar",
+      "not a url",
+      "https://mirror.example/a.jar",
+    ]))
+    .unwrap();
+    assert_eq!(
+      download.param.transfer_options.fallback_sources,
+      vec![url::Url::parse("https://mirror.example/a.jar").unwrap()]
+    );
+  }
+
+  #[test]
+  fn a_missing_or_unusable_first_address_still_fails() {
+    assert!(only_download(serde_json::json!([])).is_err());
+    assert!(only_download(serde_json::json!([
+      "not a url",
+      "https://mirror.example/a.jar"
+    ]))
+    .is_err());
   }
 
   #[test]
