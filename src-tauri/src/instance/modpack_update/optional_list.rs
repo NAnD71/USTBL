@@ -38,10 +38,10 @@ pub async fn manifest_by_ranges(source: &dyn RangeSource) -> USTBLResult<Manifes
 /// author marked optional, as the install dialog offers them.
 pub fn optional_of_downloads(downloads: &[ModpackDownload], root: &Path) -> Vec<OptionalFile> {
   optional::table(downloads.iter().filter_map(|download| {
-    // Same condition as `archive_facts`: a file without a hash or size is not
-    // installed as a tracked file, so there is nothing to choose.
+    // A download outside the instance is not installed, so there is nothing
+    // to choose. One without a hash or size is fetched and installed.
     let relative = download.param.dest.strip_prefix(root).ok()?;
-    (download.optional && download.param.sha1.is_some() && download.size.is_some()).then(|| {
+    download.optional.then(|| {
       let path = crate::instance::helpers::modpack::baseline::normalize_relative_path(
         &relative.to_string_lossy(),
       );
@@ -70,11 +70,38 @@ pub async fn list_modpack_optional_files(
       downloaded_manifest(&app, &url, &sha1).await?
     }
   };
+  optional_of_manifest(&app, manifest).await
+}
+
+/// List the optional files of an archive the user picked from disk.
+#[tauri::command]
+pub async fn list_local_modpack_optional_files(
+  app: AppHandle,
+  path: String,
+) -> USTBLResult<Vec<OptionalFile>> {
+  let manifest = tokio::task::spawn_blocking(move || {
+    let file = std::fs::File::open(&path)?;
+    parse_platform_manifest(&file)
+  })
+  .await
+  .map_err(|e| USTBLError(e.to_string()))?;
+  // A MultiMC pack has no manifest of this kind and no optional files; an
+  // archive that is no pack at all is refused by the import itself.
+  let Ok(manifest) = manifest else {
+    return Ok(Vec::new());
+  };
+  optional_of_manifest(&app, manifest).await
+}
+
+async fn optional_of_manifest(
+  app: &AppHandle,
+  manifest: ManifestBox,
+) -> USTBLResult<Vec<OptionalFile>> {
   if !manifest.has_optional_files() {
     return Ok(Vec::new());
   }
   let root = Path::new("instance");
-  let downloads = manifest.get_download_params(&app, root).await?;
+  let downloads = manifest.get_download_params(app, root).await?;
   Ok(optional_of_downloads(&downloads, root))
 }
 
@@ -107,6 +134,7 @@ mod tests {
   use super::super::range_zip::testing::{build_zip, BytesSource, TestEntry};
   use super::*;
   use crate::tasks::download::DownloadParam;
+  use std::path::PathBuf;
 
   const MRPACK: &str = r#"{
     "formatVersion": 1, "game": "minecraft", "versionId": "1", "name": "pack",
@@ -143,12 +171,12 @@ mod tests {
   }
 
   #[test]
-  fn downloads_without_a_hash_or_size_are_not_offered() {
+  fn downloads_without_a_hash_or_size_are_offered_and_outside_ones_are_not() {
     let root = Path::new("instance");
-    let make = |sha1: Option<&str>, size: Option<u64>| ModpackDownload {
+    let make = |dest: PathBuf, sha1: Option<&str>, size: Option<u64>| ModpackDownload {
       param: DownloadParam {
         src: url::Url::parse("https://example.test/a.jar").unwrap(),
-        dest: root.join("mods/a.jar"),
+        dest,
         sha1: sha1.map(String::from),
         filename: None,
         custom_headers: None,
@@ -158,11 +186,14 @@ mod tests {
       optional: true,
       select_key: "curseforge:1".into(),
     };
-    assert_eq!(
-      optional_of_downloads(&[make(Some("a"), Some(1))], root).len(),
-      1
-    );
-    assert!(optional_of_downloads(&[make(None, Some(1))], root).is_empty());
-    assert!(optional_of_downloads(&[make(Some("a"), None)], root).is_empty());
+    let inside = || root.join("mods/a.jar");
+    for (sha1, size) in [(Some("a"), Some(1)), (None, Some(1)), (Some("a"), None)] {
+      assert_eq!(
+        optional_of_downloads(&[make(inside(), sha1, size)], root).len(),
+        1
+      );
+    }
+    let outside = make(PathBuf::from("elsewhere/a.jar"), Some("a"), Some(1));
+    assert!(optional_of_downloads(&[outside], root).is_empty());
   }
 }

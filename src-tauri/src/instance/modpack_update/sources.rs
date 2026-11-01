@@ -1077,24 +1077,15 @@ where
   F: Fn(DownloadParam) -> Fut,
   Fut: std::future::Future<Output = USTBLResult<()>>,
 {
-  let optional: Vec<_> = downloads
-    .iter()
-    .filter(|download| download.optional)
-    .filter_map(|download| {
-      let relative = download.param.dest.strip_prefix(root).ok()?;
-      Some((
-        download.select_key.clone(),
-        normalize_relative_path(&relative.to_string_lossy()),
-      ))
-    })
-    .collect();
+  // The same list the install dialog offers, so the picks made there apply.
+  let optional = super::optional_list::optional_of_downloads(&downloads, root);
   Ok(ArchiveFacts {
     game_version,
     loader,
     overrides_paths: manifest.get_overrides_paths(),
     downloads: download_files(root, downloads, fetch).await?,
     recommended_memory_mb: manifest.recommended_memory_mb(),
-    optional: super::optional::table(optional),
+    optional,
   })
 }
 /// The remote of a platform archive from its manifest facts and the files its

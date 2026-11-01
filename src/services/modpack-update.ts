@@ -87,6 +87,17 @@ export class ModpackUpdateService {
   }
 
   /**
+   * The optional files of a modpack archive picked from disk. Empty when the
+   * pack has none.
+   */
+  @responseHandler("instance")
+  static async listLocalModpackOptionalFiles(
+    path: string
+  ): Promise<InvokeResponse<ModpackOptionalFile[]>> {
+    return await invoke("list_local_modpack_optional_files", { path });
+  }
+
+  /**
    * Stop the running preview of this instance, if any. The cancelled preview
    * answers with `MODPACK_UPDATE_PREPARE_CANCELLED`, which callers ignore.
    */
