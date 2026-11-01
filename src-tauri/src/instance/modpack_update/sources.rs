@@ -5,6 +5,7 @@
 //! stored in the platform's packs.
 
 use super::diff::{FileKey, DISABLED_SUFFIX};
+use super::optional::OptionalFile;
 use super::packs::{AppTransport, PackSession};
 use super::remote::{ComponentPack, FileSource, RemoteFile, RemoteModpack, UPDATE_DIR};
 use crate::error::{USTBLError, USTBLResult};
@@ -385,6 +386,7 @@ pub fn campus_remote(
     rules,
     rules_manifest: true,
     disabled_authoritative: true,
+    optional: Vec::new(),
     path_index: Arc::new(std::sync::OnceLock::new()),
   })
 }
@@ -394,7 +396,7 @@ pub fn campus_remote(
 /// A version's parsed remote, cached under the update folder. The archive of
 /// an Archive version is also kept next to it; a hit skips re-downloading,
 /// re-hashing and re-parsing it.
-const REMOTE_CACHE_SCHEMA: u32 = 1;
+const REMOTE_CACHE_SCHEMA: u32 = 2;
 
 fn remote_cache_path(root: &Path, version_id: &str) -> PathBuf {
   remote_dir(root).join(format!("{version_id}.remote.json"))
@@ -862,6 +864,7 @@ fn multimc_pack(archive: &Path) -> USTBLResult<(ArchiveFacts, ComponentPack)> {
       downloads: Vec::new(),
       // A MultiMC pack's recommendation is in its `instance.cfg`.
       recommended_memory_mb: None,
+      optional: Vec::new(),
     },
     ComponentPack {
       mmc_pack,
@@ -883,6 +886,8 @@ pub struct ArchiveFacts {
   pub downloads: Vec<RemoteFile>,
   /// Memory in MiB the manifest recommends, if it says.
   pub recommended_memory_mb: Option<u32>,
+  /// The downloads the pack author marked optional.
+  pub optional: Vec<OptionalFile>,
 }
 
 /// How many hash-less files are fetched at once while the remote is built.
@@ -1072,12 +1077,24 @@ where
   F: Fn(DownloadParam) -> Fut,
   Fut: std::future::Future<Output = USTBLResult<()>>,
 {
+  let optional: Vec<_> = downloads
+    .iter()
+    .filter(|download| download.optional)
+    .filter_map(|download| {
+      let relative = download.param.dest.strip_prefix(root).ok()?;
+      Some((
+        download.select_key.clone(),
+        normalize_relative_path(&relative.to_string_lossy()),
+      ))
+    })
+    .collect();
   Ok(ArchiveFacts {
     game_version,
     loader,
     overrides_paths: manifest.get_overrides_paths(),
     downloads: download_files(root, downloads, fetch).await?,
     recommended_memory_mb: manifest.recommended_memory_mb(),
+    optional: super::optional::table(optional),
   })
 }
 /// The remote of a platform archive from its manifest facts and the files its
@@ -1088,6 +1105,20 @@ pub fn assemble_remote(
   overrides: Vec<RemoteFile>,
 ) -> RemoteModpack {
   let (downloads, overrides) = read_disabled_mods(facts.downloads, overrides);
+  // A download the pack ships as `x.jar.disabled` is listed as `x.jar` now.
+  let optional = facts
+    .optional
+    .into_iter()
+    .map(|mut file| {
+      file.path = super::optional::without_disabled_suffix(file.path);
+      file
+    })
+    .filter(|file| {
+      downloads
+        .iter()
+        .any(|download| download.path.eq_ignore_ascii_case(&file.path))
+    })
+    .collect();
   RemoteModpack {
     version_id: latest.version_id.clone(),
     label: latest.label.clone(),
@@ -1100,6 +1131,7 @@ pub fn assemble_remote(
     rules: Vec::new(),
     rules_manifest: false,
     disabled_authoritative: true,
+    optional,
     path_index: Arc::new(std::sync::OnceLock::new()),
   }
 }
@@ -1276,7 +1308,7 @@ fn remove_parts_of(path: &Path) {
 /// moved into place once its SHA-1 has been verified, so `path` is either
 /// missing or a whole archive: a cancelled download leaves nothing there for
 /// the next preview to mistake for the archive.
-async fn download_archive(
+pub(super) async fn download_archive(
   app: &AppHandle,
   url: &str,
   path: &Path,
@@ -2419,6 +2451,7 @@ mod tests {
       rules: Vec::new(),
       rules_manifest: false,
       disabled_authoritative: false,
+      optional: Vec::new(),
       path_index: Arc::new(std::sync::OnceLock::new()),
     }
   }
@@ -2632,7 +2665,12 @@ mod tests {
     let mut param = *plain_download(&format!("https://cdn.example/{relative}")).unwrap();
     param.dest = root.join(relative);
     param.sha1 = sha1.map(str::to_string);
-    ModpackDownload { param, size }
+    ModpackDownload {
+      param,
+      size,
+      optional: false,
+      select_key: String::new(),
+    }
   }
 
   fn hashless_root() -> PathBuf {
