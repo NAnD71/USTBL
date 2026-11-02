@@ -19,7 +19,7 @@ import { useLauncherConfig } from "@/contexts/config";
 import { useToast } from "@/contexts/toast";
 import { GameDirectory } from "@/models/config";
 import { InstanceService } from "@/services/instance";
-import { isInstanceNameInvalid } from "@/utils/instance";
+import { getGameDirName, isInstanceNameInvalid } from "@/utils/instance";
 
 interface PendingConflict {
   directory: GameDirectory;
@@ -94,7 +94,7 @@ const FolderConflictDialog: React.FC<FolderConflictDialogProps> = ({
         <ModalBody>
           <Text>
             {t("FolderConflictDialog.body", {
-              gameDir: pending?.directory.name,
+              gameDir: pending ? getGameDirName(pending.directory) : "",
               folder: pending?.folder,
             })}
           </Text>

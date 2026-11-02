@@ -76,7 +76,10 @@ test("renaming writes the display name only", () => {
 
 test("changing a game directory name no longer rewrites instance detail routes", () => {
   const modal = read("src/components/modals/edit-game-directory-modal.tsx");
-  assert.doesNotMatch(modal, /instances\/details/);
+  assert.doesNotMatch(modal, /instances\/details\/\$\{currentName\}:/);
+  assert.doesNotMatch(modal, /replaceHistory\(\s*`\/instances\/details/);
+  // moving the directory drops the history of the instances it held
+  assert.match(modal, /removeHistory\(`\/instances\/details\/\$\{instance\.id\}`\)/);
   assert.match(modal, /\/instances\/list\/\$\{currentName\}/);
 });
 
