@@ -79,3 +79,15 @@ test("changing a game directory name no longer rewrites instance detail routes",
   assert.doesNotMatch(modal, /instances\/details/);
   assert.match(modal, /\/instances\/list\/\$\{currentName\}/);
 });
+
+test("modals take the new instance id from createInstance", () => {
+  for (const file of [
+    "src/components/modals/import-modpack-modal.tsx",
+    "src/components/modals/install-campus-modpack-modal.tsx",
+    "src/components/modals/install-platform-modpack-modal.tsx",
+  ]) {
+    const source = read(file);
+    assert.match(source, /createResp\.data/, file);
+    assert.doesNotMatch(source, /\$\{gameDirectory\.name\}:\$\{name\}/, file);
+  }
+});

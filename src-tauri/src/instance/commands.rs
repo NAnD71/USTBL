@@ -1068,7 +1068,7 @@ pub async fn create_instance(
   mut is_install_fabric_api: Option<bool>,
   modpack_version: Option<String>,
   origin: Option<ModpackOriginInput>,
-) -> USTBLResult<()> {
+) -> USTBLResult<String> {
   let client = app.state::<reqwest::Client>();
   let launcher_config_state = app.state::<Mutex<LauncherConfig>>();
   // Get priority list
@@ -1372,7 +1372,7 @@ pub async fn create_instance(
     }),
   )?;
   dir_guard.commit(); // disarm the cleanup guard on success
-  Ok(())
+  Ok(instance.id)
 }
 
 #[tauri::command]

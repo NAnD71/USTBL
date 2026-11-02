@@ -82,7 +82,7 @@ export class InstanceService {
    * @param {boolean} [isInstallFabricApi] - Optional flag to indicate whether to install Fabric API (only valid when modLoader is Fabric).
    * @param {string} [modpackVersion] - Optional modpack version to display with the instance.
    * @param {ModpackOriginInput} [origin] - Optional platform origin of the modpack, verified by the backend.
-   * @returns {Promise<InvokeResponse<null>>}
+   * @returns {Promise<InvokeResponse<string>>} The ID of the created instance.
    */
   @responseHandler("instance")
   static async createInstance(
@@ -96,7 +96,7 @@ export class InstanceService {
     isInstallFabricApi?: boolean,
     modpackVersion?: string,
     origin?: ModpackOriginInput
-  ): Promise<InvokeResponse<null>> {
+  ): Promise<InvokeResponse<string>> {
     return await invoke("create_instance", {
       directory,
       name,
