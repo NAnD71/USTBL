@@ -1,6 +1,6 @@
 import { Grid, GridItem, HStack, Icon, Text, VStack } from "@chakra-ui/react";
 import { useRouter } from "next/router";
-import React from "react";
+import React, { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCirclePlus, LuRefreshCw, LuSettings } from "react-icons/lu";
 import SelectableButton from "@/components/common/selectable-button";
@@ -15,14 +15,15 @@ const InstancesLayout: React.FC<InstancesLayoutProps> = ({ children }) => {
   const router = useRouter();
   const { t } = useTranslation();
   const { config } = useLauncherConfig();
+  const columnRef = useRef<HTMLDivElement>(null);
   const showNavBar = config.general.functionality.instancesNavType !== "hidden";
 
   return (
     <Grid templateColumns={showNavBar ? "1fr 3fr" : "3fr"} gap={4} h="100%">
       {showNavBar && (
-        <GridItem className="content-full-y">
+        <GridItem className="content-full-y" ref={columnRef}>
           <VStack align="stretch" h="100%" spacing={4}>
-            <InstanceSidebar />
+            <InstanceSidebar columnRef={columnRef} />
             <VStack mt="auto" align="stretch" spacing={0.5}>
               <SelectableButton
                 size="sm"

@@ -1385,6 +1385,12 @@
     "emptyHint": "拖拽实例到这里",
     "tooltip": {
       "location": "{{gameDir}} · versions/{{folder}}"
+    },
+    "newGroup": {
+      "title": "添加到新的分栏",
+      "placeholder": "分栏名称",
+      "create": "创建",
+      "duplicate": "已有同名分栏"
     }
   },
   "InstanceIconSelector": {

@@ -1385,6 +1385,12 @@
     "emptyHint": "Glissez des instances ici",
     "tooltip": {
       "location": "{{gameDir}} · versions/{{folder}}"
+    },
+    "newGroup": {
+      "title": "Ajouter à un nouveau groupe",
+      "placeholder": "Nom du groupe",
+      "create": "Créer",
+      "duplicate": "Un groupe portant ce nom existe déjà"
     }
   },
   "InstanceIconSelector": {

@@ -1385,6 +1385,12 @@
     "emptyHint": "Drag instances here",
     "tooltip": {
       "location": "{{gameDir}} · versions/{{folder}}"
+    },
+    "newGroup": {
+      "title": "Add to New Group",
+      "placeholder": "Group name",
+      "create": "Create",
+      "duplicate": "A group with this name already exists"
     }
   },
   "InstanceIconSelector": {
