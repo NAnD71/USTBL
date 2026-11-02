@@ -2,8 +2,8 @@
 
 use super::apply::{
   apply, can_roll_back_last, ensure_unlink_safe, materialize_remote_file, pack_wanted,
-  prepare_packs, recover_checked, roll_back_last_checked, wrap_locate, Progress, Recovery, Stage,
-  UpdateEnv, UpdateGuard, UpdateRequest,
+  prepare_packs, read_remote_files, recover_checked, roll_back_last_checked, wrap_locate, Progress,
+  Recovery, Stage, UpdateEnv, UpdateGuard, UpdateRequest,
 };
 use super::diff::{Conflict, ConflictChoice, Diff, FileChange};
 use super::local_update;
@@ -2578,10 +2578,8 @@ async fn recover_base_copies(
       let mut recovered = false;
       env.progress(Stage::Locating);
       prepare_packs(&files).await?;
-      for file in files {
-        let dest = preview.join(&file.path);
-        materialize_remote_file(&env, dest.clone(), file).await?;
-        let bytes = tokio::fs::read(&dest).await.at_in(&dest, &target.root)?;
+      let contents = read_remote_files(&env, &preview, &files).await?;
+      for (file, bytes) in files.into_iter().zip(contents) {
         if let Some(base) = wanted.iter().find(|b| b.path == file.path) {
           base_store::store(&target.root, base, &bytes)?;
           recovered = true;
@@ -2718,18 +2716,18 @@ async fn materialize_text_candidates(
     .collect();
   env.progress(Stage::Locating);
   prepare_packs(&candidates).await?;
-  for file in candidates {
-    if !wanted.contains_key(file.path.as_str()) {
-      continue;
-    }
-    let dest = preview.join(&file.path);
-    materialize_remote_file(&env, dest.clone(), file).await?;
-    let bytes = tokio::fs::read(&dest).await.at_in(&dest, &target.root)?;
+  // A file over the text limit never qualifies, so it is not fetched at all.
+  let fetchable: Vec<_> = candidates
+    .into_iter()
+    .filter(|file| file.key.size <= text::MAX_TEXT_SIZE as u64)
+    .collect();
+  let contents = read_remote_files(&env, &preview, &fetchable).await;
+  let _ = tokio::fs::remove_dir_all(&preview).await;
+  for (file, bytes) in fetchable.into_iter().zip(contents?) {
     if text::is_text_path(&file.path, &bytes) {
       result.insert(file.path.clone(), bytes);
     }
   }
-  let _ = tokio::fs::remove_dir_all(&preview).await;
   Ok(result)
 }
 
