@@ -537,12 +537,35 @@ fn hash_zip_entry(
 
 /// Downloaded files first, then overrides: an override wins over a download of
 /// the same path, matching what a fresh install does.
+///
+/// Paths that differ only in case land on the same file on Windows. When they
+/// carry the same content (GTNH 2.8.4 ships four such pairs) one of them is
+/// kept; when the content differs both stay and `validate` refuses the pack.
 pub fn merge_files(downloads: Vec<RemoteFile>, overrides: Vec<RemoteFile>) -> Vec<RemoteFile> {
   let mut by_path = BTreeMap::new();
   for file in downloads.into_iter().chain(overrides) {
     by_path.insert(file.path.clone(), file);
   }
-  by_path.into_values().collect()
+  let mut kept: BTreeMap<String, usize> = BTreeMap::new();
+  let mut files: Vec<RemoteFile> = Vec::with_capacity(by_path.len());
+  for file in by_path.into_values() {
+    let lowered = file.path.to_lowercase();
+    if let Some(&index) = kept.get(&lowered) {
+      let first = &files[index];
+      if first.key == file.key && first.disabled == file.disabled {
+        log::warn!(
+          "modpack ships {} and {} with the same content; keeping the first",
+          first.path,
+          file.path
+        );
+        continue;
+      }
+    } else {
+      kept.insert(lowered, files.len());
+    }
+    files.push(file);
+  }
+  files
 }
 
 /// Read the `.disabled` files of a platform archive. A mod under `mods/` named
@@ -2288,6 +2311,43 @@ mod tests {
     assert_eq!(merged.len(), 2);
     assert_eq!(merged[0].key.sha1, "3");
     assert!(matches!(merged[0].source, FileSource::ArchiveEntry { .. }));
+  }
+
+  #[test]
+  fn paths_differing_only_in_case_are_folded_when_their_content_is_the_same() {
+    let file = |path: &str, sha1: &str| RemoteFile {
+      path: path.into(),
+      key: FileKey {
+        sha1: sha1.into(),
+        size: 1,
+      },
+      source: FileSource::ArchiveEntry {
+        archive: PathBuf::new(),
+        entry: path.into(),
+      },
+      disabled: false,
+      once: false,
+    };
+    let same = merge_files(
+      Vec::new(),
+      vec![
+        file("config/Pack[ABC]/lang/zh_CN.lang", "1"),
+        file("config/Pack[abc]/lang/zh_CN.lang", "1"),
+        file("config/other.cfg", "2"),
+      ],
+    );
+    let paths: Vec<&str> = same.iter().map(|file| file.path.as_str()).collect();
+    assert_eq!(
+      paths,
+      ["config/Pack[ABC]/lang/zh_CN.lang", "config/other.cfg"]
+    );
+
+    // Different content is left for `validate` to refuse.
+    let different = merge_files(
+      Vec::new(),
+      vec![file("config/A.cfg", "1"), file("config/a.cfg", "2")],
+    );
+    assert_eq!(different.len(), 2);
   }
 
   fn origin_with(platform: OriginPlatform, version_id: &str) -> InstanceOrigin {
