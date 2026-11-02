@@ -1,6 +1,6 @@
 import type { InstanceGroups } from "@/models/config";
 import type { InstanceSummary } from "@/models/instance/misc";
-import { isInstallingInstance } from "@/utils/installing-instance";
+import { instanceNavigationGroups } from "@/utils/installing-instance";
 
 export type SectionKind = "installing" | "installed" | "starred" | "custom";
 
@@ -90,10 +90,7 @@ export const buildSidebar = (
 ): Section[] => {
   const g = normalizeGroups(groups);
   const byId = new Map(instances.map((instance) => [instance.id, instance]));
-  const installing = instances.filter(isInstallingInstance);
-  const installed = instances.filter(
-    (instance) => !isInstallingInstance(instance)
-  );
+  const { installing, all: installed } = instanceNavigationGroups(instances);
 
   const customSection = (id: string): Section => ({
     key: id,
