@@ -1,4 +1,5 @@
 import {
+  Box,
   Button,
   HStack,
   Icon,
@@ -17,6 +18,7 @@ import { InstanceSummary } from "@/models/instance/misc";
 import { getGameDirName } from "@/utils/instance";
 
 export const DOUBLE_CLICK_DELAY_MS = 250;
+export const INSTANCE_TOOLTIP_DELAY_MS = 2000;
 
 /**
  * Runs `onSingle` only once it is clear that no second click follows, and
@@ -135,23 +137,28 @@ export const InstanceRow: React.FC<InstanceRowProps> = ({
         </VStack>
       }
       placement="right"
+      openDelay={INSTANCE_TOOLTIP_DELAY_MS}
+      closeOnPointerDown
       isDisabled={tooltipDisabled}
     >
-      <SelectableButton
-        size="sm"
-        w="100%"
-        isSelected={selected}
-        onClick={handleClick}
-        onPointerDown={onPointerDown}
-        data-instance-id={instance.id}
-      >
-        <HStack spacing={2} overflow="hidden">
-          <Icon as={icon} />
-          <Text fontSize="sm" className="ellipsis-text">
-            {instance.name}
-          </Text>
-        </HStack>
-      </SelectableButton>
+      {/* SelectableButton does not forward refs, so the tooltip anchors here */}
+      <Box>
+        <SelectableButton
+          size="sm"
+          w="100%"
+          isSelected={selected}
+          onClick={handleClick}
+          onPointerDown={onPointerDown}
+          data-instance-id={instance.id}
+        >
+          <HStack spacing={2} overflow="hidden">
+            <Icon as={icon} />
+            <Text fontSize="sm" className="ellipsis-text">
+              {instance.name}
+            </Text>
+          </HStack>
+        </SelectableButton>
+      </Box>
     </Tooltip>
   );
 };
