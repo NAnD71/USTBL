@@ -91,3 +91,23 @@ test("modals take the new instance id from createInstance", () => {
     assert.doesNotMatch(source, /\$\{gameDirectory\.name\}:\$\{name\}/, file);
   }
 });
+
+test("every instance creation entry checks the folder first", () => {
+  for (const file of [
+    "src/components/modals/create-instance-modal.tsx",
+    "src/components/modals/import-modpack-modal.tsx",
+    "src/components/modals/install-campus-modpack-modal.tsx",
+    "src/components/modals/install-platform-modpack-modal.tsx",
+  ]) {
+    const source = read(file);
+    const check = source.indexOf("resolveFolder(");
+    const create = source.indexOf("InstanceService.createInstance(");
+    assert.ok(check !== -1 && check < create, file);
+    assert.match(source, /\{folderConflictDialog\}/, file);
+    assert.doesNotMatch(
+      source.slice(create, create + 80),
+      /\bname,/,
+      `${file} must create with the resolved folder`
+    );
+  }
+});

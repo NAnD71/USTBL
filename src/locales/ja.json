@@ -1393,6 +1393,17 @@
       "location": "{{gameDir}} · versions/{{folder}}"
     }
   },
+  "FolderConflictDialog": {
+    "title": "フォルダ名の競合",
+    "body": "ゲームディレクトリ「{{gameDir}}」には、すでに「{{folder}}」という名前のフォルダがあります。",
+    "auto": "自動で対処",
+    "edit": "変更",
+    "label": "フォルダ名",
+    "error": {
+      "taken": "このフォルダ名はすでに使われています",
+      "invalid": "フォルダ名に \\ / : * ? \" < > | は使用できません"
+    }
+  },
   "InstanceModsPage": {
     "modLoaderList": {
       "title": "モッドローダー",

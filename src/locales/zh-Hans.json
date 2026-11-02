@@ -1393,6 +1393,17 @@
       "location": "{{gameDir}} · versions/{{folder}}"
     }
   },
+  "FolderConflictDialog": {
+    "title": "目录名冲突",
+    "body": "游戏目录「{{gameDir}}」中已有名为「{{folder}}」的文件夹。",
+    "auto": "帮我处理",
+    "edit": "修改",
+    "label": "目录名",
+    "error": {
+      "taken": "该目录名已被占用",
+      "invalid": "目录名不能包含 \\ / : * ? \" < > |"
+    }
+  },
   "InstanceModsPage": {
     "modLoaderList": {
       "title": "加载器",

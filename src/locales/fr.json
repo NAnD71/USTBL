@@ -1393,6 +1393,17 @@
       "location": "{{gameDir}} · versions/{{folder}}"
     }
   },
+  "FolderConflictDialog": {
+    "title": "Conflit de nom de dossier",
+    "body": "Le répertoire de jeu « {{gameDir}} » contient déjà un dossier nommé « {{folder}} ».",
+    "auto": "Résoudre pour moi",
+    "edit": "Modifier",
+    "label": "Nom du dossier",
+    "error": {
+      "taken": "Ce nom de dossier est déjà utilisé",
+      "invalid": "Le nom du dossier ne peut pas contenir \\ / : * ? \" < > |"
+    }
+  },
   "InstanceModsPage": {
     "modLoaderList": {
       "title": "Chargeur",
