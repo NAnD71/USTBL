@@ -3577,6 +3577,13 @@
     "ledger": {
       "title": "My modpack instances",
       "checkAll": "Check all",
+      "group": {
+        "platform": "Platform",
+        "local": "Local"
+      },
+      "toast": {
+        "sameFile": "The selected file is the same as the current version, so no update is needed"
+      },
       "badge": {
         "upToDate": "Up to date",
         "available": "Update available",
@@ -3630,11 +3637,7 @@
       "pause": "Pause",
       "resume": "Resume",
       "unlink": "Unlink",
-      "viewMods": "View mods",
-      "updateFromFile": "Update from local file"
-    },
-    "toast": {
-      "sameFile": "The selected file is the same as the current version, so no update is needed"
+      "viewMods": "View mods"
     },
     "notFollowing": "This instance is not following a modpack."
   },

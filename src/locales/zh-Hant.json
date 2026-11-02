@@ -3577,6 +3577,13 @@
     "ledger": {
       "title": "我的整合包實例",
       "checkAll": "全部檢查",
+      "group": {
+        "platform": "平台",
+        "local": "本機"
+      },
+      "toast": {
+        "sameFile": "所選檔案與目前版本相同，無需更新"
+      },
       "badge": {
         "upToDate": "最新",
         "available": "有更新",
@@ -3630,11 +3637,7 @@
       "pause": "暫停跟隨",
       "resume": "恢復跟隨",
       "unlink": "解除跟隨",
-      "viewMods": "查看模組",
-      "updateFromFile": "從本機檔案更新"
-    },
-    "toast": {
-      "sameFile": "所選檔案與目前版本相同，無需更新"
+      "viewMods": "查看模組"
     },
     "notFollowing": "這個實例沒有跟隨整合包。"
   },

@@ -3577,6 +3577,13 @@
     "ledger": {
       "title": "Mes instances de packs",
       "checkAll": "Tout vérifier",
+      "group": {
+        "platform": "Plateforme",
+        "local": "Local"
+      },
+      "toast": {
+        "sameFile": "Le fichier sélectionné est identique à la version actuelle, aucune mise à jour n'est nécessaire"
+      },
       "badge": {
         "upToDate": "À jour",
         "available": "Mise à jour disponible",
@@ -3630,11 +3637,7 @@
       "pause": "Pause",
       "resume": "Reprendre",
       "unlink": "Annuler le suivi",
-      "viewMods": "Voir les mods",
-      "updateFromFile": "Mettre à jour depuis un fichier local"
-    },
-    "toast": {
-      "sameFile": "Le fichier sélectionné est identique à la version actuelle, aucune mise à jour n'est nécessaire"
+      "viewMods": "Voir les mods"
     },
     "notFollowing": "Cette instance ne suit pas de modpack."
   },

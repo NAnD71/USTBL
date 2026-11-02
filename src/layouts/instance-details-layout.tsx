@@ -151,21 +151,6 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
         }
       },
     },
-    ...(summary?.origin?.platform === "local"
-      ? [
-          {
-            icon: LuPackage,
-            label: t("InstanceSyncPage.ledger.action.details"),
-            danger: false,
-            onClick: () => {
-              openSharedModal("modpack-instance-details", {
-                instanceId: summary.id,
-                instanceName: summary.name,
-              });
-            },
-          },
-        ]
-      : []),
     ...(isVustbManager(vustbAccount)
       ? [
           {

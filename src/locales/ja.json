@@ -3577,6 +3577,13 @@
     "ledger": {
       "title": "モッドパックのインスタンス",
       "checkAll": "すべて確認",
+      "group": {
+        "platform": "プラットフォーム",
+        "local": "ローカル"
+      },
+      "toast": {
+        "sameFile": "選択したファイルは現在のバージョンと同じため、更新は不要です"
+      },
       "badge": {
         "upToDate": "最新",
         "available": "更新あり",
@@ -3630,11 +3637,7 @@
       "pause": "一時停止",
       "resume": "再開",
       "unlink": "フォロー解除",
-      "viewMods": "モッドを見る",
-      "updateFromFile": "ローカルファイルから更新"
-    },
-    "toast": {
-      "sameFile": "選択したファイルは現在のバージョンと同じため、更新は不要です"
+      "viewMods": "モッドを見る"
     },
     "notFollowing": "このインスタンスはモッドパックをフォローしていません。"
   },
