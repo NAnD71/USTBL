@@ -11,6 +11,7 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
+import { open } from "@tauri-apps/plugin-dialog";
 import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -19,7 +20,9 @@ import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { useToast } from "@/contexts/toast";
 import { CampusModpackProject } from "@/models/campus-modpack";
+import { ModpackUnofficialDownloads } from "@/models/modpack-update";
 import { CampusModpackService } from "@/services/campus-modpack";
+import { InstanceService } from "@/services/instance";
 import { ModpackUpdateService } from "@/services/modpack-update";
 import { campusProjectRefs, loaderSlug } from "@/utils/modpack-ledger";
 
@@ -45,7 +48,8 @@ const ModpackInstanceDetailsModal: React.FC<
   const primaryColor = config.appearance.theme.primaryColor;
   const { getInstanceList, checkModpackUpdate, modpackChecks } =
     useGlobalData();
-  const { openGenericConfirmDialog } = useSharedModals();
+  const { openGenericConfirmDialog, openSharedModal } = useSharedModals();
+  const [isPicking, setIsPicking] = useState(false);
 
   const instances = useMemo(() => getInstanceList() ?? [], [getInstanceList]);
   const instance = useMemo(
@@ -70,18 +74,22 @@ const ModpackInstanceDetailsModal: React.FC<
       ? projects.find((p) => campusProjectRefs(p).includes(origin.projectId))
       : undefined;
 
+  const isLocal = origin?.platform === "local";
+
   const lineLabel = origin
-    ? [
-        origin.platform === "campus"
-          ? t("InstanceSyncPage.ledger.platform.campus")
-          : origin.platform === "modrinth"
-            ? "Modrinth"
-            : "CurseForge",
-        origin.gameVersion,
-        loaderSlug(origin.loaderType) === "vanilla"
-          ? t("InstanceSyncPage.platform.vanilla")
-          : origin.loaderType,
-      ].join(" · ")
+    ? isLocal
+      ? (instance?.version ?? "")
+      : [
+          origin.platform === "campus"
+            ? t("InstanceSyncPage.ledger.platform.campus")
+            : origin.platform === "modrinth"
+              ? "Modrinth"
+              : "CurseForge",
+          origin.gameVersion,
+          loaderSlug(origin.loaderType) === "vanilla"
+            ? t("InstanceSyncPage.platform.vanilla")
+            : origin.loaderType,
+        ].join(" · ")
     : "";
 
   const projectLabel = useMemo(() => {
@@ -139,6 +147,97 @@ const ModpackInstanceDetailsModal: React.FC<
       },
     });
   }, [openGenericConfirmDialog, t, handleUnlink]);
+
+  const confirmUnofficial = useCallback(
+    (data: ModpackUnofficialDownloads) =>
+      new Promise<boolean>((resolve) => {
+        openGenericConfirmDialog({
+          title: t("ImportModpackModal.unofficial.title"),
+          body: (
+            <VStack align="stretch" spacing={2}>
+              <Text>
+                {t("ImportModpackModal.unofficial.description", {
+                  count: data.fileCount,
+                })}
+              </Text>
+              {data.addresses.map((address) => (
+                <Text key={address} fontSize="xs-sm" className="secondary-text">
+                  {address}
+                </Text>
+              ))}
+            </VStack>
+          ),
+          btnOK: t("ImportModpackModal.unofficial.trust"),
+          onOKCallback: () => resolve(true),
+          onCancelCallback: () => resolve(false),
+        });
+      }),
+    [openGenericConfirmDialog, t]
+  );
+
+  const handleUpdateFromFile = useCallback(async () => {
+    if (isPicking) return;
+    setIsPicking(true);
+    try {
+      const picked = await open({
+        multiple: false,
+        filters: [
+          {
+            name: t("General.dialog.filterName.modpack"),
+            extensions: ["zip", "mrpack"],
+          },
+        ],
+      });
+      if (!picked) return;
+
+      // An archive that cannot be read fails the stage step with its own error.
+      const unofficial =
+        await ModpackUpdateService.listLocalModpackUnofficialDownloads(picked);
+      if (
+        unofficial.status === "success" &&
+        unofficial.data.fileCount > 0 &&
+        !(await confirmUnofficial(unofficial.data))
+      ) {
+        return;
+      }
+
+      const meta = await InstanceService.retrieveModpackMetaInfo(picked);
+      const label =
+        meta.status === "success" ? meta.data.version || meta.data.name : "";
+      const response = await ModpackUpdateService.stageLocalModpackUpdate(
+        instanceId,
+        picked,
+        label
+      );
+      if (response.status !== "success") {
+        toast({
+          title: response.details || response.message,
+          status: "error",
+        });
+        return;
+      }
+      if (response.data.unchanged) {
+        toast({
+          title: t("ModpackInstanceDetailsModal.toast.sameFile"),
+          status: "info",
+        });
+        return;
+      }
+      modalProps.onClose();
+      openSharedModal("update-modpack", { instanceId, instanceName });
+    } finally {
+      setIsPicking(false);
+    }
+  }, [
+    isPicking,
+    t,
+    confirmUnofficial,
+    instanceId,
+    instanceName,
+    toast,
+    modalProps,
+    openSharedModal,
+  ]);
 
   const openMods = useCallback(() => {
     modalProps.onClose();
@@ -226,30 +325,49 @@ const ModpackInstanceDetailsModal: React.FC<
                   {latestLabel}
                 </Text>
               )}
-              <Text fontSize="xs-sm">
-                {t("ModpackInstanceDetailsModal.follow.status")}:{" "}
-                {origin.follow
-                  ? t("ModpackInstanceDetailsModal.follow.following")
-                  : t("ModpackInstanceDetailsModal.follow.paused")}
-              </Text>
+              {!isLocal && (
+                <Text fontSize="xs-sm">
+                  {t("ModpackInstanceDetailsModal.follow.status")}:{" "}
+                  {origin.follow
+                    ? t("ModpackInstanceDetailsModal.follow.following")
+                    : t("ModpackInstanceDetailsModal.follow.paused")}
+                </Text>
+              )}
             </VStack>
           </VStack>
         </ModalBody>
         <ModalFooter gap={2}>
-          <Button variant="ghost" colorScheme="red" onClick={confirmUnlink}>
-            {t("ModpackInstanceDetailsModal.action.unlink")}
-          </Button>
-          <Button variant="outline" onClick={openMods}>
-            {t("ModpackInstanceDetailsModal.action.viewMods")}
-          </Button>
-          <Button
-            colorScheme={primaryColor}
-            onClick={() => handleSetFollow(!origin.follow)}
-          >
-            {origin.follow
-              ? t("ModpackInstanceDetailsModal.action.pause")
-              : t("ModpackInstanceDetailsModal.action.resume")}
-          </Button>
+          {isLocal ? (
+            <>
+              <Button variant="outline" onClick={openMods}>
+                {t("ModpackInstanceDetailsModal.action.viewMods")}
+              </Button>
+              <Button
+                colorScheme={primaryColor}
+                onClick={handleUpdateFromFile}
+                isLoading={isPicking}
+              >
+                {t("ModpackInstanceDetailsModal.action.updateFromFile")}
+              </Button>
+            </>
+          ) : (
+            <>
+              <Button variant="ghost" colorScheme="red" onClick={confirmUnlink}>
+                {t("ModpackInstanceDetailsModal.action.unlink")}
+              </Button>
+              <Button variant="outline" onClick={openMods}>
+                {t("ModpackInstanceDetailsModal.action.viewMods")}
+              </Button>
+              <Button
+                colorScheme={primaryColor}
+                onClick={() => handleSetFollow(!origin.follow)}
+              >
+                {origin.follow
+                  ? t("ModpackInstanceDetailsModal.action.pause")
+                  : t("ModpackInstanceDetailsModal.action.resume")}
+              </Button>
+            </>
+          )}
         </ModalFooter>
       </ModalContent>
     </Modal>

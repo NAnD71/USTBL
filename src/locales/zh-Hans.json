@@ -2811,6 +2811,18 @@
           }
         }
       },
+      "stageLocalModpackUpdate": {
+        "error": {
+          "description": {
+            "MODPACK_UPDATE_LOCAL_FORMAT_MISMATCH": "整合包格式与当前实例不同，无法用它更新",
+            "MODPACK_UPDATE_LOCAL_GAME_VERSION_MISMATCH": "该整合包的 Minecraft 版本与当前实例不同，请导入为新实例",
+            "MODPACK_UPDATE_BUSY": "该整合包正在更新中",
+            "MODPACK_UPDATE_RUNNING": "游戏正在运行，请先关闭游戏再更新整合包",
+            "MODPACK_UPDATE_UNSUPPORTED": "此实例暂不支持自动更新",
+            "MODPACK_UPDATE_LINE_MISMATCH": "新版本的游戏版本或加载器与此实例不一致，无法更新"
+          }
+        }
+      },
       "recoverModpackUpdate": {
         "error": {
           "title": "恢复未完成的整合包更新失败"
@@ -3618,7 +3630,11 @@
       "pause": "暂停跟随",
       "resume": "恢复跟随",
       "unlink": "解除跟随",
-      "viewMods": "查看模组"
+      "viewMods": "查看模组",
+      "updateFromFile": "从本地文件更新"
+    },
+    "toast": {
+      "sameFile": "所选文件与当前版本相同，无需更新"
     },
     "notFollowing": "这个实例没有跟随整合包。"
   },
