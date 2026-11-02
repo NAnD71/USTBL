@@ -196,10 +196,10 @@ export class InstanceService {
   }
 
   /**
-   * RENAME the specified instance (will update version folder name and field in version JSON).
+   * RENAME the specified instance: changes only the display name, never the folder.
    * @param {string} instanceId - The instance ID to rename.
-   * @param {string} newName - New name
-   * @returns {Promise<InvokeResponse<string>>} - New version path, for the frontend to sync update.
+   * @param {string} newName - New display name; empty restores the folder name.
+   * @returns {Promise<InvokeResponse<string>>} - The name now shown.
    */
   @responseHandler("instance")
   static async renameInstance(
