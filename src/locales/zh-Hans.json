@@ -851,6 +851,12 @@
       "description": "首次启动，正在自动下载 Java 25 运行时"
     }
   },
+  "FileFilter": {
+    "placeholder": "筛选文件",
+    "empty": "没有匹配的文件",
+    "clear": "清除筛选",
+    "shown": "显示 {{shown}} / {{total}}"
+  },
   "FileError": {
     "FILE_BLOCKED_BY_ANTIVIRUS": "文件 {{file}} 被杀毒软件拦截。请在 Windows 安全中心允许该文件，或把游戏目录加入排除项后重试。",
     "FILE_MISSING": "找不到文件 {{file}}，可能已被删除、移动或被杀毒软件隔离。请检查后重试。",

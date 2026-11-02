@@ -27,6 +27,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import { DiffFile, DiffHunks, regionHunk } from "@/components/common/diff-view";
+import FileFilterInput from "@/components/common/file-filter-input";
 import TreeView, { TreeNode } from "@/components/common/tree-view";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
@@ -41,6 +42,11 @@ import { InvokeResponse } from "@/models/response";
 import { VustbAccount, isVustbManager } from "@/models/vustb";
 import { AccountService } from "@/services/account";
 import { ModpackUpdateService } from "@/services/modpack-update";
+import {
+  AUTO_EXPAND_LIMIT,
+  createPathMatcher,
+  isQueryActive,
+} from "@/utils/fuzzy-filter";
 import {
   CLASS_ORDER,
   ChangeFilter,
@@ -128,6 +134,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const [failed, setFailed] = useState(false);
   const [ignored, setIgnored] = useState<ModpackIgnoredItem[]>([]);
   const [filter, setFilter] = useState<ChangeFilter | null>(null);
+  const [query, setQuery] = useState("");
   const [busy, setBusy] = useState(false);
   const [vustbAccount, setVustbAccount] = useState<VustbAccount | null>(null);
 
@@ -212,10 +219,22 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const groups = useMemo(() => splitByGroup(entries), [entries]);
   // The counts and the filter cover the body only.
   const counts = useMemo(() => countByClass(groups.main), [groups.main]);
+  const queryActive = isQueryActive(query);
+  const matchesPath = useMemo(() => createPathMatcher(query), [query]);
   const shownMain = useMemo(
-    () => filterEntries(groups.main, filter),
-    [groups.main, filter]
+    () =>
+      filterEntries(groups.main, filter).filter((entry) =>
+        matchesPath(entry.path)
+      ),
+    [groups.main, filter, matchesPath]
   );
+  const shownWillDelete = useMemo(
+    () => groups.willDelete.filter((entry) => matchesPath(entry.path)),
+    [groups.willDelete, matchesPath]
+  );
+  // Hits open their parents without touching the remembered expansion, so
+  // clearing the query brings back what the user had open.
+  const expandAll = queryActive && shownMain.length <= AUTO_EXPAND_LIMIT;
   // TreeView resets its expansion whenever `nodes` changes identity.
   const tree = useMemo(() => {
     const convert = (list: ChangeTreeNode[]): TreeNode<ChangeTreeNode>[] =>
@@ -579,6 +598,13 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                           </WrapItem>
                         )
                       )}
+                      <WrapItem>
+                        <FileFilterInput
+                          w="180px"
+                          value={query}
+                          onChange={setQuery}
+                        />
+                      </WrapItem>
                     </Wrap>
                     <Text fontSize="xs" className="secondary-text">
                       {t("ModpackLocalChangesModal.countingRule")}
@@ -591,6 +617,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   nodes={tree}
                   defaultExpandedDepth={expandedDepth(shownMain.length)}
                   preserveExpanded
+                  expandAll={expandAll}
                   leafPlaceholderWidth={0}
                   renderNode={({ node: { data } }) =>
                     data.entry ? (
@@ -606,17 +633,24 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   }
                 />
               )}
-              {groups.willDelete.length > 0 && (
+              {tree.length === 0 &&
+                shownWillDelete.length === 0 &&
+                queryActive && (
+                  <Text fontSize="xs-sm" className="secondary-text">
+                    {t("FileFilter.empty")}
+                  </Text>
+                )}
+              {shownWillDelete.length > 0 && (
                 <ChangeGroup
                   title={t("ModpackLocalChangesModal.willDelete.title", {
-                    count: groups.willDelete.length,
+                    count: shownWillDelete.length,
                   })}
                   description={t(
                     "ModpackLocalChangesModal.willDelete.description"
                   )}
                   defaultOpen
                 >
-                  {groups.willDelete.map((entry) => (
+                  {shownWillDelete.map((entry) => (
                     <Box key={entry.path}>
                       {renderEntry(entry, entry.path, false)}
                     </Box>
