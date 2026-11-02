@@ -3560,7 +3560,7 @@
     }
   },
   "InstanceSyncPage": {
-    "title": "实例同步与更新",
+    "title": "同步与更新",
     "description": "查看跟随整合包的实例状态，检查并安装更新",
     "platform": {
       "recommended": "推荐",

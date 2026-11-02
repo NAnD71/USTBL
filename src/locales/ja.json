@@ -3560,7 +3560,7 @@
     }
   },
   "InstanceSyncPage": {
-    "title": "インスタンスの同期と更新",
+    "title": "同期と更新",
     "description": "モッドパックに追従するインスタンスの状態を確認し、更新の確認とインストール",
     "platform": {
       "recommended": "おすすめ",

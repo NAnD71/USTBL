@@ -3560,7 +3560,7 @@
     }
   },
   "InstanceSyncPage": {
-    "title": "Instance Sync & Updates",
+    "title": "Sync & Updates",
     "description": "View the status of instances that follow a modpack, then check for and install updates",
     "platform": {
       "recommended": "Recommended",
