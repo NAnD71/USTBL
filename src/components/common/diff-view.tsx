@@ -194,11 +194,11 @@ interface DiffHunksProps {
 }
 
 /** The body of a GitHub-style unified diff. */
-export const DiffHunks: React.FC<DiffHunksProps> = ({
+export const DiffHunks = React.memo(function DiffHunks({
   hunks,
   hideHunkHeaders = false,
   renderEditAction,
-}) => {
+}: DiffHunksProps) {
   const colors = useDiffColors();
   return (
     <Box
@@ -244,7 +244,7 @@ export const DiffHunks: React.FC<DiffHunksProps> = ({
       ))}
     </Box>
   );
-};
+});
 
 interface DiffFileProps {
   path: string;
@@ -324,7 +324,7 @@ export const DiffFile: React.FC<DiffFileProps> = ({
         )}
       </HStack>
       {children && (
-        <Collapse in={isOpen} animateOpacity={false}>
+        <Collapse in={isOpen} animateOpacity={false} unmountOnExit>
           {children}
         </Collapse>
       )}
