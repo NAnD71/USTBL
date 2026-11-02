@@ -3,6 +3,10 @@ import {
   Collapse,
   HStack,
   Icon,
+  Menu,
+  MenuButton,
+  MenuItem,
+  MenuList,
   Stack,
   Text,
   useColorModeValue,
@@ -17,14 +21,19 @@ import {
   LuDownload,
   LuFolder,
   LuPackageCheck,
+  LuPencil,
+  LuPin,
+  LuPinOff,
   LuPlus,
   LuStar,
+  LuTrash2,
 } from "react-icons/lu";
 import SelectableButton from "@/components/common/selectable-button";
 import {
   InstanceRow,
   SectionHeader,
 } from "@/components/instance-sidebar-parts";
+import GenericConfirmDialog from "@/components/modals/generic-confirm-dialog";
 import NewInstanceGroupModal from "@/components/modals/new-instance-group-modal";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
@@ -42,14 +51,17 @@ import {
   Section,
   addToNewGroup,
   buildSidebar,
+  deleteGroup,
   dropInstance,
   isGroupNameTaken,
   isSortableSection,
   moveSection,
   newGroupId,
   normalizeGroups,
+  renameGroup,
   sameGroups,
   toggleCollapsed,
+  togglePinned,
 } from "@/utils/instance-groups";
 
 const isInstanceDetailsPage = (path: string) =>
@@ -76,6 +88,11 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({ columnRef }) => {
     sectionKey: string;
     instanceId: string;
   } | null>(null);
+  const [editingGroup, setEditingGroup] = useState<string | null>(null);
+  const [menu, setMenu] = useState<{ x: number; y: number; id: string } | null>(
+    null
+  );
+  const [pendingDelete, setPendingDelete] = useState<string | null>(null);
   const [pendingNewGroup, setPendingNewGroup] = useState<
     Omit<InstanceDrop, "target"> | undefined
   >();
@@ -144,6 +161,21 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({ columnRef }) => {
           status: "error",
         });
     });
+  };
+
+  const submitGroupName = (id: string, name: string) => {
+    setEditingGroup(null);
+    const next = renameGroup(groups, id, name);
+    if (next !== groups) update("states.instanceGroups", next);
+    else if (
+      name.trim() &&
+      isGroupNameTaken(normalizeGroups(groups), name, id)
+    ) {
+      toast({
+        title: t("InstanceGroups.newGroup.duplicate"),
+        status: "warning",
+      });
+    }
   };
 
   const applyDrop = async (instanceId: string, result: DropResult) => {
@@ -278,6 +310,26 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({ columnRef }) => {
                         })
                     : undefined
                 }
+                editing={editingGroup === section.key}
+                onStartEdit={
+                  section.kind === "custom"
+                    ? () => setEditingGroup(section.key)
+                    : undefined
+                }
+                onSubmitName={(name) => submitGroupName(section.key, name)}
+                onCancelEdit={() => setEditingGroup(null)}
+                onContextMenu={
+                  section.kind === "custom"
+                    ? (event) => {
+                        event.preventDefault();
+                        setMenu({
+                          x: event.clientX,
+                          y: event.clientY,
+                          id: section.key,
+                        });
+                      }
+                    : undefined
+                }
               />
               <Collapse
                 in={open}
@@ -392,6 +444,71 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({ columnRef }) => {
           zIndex="tooltip"
         />
       )}
+      <Menu
+        isOpen={!!menu}
+        onClose={() => setMenu(null)}
+        placement="bottom-start"
+        isLazy
+      >
+        <MenuButton
+          as={Box}
+          position="fixed"
+          left={`${menu?.x ?? 0}px`}
+          top={`${menu?.y ?? 0}px`}
+          w={0}
+          h={0}
+          aria-hidden
+        />
+        <MenuList>
+          <MenuItem
+            icon={<Icon as={groups.pinned === menu?.id ? LuPinOff : LuPin} />}
+            onClick={() =>
+              menu &&
+              update("states.instanceGroups", togglePinned(groups, menu.id))
+            }
+          >
+            {t(
+              groups.pinned === menu?.id
+                ? "InstanceGroups.menu.unpin"
+                : "InstanceGroups.menu.pin"
+            )}
+          </MenuItem>
+          <MenuItem
+            icon={<Icon as={LuPencil} />}
+            onClick={() => {
+              if (!menu) return;
+              const id = menu.id;
+              // The menu gives focus back to its button when it closes, which
+              // would blur the input at once; start editing after that.
+              window.setTimeout(() => setEditingGroup(id), 100);
+            }}
+          >
+            {t("InstanceGroups.menu.rename")}
+          </MenuItem>
+          <MenuItem
+            icon={<Icon as={LuTrash2} />}
+            color="red.500"
+            onClick={() => menu && setPendingDelete(menu.id)}
+          >
+            {t("InstanceGroups.menu.delete")}
+          </MenuItem>
+        </MenuList>
+      </Menu>
+      <GenericConfirmDialog
+        isOpen={pendingDelete !== null}
+        onClose={() => setPendingDelete(null)}
+        title={t("InstanceGroups.deleteGroup.title")}
+        body={t("InstanceGroups.deleteGroup.body", {
+          name: (pendingDelete && groups.custom[pendingDelete]?.name) || "",
+        })}
+        btnOK={t("General.delete")}
+        onOKCallback={() => {
+          if (pendingDelete) {
+            update("states.instanceGroups", deleteGroup(groups, pendingDelete));
+          }
+        }}
+        isAlert
+      />
       <NewInstanceGroupModal
         isOpen={!!pendingNewGroup}
         onClose={() => setPendingNewGroup(undefined)}

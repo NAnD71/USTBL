@@ -1391,6 +1391,16 @@
       "placeholder": "分欄名稱",
       "create": "建立",
       "duplicate": "已有同名分欄"
+    },
+    "menu": {
+      "pin": "置頂分欄",
+      "unpin": "取消置頂",
+      "rename": "重新命名分欄",
+      "delete": "刪除分欄"
+    },
+    "deleteGroup": {
+      "title": "刪除分欄",
+      "body": "刪除分欄「{{name}}」？其中的實例不會被刪除。"
     }
   },
   "InstanceIconSelector": {

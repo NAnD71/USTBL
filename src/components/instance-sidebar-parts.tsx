@@ -167,6 +167,7 @@ interface SectionHeaderProps {
   onSubmitName?: (name: string) => void;
   onCancelEdit?: () => void;
   onPointerDown?: (event: React.PointerEvent) => void;
+  onContextMenu?: (event: React.MouseEvent) => void;
 }
 
 export const SectionHeader: React.FC<SectionHeaderProps> = ({
@@ -180,6 +181,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
   onSubmitName,
   onCancelEdit,
   onPointerDown,
+  onContextMenu,
 }) => {
   // Only renamable headers wait for a possible second click.
   const handleClick = useClickOrDoubleClick(onToggle, onStartEdit ?? onToggle);
@@ -206,6 +208,7 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
       justifyContent="start"
       onClick={onStartEdit ? handleClick : onToggle}
       onPointerDown={onPointerDown}
+      onContextMenu={onContextMenu}
       aria-expanded={open}
       leftIcon={chevron}
     >
