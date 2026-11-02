@@ -1704,6 +1704,14 @@
       "login": "登录"
     }
   },
+  "RenameSuggestionModal": {
+    "title": "更新实例名称",
+    "body": "整合包已更新到 {{version}}，要把实例名称改为新版本名吗？",
+    "button": {
+      "rename": "改名",
+      "keep": "保持原名"
+    }
+  },
   "RestartForUpdateConfirmDialog": {
     "title": "启动器更新",
     "body": "新版本已完成下载，重新启动 USTBL 以完成更新",

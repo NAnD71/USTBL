@@ -1704,6 +1704,14 @@
       "login": "Login"
     }
   },
+  "RenameSuggestionModal": {
+    "title": "Update Instance Name",
+    "body": "The modpack has been updated to {{version}}. Rename the instance to the new version?",
+    "button": {
+      "rename": "Rename",
+      "keep": "Keep Name"
+    }
+  },
   "RestartForUpdateConfirmDialog": {
     "title": "Launcher Update",
     "body": "The new version has been downloaded. Restart USTBL to complete the update.",

@@ -1704,6 +1704,14 @@
       "login": "ログイン"
     }
   },
+  "RenameSuggestionModal": {
+    "title": "インスタンス名の更新",
+    "body": "モッドパックが {{version}} に更新されました。インスタンス名を新しいバージョン名に変更しますか？",
+    "button": {
+      "rename": "名前を変更",
+      "keep": "そのままにする"
+    }
+  },
   "RestartForUpdateConfirmDialog": {
     "title": "ランチャー更新",
     "body": "新しいバージョンのダウンロードが完了しました。USTBL を再起動して更新を完了してください",

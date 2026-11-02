@@ -111,3 +111,46 @@ test("every instance creation entry checks the folder first", () => {
     );
   }
 });
+
+test("a renamed-version suggestion swaps only the old label", () => {
+  const { suggestRenamedName, takeRenameSuggestion, pendingUpdateLabels } = load(
+    "src/utils/rename-suggestion.ts"
+  );
+  assert.equal(suggestRenamedName("GTNH 2.8.3", "2.8.3", "2.8.4"), "GTNH 2.8.4");
+  assert.equal(suggestRenamedName("GTNH", "2.8.3", "2.8.4"), null);
+  assert.equal(suggestRenamedName("GTNH 2.8.3", "", "2.8.4"), null);
+  assert.equal(suggestRenamedName("GTNH 2.8.3", undefined, "2.8.4"), null);
+  assert.equal(suggestRenamedName("GTNH 2.8.3", "2.8.3", "2.8.3"), null);
+  pendingUpdateLabels.set("a", { from: "1.0", to: "1.1" });
+  assert.deepEqual(takeRenameSuggestion("a", "Pack 1.0"), {
+    version: "1.1",
+    suggested: "Pack 1.1",
+  });
+  assert.equal(takeRenameSuggestion("a", "Pack 1.0"), null);
+  assert.equal(takeRenameSuggestion("b", "Pack 1.0"), null);
+});
+
+test("suggestion dialogs take turns", () => {
+  const { enqueueSuggestionModal } = load("src/utils/modal-queue.ts");
+  const order = [];
+  let releaseFirst;
+  enqueueSuggestionModal((release) => {
+    order.push("first");
+    releaseFirst = release;
+  });
+  enqueueSuggestionModal((release) => {
+    order.push("second");
+    release();
+  });
+  assert.deepEqual(order, ["first"]);
+  releaseFirst();
+  releaseFirst();
+  assert.deepEqual(order, ["first", "second"]);
+});
+
+test("the update flow notes labels, suggests after success and queues behind the memory prompt", () => {
+  assert.match(read("src/components/modals/update-modpack-modal.tsx"), /pendingUpdateLabels\.set/);
+  assert.match(read("src/utils/modpack-update-task.ts"), /suggestRename\?\.\(/);
+  assert.match(read("src/contexts/task.tsx"), /enqueueSuggestionModal/);
+  assert.match(read("src/hooks/memory-suggestion.ts"), /enqueueSuggestionModal/);
+});

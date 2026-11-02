@@ -1704,6 +1704,14 @@
       "login": "Connexion"
     }
   },
+  "RenameSuggestionModal": {
+    "title": "Mettre à jour le nom de l'instance",
+    "body": "Le modpack a été mis à jour vers {{version}}. Renommer l'instance avec le nom de la nouvelle version ?",
+    "button": {
+      "rename": "Renommer",
+      "keep": "Garder le nom"
+    }
+  },
   "RestartForUpdateConfirmDialog": {
     "title": "Mise à jour du lanceur",
     "body": "La nouvelle version a été téléchargée. Redémarrez USTBL pour finaliser la mise à jour.",
