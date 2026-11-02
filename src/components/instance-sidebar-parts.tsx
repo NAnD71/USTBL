@@ -12,7 +12,7 @@ import React, { useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { IconType } from "react-icons";
 import { FaStar } from "react-icons/fa6";
-import { LuBox, LuChevronDown, LuChevronRight } from "react-icons/lu";
+import { LuBox, LuChevronDown, LuChevronLeft } from "react-icons/lu";
 import SelectableButton from "@/components/common/selectable-button";
 import { InstanceSummary } from "@/models/instance/misc";
 import { getGameDirName } from "@/utils/instance";
@@ -192,17 +192,18 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
 }) => {
   // Only renamable headers wait for a possible second click.
   const handleClick = useClickOrDoubleClick(onToggle, onStartEdit ?? onToggle);
-  const chevron = <Icon as={open ? LuChevronDown : LuChevronRight} />;
+  const chevron = <Icon as={open ? LuChevronDown : LuChevronLeft} />;
 
   if (editing && onSubmitName && onCancelEdit) {
     return (
       <HStack spacing={2} h={8} px={3}>
-        {chevron}
+        <Icon as={icon} />
         <InlineNameInput
           initial={title}
           onSubmit={onSubmitName}
           onCancel={onCancelEdit}
         />
+        {chevron}
       </HStack>
     );
   }
@@ -217,9 +218,9 @@ export const SectionHeader: React.FC<SectionHeaderProps> = ({
       onPointerDown={onPointerDown}
       onContextMenu={onContextMenu}
       aria-expanded={open}
-      leftIcon={chevron}
+      rightIcon={chevron}
     >
-      <HStack spacing={2} overflow="hidden">
+      <HStack spacing={2} overflow="hidden" flex={1} minW={0}>
         <Icon as={icon} />
         <Text className="ellipsis-text">{title}</Text>
         <Text className="secondary-text" fontSize="xs">
