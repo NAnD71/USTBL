@@ -3,9 +3,12 @@
 import {
   ModpackChangeClass,
   ModpackChangeDetailEntry,
+  ModpackIgnoredItem,
 } from "@/models/modpack-update";
+import { DiffRank, sortByRank } from "@/utils/diff-rank";
 import {
   compareDirsFirst,
+  compareNames,
   createPathTree,
   placePath,
   sortPathTree,
@@ -124,8 +127,32 @@ export const buildChangeTree = (
       mergeLeaves: false,
     });
   }
-  return sortPathTree(tree.roots, compareDirsFirst);
+  return sortPathTree(tree.roots, (a, b) =>
+    a.kind === "file" && b.kind === "file" && a.entry && b.entry
+      ? entryRank(a.entry) - entryRank(b.entry) || compareNames(a.name, b.name)
+      : compareDirsFirst(a, b)
+  );
 };
+
+/**
+ * Where an entry goes among its siblings: 0 shows a line diff, 1 is a changed
+ * file with no diff to show (not text, no copy of the original), 2 is a file
+ * that is added, deleted, switched or first-install only.
+ */
+export const entryRank = (entry: ModpackChangeDetailEntry): DiffRank => {
+  if (entry.class !== "modified") return 2;
+  return entry.hunks && entry.hunks.length > 0 ? 0 : 1;
+};
+
+/** Ignored items: spots ignored show a diff, a whole file does not, an added file is the rest. */
+export const ignoredRank = (item: ModpackIgnoredItem): DiffRank =>
+  item.added ? 2 : item.whole ? 1 : 0;
+
+export const sortEntriesByDiff = (entries: ModpackChangeDetailEntry[]) =>
+  sortByRank(entries, entryRank);
+
+export const sortIgnoredByDiff = (items: ModpackIgnoredItem[]) =>
+  sortByRank(items, ignoredRank);
 
 /** Few entries open the whole tree; more open the first level only. */
 export const expandedDepth = (total: number): number =>

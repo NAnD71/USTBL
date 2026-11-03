@@ -21,7 +21,13 @@ import {
   VStack,
   useDisclosure,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import { DiffFile, DiffHunks, regionHunk } from "@/components/common/diff-view";
@@ -32,7 +38,9 @@ import {
   FilePanelToolbar,
 } from "@/components/common/file-panel";
 import TreeView, { TreeCommand } from "@/components/common/tree-view";
-import { useViewportHeight } from "@/components/common/virtual-rows";
+import VirtualRows, {
+  useViewportHeight,
+} from "@/components/common/virtual-rows";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
@@ -61,6 +69,8 @@ import {
   filterEntries,
   isRuleDeleted,
   revealPath,
+  sortEntriesByDiff,
+  sortIgnoredByDiff,
   splitByGroup,
 } from "@/utils/modpack-change-detail";
 import { toTreeNodes } from "@/utils/path-tree";
@@ -214,19 +224,29 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const groups = useMemo(() => splitByGroup(entries), [entries]);
   // The counts and the filter cover the body only.
   const counts = useMemo(() => countByClass(groups.main), [groups.main]);
-  const queryActive = isQueryActive(query);
-  const matchesPath = useMemo(() => createPathMatcher(query), [query]);
+  // The list follows the filter one render behind, so typing and clicks stay quick.
+  const shownFilter = useDeferredValue(filter);
+  const shownQuery = useDeferredValue(query);
+  const queryActive = isQueryActive(shownQuery);
+  const matchesPath = useMemo(
+    () => createPathMatcher(shownQuery),
+    [shownQuery]
+  );
   const shownMain = useMemo(
     () =>
-      filterEntries(groups.main, filter).filter((entry) =>
+      filterEntries(groups.main, shownFilter).filter((entry) =>
         matchesPath(entry.path)
       ),
-    [groups.main, filter, matchesPath]
+    [groups.main, shownFilter, matchesPath]
   );
   const shownWillDelete = useMemo(
-    () => groups.willDelete.filter((entry) => matchesPath(entry.path)),
+    () =>
+      sortEntriesByDiff(
+        groups.willDelete.filter((entry) => matchesPath(entry.path))
+      ),
     [groups.willDelete, matchesPath]
   );
+  const sortedIgnored = useMemo(() => sortIgnoredByDiff(ignored), [ignored]);
   // Hits open their parents without touching the remembered expansion, so
   // clearing the query brings back what the user had open.
   const expandAll = queryActive && shownMain.length <= AUTO_EXPAND_LIMIT;
@@ -648,11 +668,21 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   )}
                   defaultOpen
                 >
-                  {shownWillDelete.map((entry) => (
-                    <Box key={entry.path}>
-                      {renderEntry(entry, entry.path, false)}
-                    </Box>
-                  ))}
+                  <VirtualRows
+                    rowCount={shownWillDelete.length}
+                    rowKey={(index) => shownWillDelete[index].path}
+                    renderRow={(index) => (
+                      <Box pb={2}>
+                        {renderEntry(
+                          shownWillDelete[index],
+                          shownWillDelete[index].path,
+                          false
+                        )}
+                      </Box>
+                    )}
+                    layoutKey={shownWillDelete}
+                    maxHeight={treeHeight}
+                  />
                 </ChangeGroup>
               )}
             </VStack>
@@ -665,7 +695,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                 })}
                 description={t("ModpackLocalChangesModal.ignored.description")}
               >
-                {ignored.map(renderIgnored)}
+                {sortedIgnored.map(renderIgnored)}
               </ChangeGroup>
             </Box>
           )}

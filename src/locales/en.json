@@ -3495,7 +3495,6 @@
       "restoreComponents": "This version changes the game components. The update will also rebuild the game's version profile and libraries.",
       "conflicts": "{{count}} files conflict with your changes; the new version is applied by default, and you can handle them individually",
       "autoMerged": "{{count}} auto-merged",
-      "showAll": "Show all ({{count}} more)",
       "fileDiff": {
         "show": "Show diff",
         "hide": "Hide diff",

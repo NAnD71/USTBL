@@ -15,7 +15,14 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useDeferredValue,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { useTranslation } from "react-i18next";
 import { DiffExpandSignal } from "@/components/common/diff-view";
 import { FilePanelToolbar } from "@/components/common/file-panel";
@@ -447,15 +454,19 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
   );
 
   // Display only: answers and "all" buttons still cover every conflict.
-  const matchesPath = useMemo(() => createPathMatcher(fileQuery), [fileQuery]);
+  const shownQuery = useDeferredValue(fileQuery);
+  const matchesPath = useMemo(
+    () => createPathMatcher(shownQuery),
+    [shownQuery]
+  );
   const shownPlan = useMemo(() => {
-    if (!plan || !isQueryActive(fileQuery)) return plan;
+    if (!plan || !isQueryActive(shownQuery)) return plan;
     return {
       ...plan,
       changes: plan.changes.filter((change) => matchesPath(change.path)),
       autoMerged: plan.autoMerged.filter((change) => matchesPath(change.path)),
     };
-  }, [plan, fileQuery, matchesPath]);
+  }, [plan, shownQuery, matchesPath]);
   // Display order only: `choices` and the plan hash do not depend on it.
   const shownConflicts = useMemo(
     () =>
@@ -660,7 +671,7 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
           />
         )}
         {shownPlan &&
-          isQueryActive(fileQuery) &&
+          isQueryActive(shownQuery) &&
           shownPlan.changes.length +
             shownPlan.autoMerged.length +
             shownConflicts.length ===
@@ -679,7 +690,7 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
                     count: plan.conflicts.length,
                   })}
                 </Text>
-                {isQueryActive(fileQuery) && (
+                {isQueryActive(shownQuery) && (
                   <Text fontSize="xs" className="secondary-text">
                     {t("FileFilter.shown", {
                       shown: shownConflicts.length,

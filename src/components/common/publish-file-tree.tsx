@@ -12,7 +12,7 @@ import {
   Tooltip,
   VStack,
 } from "@chakra-ui/react";
-import { useMemo, useState } from "react";
+import { useDeferredValue, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   LuBan,
@@ -155,8 +155,12 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
     () => new Map(changes.map((change) => [keyOf(change.path), change])),
     [changes]
   );
-  const filtered = isFilterActive(filter);
   const [query, setQuery] = useState("");
+  // Filtering thousands of files must not hold up typing or a click: the tree
+  // follows these one render behind, and the controls answer at once.
+  const shownFilter = useDeferredValue(filter);
+  const shownQuery = useDeferredValue(query);
+  const filtered = isFilterActive(shownFilter);
   const [command, setCommand] = useState<TreeCommand>();
   const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
   const toggleDiff = (path: string) =>
@@ -165,14 +169,14 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
       if (!next.delete(path)) next.add(path);
       return next;
     });
-  const queryActive = isQueryActive(query);
+  const queryActive = isQueryActive(shownQuery);
   const markedNodes = useMemo(
-    () => filterNodes(nodes, marks, filter),
-    [nodes, marks, filter]
+    () => filterNodes(nodes, marks, shownFilter),
+    [nodes, marks, shownFilter]
   );
   const shownNodes = useMemo(
-    () => filterTreeByQuery(markedNodes, query),
-    [markedNodes, query]
+    () => filterTreeByQuery(markedNodes, shownQuery),
+    [markedNodes, shownQuery]
   );
   const tree = useMemo(
     () => toTreeNodes(shownNodes, (node) => node.path),
@@ -190,7 +194,7 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
     () => (filtered ? { ids: branchIds(tree) } : undefined),
     // The request must change only when the filter changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [filter]
+    [shownFilter]
   );
 
   const label = (state: ShownState) => t(`PublishModpackModal.tree.${state}`);

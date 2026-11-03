@@ -115,7 +115,7 @@ test("the publish tree, update preview and local changes all use the shared filt
   }
   assert.match(
     read("src/components/common/publish-file-tree.tsx"),
-    /filterTreeByQuery\(markedNodes, query\)/
+    /filterTreeByQuery\(markedNodes, shownQuery\)/
   );
 });
 
