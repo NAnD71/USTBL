@@ -72,6 +72,7 @@ const useParentView = (
     height: 0,
     offset: 0,
   });
+  const viewRef = useRef(view);
 
   useLayoutEffect(() => {
     if (enabled) setScroller(findScrollParent(boxRef.current));
@@ -85,17 +86,21 @@ const useParentView = (
       scroller.getBoundingClientRect().top +
       scroller.scrollTop -
       scroller.clientTop;
-    setView((prev) =>
-      prev.scrollTop === scroller.scrollTop &&
-      prev.height === scroller.clientHeight &&
-      Math.abs(prev.offset - offset) < 0.5
-        ? prev
-        : {
-            scrollTop: scroller.scrollTop,
-            height: scroller.clientHeight,
-            offset,
-          }
-    );
+    const previous = viewRef.current;
+    if (
+      previous.scrollTop === scroller.scrollTop &&
+      previous.height === scroller.clientHeight &&
+      Math.abs(previous.offset - offset) < 0.5
+    ) {
+      return;
+    }
+    const next = {
+      scrollTop: scroller.scrollTop,
+      height: scroller.clientHeight,
+      offset,
+    };
+    viewRef.current = next;
+    setView(next);
   }, [scroller, boxRef]);
 
   useLayoutEffect(measure);

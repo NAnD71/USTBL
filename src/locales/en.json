@@ -3495,7 +3495,7 @@
         "removedTag": "Removed"
       },
       "restoreComponents": "This version changes the game components. The update will also rebuild the game's version profile and libraries.",
-      "conflicts": "{{count}} files conflict with your changes; the new version is applied by default, and you can handle them individually",
+      "conflicts": "{{count}} local changes conflict with the new version",
       "autoMerged": "{{count}} auto-merged",
       "fileDiff": {
         "show": "Show diff",

@@ -3495,7 +3495,7 @@
         "removedTag": "Supprimé"
       },
       "restoreComponents": "Cette version modifie les composants du jeu. La mise à jour reconstruira aussi le profil de version et les bibliothèques.",
-      "conflicts": "{{count}} fichiers sont en conflit avec vos modifications ; la nouvelle version est appliquée par défaut, vous pouvez les traiter individuellement",
+      "conflicts": "{{count}} modifications locales sont en conflit avec la nouvelle version",
       "autoMerged": "{{count}} fusionnés automatiquement",
       "fileDiff": {
         "show": "Afficher les différences",
