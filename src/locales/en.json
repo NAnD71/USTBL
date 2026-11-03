@@ -3468,6 +3468,12 @@
       "enable": "{{count}} enabled",
       "retire": "Stop managing {{count}}",
       "loaderChange": "{{loader}} will switch from {{from}} to {{to}}",
+      "componentChanges": {
+        "title": "Component changes",
+        "changed": "{{name}} {{from}} → {{to}}",
+        "added": "{{name}} added {{to}}",
+        "removed": "{{name}} removed"
+      },
       "restoreComponents": "This version changes the game components. The update will also rebuild the game's version profile and libraries.",
       "conflicts": "{{count}} files conflict with your changes; keep local by default and handle them individually",
       "autoMerged": "{{count}} auto-merged",

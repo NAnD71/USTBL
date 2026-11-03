@@ -34,6 +34,7 @@ import {
 } from "@/models/modpack-update";
 import { CampusModpackService } from "@/services/campus-modpack";
 import { ModpackUpdateService } from "@/services/modpack-update";
+import { componentDisplayName } from "@/utils/modpack-components";
 import {
   failedUpdatePlans,
   rememberedChoices,
@@ -567,14 +568,49 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
             />
           </VStack>
         )}
-        {plan.loaderChange && (
-          <Text fontSize="xs-sm">
-            {t("UpdateModpackModal.plan.loaderChange", {
-              from: plan.loaderChange.from.version,
-              to: plan.loaderChange.to.version,
-              loader: plan.loaderChange.to.type,
-            })}
-          </Text>
+        {(!!plan.componentChanges?.length || plan.loaderChange) && (
+          <VStack align="stretch" spacing={1}>
+            <Text fontWeight="medium">
+              {t("UpdateModpackModal.plan.componentChanges.title")}
+            </Text>
+            {plan.componentChanges?.length ? (
+              plan.componentChanges.map((change) => {
+                const name = componentDisplayName(change.uid);
+                const from = change.from || "-";
+                const to = change.to || "-";
+                return (
+                  <Text key={change.uid} fontSize="xs-sm">
+                    {change.from == null
+                      ? t("UpdateModpackModal.plan.componentChanges.added", {
+                          name,
+                          to,
+                        })
+                      : change.to == null
+                        ? t(
+                            "UpdateModpackModal.plan.componentChanges.removed",
+                            { name }
+                          )
+                        : t(
+                            "UpdateModpackModal.plan.componentChanges.changed",
+                            {
+                              name,
+                              from,
+                              to,
+                            }
+                          )}
+                  </Text>
+                );
+              })
+            ) : plan.loaderChange ? (
+              <Text fontSize="xs-sm">
+                {t("UpdateModpackModal.plan.loaderChange", {
+                  from: plan.loaderChange.from.version,
+                  to: plan.loaderChange.to.version,
+                  loader: plan.loaderChange.to.type,
+                })}
+              </Text>
+            ) : null}
+          </VStack>
         )}
         {plan.restoreComponents && (
           <Text fontSize="xs-sm">
