@@ -4,7 +4,9 @@ import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import VirtualRows from "@/components/common/virtual-rows";
 import {
   ExpansionHistory,
+  applyBulkExpansion,
   applyExpansionRequest,
+  branchIds,
   syncExpandedState,
 } from "@/utils/tree-expansion";
 import { flattenTree, indentRem } from "@/utils/tree-flatten";
@@ -40,7 +42,16 @@ interface TreeViewProps<T = unknown> {
   expandRequest?: { ids: Set<string> };
   /** Show every branch open without touching the remembered expansion. */
   expandAll?: boolean;
+  /**
+   * Opens or closes every branch of `nodes` each time a new command arrives
+   * (compared by identity), whatever was open before.
+   */
+  command?: TreeCommand;
   leafPlaceholderWidth?: number;
+}
+
+export interface TreeCommand {
+  type: "expand" | "collapse";
 }
 
 const collectExpandedIdsByDepth = <T,>(
@@ -89,6 +100,7 @@ const TreeView = <T,>({
   preserveExpanded = false,
   expandRequest,
   expandAll = false,
+  command,
   leafPlaceholderWidth = 24,
 }: TreeViewProps<T>) => {
   const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
@@ -122,6 +134,18 @@ const TreeView = <T,>({
   useEffect(() => {
     setClosedIds(new Set());
   }, [expandAll]);
+
+  const lastCommand = useRef<TreeCommand>();
+  useEffect(() => {
+    if (!command || lastCommand.current === command) return;
+    lastCommand.current = command;
+    const branches = branchIds(nodes);
+    const open = command.type === "expand";
+    applyBulkExpansion(expansionHistory.current, branches, open);
+    setExpandedIds(open ? branches : new Set());
+    // With `expandAll` on, closed branches are what is tracked.
+    setClosedIds(open ? new Set() : new Set(branches));
+  }, [command, nodes]);
 
   const toggleExpanded = useCallback(
     (id: string) => {

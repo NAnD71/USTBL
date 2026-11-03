@@ -31,7 +31,7 @@ import {
   FilePanelEmpty,
   FilePanelToolbar,
 } from "@/components/common/file-panel";
-import TreeView from "@/components/common/tree-view";
+import TreeView, { TreeCommand } from "@/components/common/tree-view";
 import { useViewportHeight } from "@/components/common/virtual-rows";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
@@ -241,6 +241,17 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const openFiles = shownMain.length <= OPEN_LIMIT;
   // The tree draws only the cards in view, so which are open lives here.
   const [openCards, setOpenCards] = useState<Map<string, boolean>>(new Map());
+  // What the cards without a choice of their own do; null follows the count.
+  const [allCardsOpen, setAllCardsOpen] = useState<boolean | null>(null);
+  const [command, setCommand] = useState<TreeCommand>();
+  /** The two toolbar buttons: every directory and every card. */
+  const openEverything = (open: boolean) => {
+    setCommand({ type: open ? "expand" : "collapse" });
+    setAllCardsOpen(open);
+    setOpenCards(new Map());
+  };
+  const cardOpen = (path: string) =>
+    openCards.get(path) ?? allCardsOpen ?? openFiles;
   // The tree scrolls inside the dialog, which scrolls for the groups below it.
   const treeHeight = useViewportHeight(0.55, 320);
 
@@ -373,8 +384,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const renderEntry = (
     entry: ModpackChangeDetailEntry,
     label: string,
-    withIgnore = true,
-    inTree = false
+    withIgnore = true
   ) => {
     const reveal = revealPath(entry);
     const labelClass: ChangeFilter =
@@ -392,14 +402,10 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
         <DiffFile
           path={label}
           hunks={entry.hunks}
-          defaultOpen={openFiles}
-          {...(inTree
-            ? {
-                open: openCards.get(entry.path) ?? openFiles,
-                onOpenChange: (open: boolean) =>
-                  setOpenCards((prev) => new Map(prev).set(entry.path, open)),
-              }
-            : {})}
+          open={cardOpen(entry.path)}
+          onOpenChange={(open) =>
+            setOpenCards((prev) => new Map(prev).set(entry.path, open))
+          }
           tags={
             <>
               <ChangeTag visual={labelClass} />
@@ -584,6 +590,8 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                     <FilePanelToolbar
                       query={query}
                       onQueryChange={setQuery}
+                      onExpandAll={() => openEverything(true)}
+                      onCollapseAll={() => openEverything(false)}
                       controls={CLASS_ORDER.filter(
                         (name) => counts[name] > 0
                       ).map((name) => (
@@ -610,11 +618,12 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   defaultExpandedDepth={expandedDepth(shownMain.length)}
                   preserveExpanded
                   expandAll={expandAll}
+                  command={command}
                   maxHeight={treeHeight}
                   leafPlaceholderWidth={0}
                   renderNode={({ node: { data } }) =>
                     data.entry ? (
-                      renderEntry(data.entry, data.name, true, true)
+                      renderEntry(data.entry, data.name)
                     ) : (
                       <HStack spacing={2}>
                         <Text fontSize="xs-sm" fontWeight="medium">

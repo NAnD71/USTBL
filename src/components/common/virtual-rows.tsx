@@ -128,8 +128,11 @@ const VirtualRows: React.FC<VirtualRowsProps> = ({
     return sum;
   }, [maxHeight, estimatedRowHeight]);
 
+  // The list needs measuring, so the static export draws an empty box.
+  const [ready, setReady] = useState(false);
   useEffect(() => {
     mounted.current = true;
+    setReady(true);
     return () => {
       mounted.current = false;
     };
@@ -214,25 +217,27 @@ const VirtualRows: React.FC<VirtualRowsProps> = ({
       onKeyDown={handleKeyDown}
     >
       <AutoSizer disableHeight>
-        {({ width }) => (
-          <List
-            ref={listRef}
-            width={width}
-            height={viewport}
-            rowCount={rowCount}
-            rowHeight={({ index }) =>
-              heights.current.get(rowKey(index)) ?? estimatedRowHeight
-            }
-            estimatedRowSize={estimatedRowHeight}
-            overscanRowCount={overscan}
-            rowRenderer={rowRenderer}
-            role={role}
-            containerRole={rowRole}
-            aria-label={ariaLabel ?? ""}
-            tabIndex={null}
-            style={{ outline: "none" }}
-          />
-        )}
+        {({ width }) =>
+          !ready ? null : (
+            <List
+              ref={listRef}
+              width={width}
+              height={viewport}
+              rowCount={rowCount}
+              rowHeight={({ index }) =>
+                heights.current.get(rowKey(index)) ?? estimatedRowHeight
+              }
+              estimatedRowSize={estimatedRowHeight}
+              overscanRowCount={overscan}
+              rowRenderer={rowRenderer}
+              role={role}
+              containerRole={rowRole}
+              aria-label={ariaLabel ?? ""}
+              tabIndex={null}
+              style={{ outline: "none" }}
+            />
+          )
+        }
       </AutoSizer>
     </div>
   );

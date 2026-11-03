@@ -33,7 +33,7 @@ import {
   FilePanelToolbar,
 } from "@/components/common/file-panel";
 import PublishChangeDiff from "@/components/common/publish-change-diff";
-import TreeView from "@/components/common/tree-view";
+import TreeView, { TreeCommand } from "@/components/common/tree-view";
 import { useLauncherConfig } from "@/contexts/config";
 import {
   AUTO_EXPAND_LIMIT,
@@ -157,6 +157,7 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
   );
   const filtered = isFilterActive(filter);
   const [query, setQuery] = useState("");
+  const [command, setCommand] = useState<TreeCommand>();
   const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
   const toggleDiff = (path: string) =>
     setOpenDiffs((prev) => {
@@ -201,6 +202,8 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
           <FilePanelToolbar
             query={query}
             onQueryChange={setQuery}
+            onExpandAll={() => setCommand({ type: "expand" })}
+            onCollapseAll={() => setCommand({ type: "collapse" })}
             controls={
               <>
                 <Text fontSize="xs" className="secondary-text">
@@ -275,6 +278,7 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
             preserveExpanded
             expandRequest={expandRequest}
             expandAll={expandAll}
+            command={command}
             renderNode={({ node: { data } }) => (
               <PublishTreeRow
                 instanceId={instanceId}

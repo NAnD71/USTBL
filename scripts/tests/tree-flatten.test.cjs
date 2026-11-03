@@ -102,3 +102,22 @@ test("no caller wraps the tree in a scroll box of its own", () => {
     assert.doesNotMatch(read(file), /overflowY="auto"/, file);
   }
 });
+
+test("the publish tree and the local changes dialog drive the tree's expand and collapse", () => {
+  const tree = read("src/components/common/tree-view.tsx");
+  assert.match(tree, /branchIds\(nodes\)/);
+  assert.match(tree, /applyBulkExpansion/);
+  for (const file of [
+    "src/components/common/publish-file-tree.tsx",
+    "src/components/modals/modpack-local-changes-modal.tsx",
+  ]) {
+    const source = read(file);
+    assert.match(source, /onExpandAll=/, file);
+    assert.match(source, /onCollapseAll=/, file);
+    assert.match(source, /command=\{command\}/, file);
+  }
+  // The dialog also opens or closes every diff card.
+  const dialog = read("src/components/modals/modpack-local-changes-modal.tsx");
+  assert.match(dialog, /setAllCardsOpen\(open\)/);
+  assert.match(dialog, /open=\{cardOpen\(entry\.path\)\}/);
+});
