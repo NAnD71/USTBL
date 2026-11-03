@@ -5,6 +5,7 @@ import { BeatLoader } from "react-spinners";
 import { DiffHunks } from "@/components/common/diff-view";
 import { PublishFileDiff } from "@/models/modpack-update";
 import { CampusModpackService } from "@/services/campus-modpack";
+import { diffReasonKey } from "@/utils/diff-reason";
 import { PublishChange } from "@/utils/modpack-publish-tree";
 import { formatByteSize } from "@/utils/string";
 
@@ -66,12 +67,16 @@ const PublishChangeDiff: React.FC<PublishChangeDiffProps> = ({
     return <BeatLoader size={6} color="gray" />;
   }
   if (diff === null || diff.hunks === null || diff.hunks.length === 0) {
+    const reasonKey = diffReasonKey(diff?.unavailable);
     return (
       <Text fontSize="xs" className="secondary-text">
         {t(
-          diff === null || diff.hunks === null
-            ? "PublishModpackModal.tree.diff.differs"
-            : "PublishModpackModal.tree.diff.formatOnly",
+          reasonKey ??
+            (diff === null
+              ? "PublishModpackModal.tree.diff.unavailable"
+              : diff.hunks === null
+                ? "PublishModpackModal.tree.diff.differs"
+                : "PublishModpackModal.tree.diff.formatOnly"),
           sizes
         )}
       </Text>

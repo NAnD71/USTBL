@@ -6,6 +6,7 @@ import { BeatLoader } from "react-spinners";
 import { DiffHunks } from "@/components/common/diff-view";
 import { ModpackFileDiff } from "@/models/modpack-update";
 import { ModpackUpdateService } from "@/services/modpack-update";
+import { diffReasonKey } from "@/utils/diff-reason";
 
 /** Which note replaces the diff, if the result has nothing to draw. */
 export const fileDiffNotice = (
@@ -99,7 +100,10 @@ export const ModpackFileDiffPanel: React.FC<ModpackFileDiffPanelProps> = ({
         </Box>
       ) : notice ? (
         <Text fontSize="xs" className="secondary-text" mt={1}>
-          {t(`UpdateModpackModal.plan.fileDiff.${notice}`)}
+          {t(
+            diffReasonKey(notice) ??
+              `UpdateModpackModal.plan.fileDiff.${notice}`
+          )}
         </Text>
       ) : (
         <Box
