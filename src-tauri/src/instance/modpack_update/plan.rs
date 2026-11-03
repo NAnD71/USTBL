@@ -1178,6 +1178,31 @@ pub fn resolve(prepared: &Prepared, choices: &BTreeMap<String, ConflictChoice>) 
   operations
 }
 
+/// Say in the log why a conflict of a text extension has no line blocks.
+fn log_missing_blocks(root: &Path, conflict: &Conflict, remote: Option<&Vec<u8>>) {
+  if !text::is_text_path(&conflict.path, &[]) {
+    return;
+  }
+  let reason = match (conflict.kind, &conflict.baseline) {
+    (ConflictKind::ModifiedLocallyChangedRemotely, Some(base)) => {
+      if base_store::load(root, &base.sha1).ok().flatten().is_none() {
+        "the installed text was not kept"
+      } else if remote.is_none() {
+        "the new text was not read (not UTF-8 text, or over the size limit)"
+      } else {
+        "the local, installed or new text is not valid UTF-8 text"
+      }
+    }
+    (ConflictKind::ModifiedLocallyChangedRemotely, None) => "no installed content is recorded",
+    _ => "this kind of conflict has no installed text to merge from",
+  };
+  log::info!(
+    "modpack update: no text blocks for {} ({:?}): {reason}",
+    conflict.path,
+    conflict.kind
+  );
+}
+
 /// Finish a comparison after the remote bytes of conflicting text files were
 /// fetched: merge what merges itself and give the rest its line conflicts.
 pub fn finish(
@@ -1282,6 +1307,7 @@ pub fn finish(
           }
         }
       }
+      log_missing_blocks(root, &conflict, remote_contents.get(&conflict.path));
       remaining.push(conflict);
     }
   }

@@ -47,6 +47,7 @@ import {
   rememberedChoices,
   resolvePlanChoices,
 } from "@/utils/modpack-update-choices";
+import { sortConflicts } from "@/utils/modpack-update-order";
 import { pendingUpdateLabels } from "@/utils/rename-suggestion";
 
 interface UpdateModpackModalProps extends Omit<ModalProps, "children"> {
@@ -457,10 +458,13 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
       autoMerged: plan.autoMerged.filter((change) => matchesPath(change.path)),
     };
   }, [plan, fileQuery, matchesPath]);
+  // Display order only: `choices` and the plan hash do not depend on it.
   const shownConflicts = useMemo(
     () =>
       plan
-        ? plan.conflicts.filter((conflict) => matchesPath(conflict.path))
+        ? sortConflicts(plan.conflicts).filter((conflict) =>
+            matchesPath(conflict.path)
+          )
         : [],
     [plan, matchesPath]
   );

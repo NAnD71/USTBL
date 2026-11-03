@@ -24,6 +24,7 @@ import {
   ModpackUpdatePlan,
 } from "@/models/modpack-update";
 import { groupPlanChanges } from "@/utils/modpack-update-groups";
+import { sortChangesByDiff } from "@/utils/modpack-update-order";
 
 const formatSize = (size?: number) => {
   if (size === undefined) return "";
@@ -87,8 +88,7 @@ const ChangeGroup: React.FC<{
   const [showAll, setShowAll] = useState(false);
   // Sorting thousands of paths is only worth it for a group that is open.
   const sorted = useMemo(
-    () =>
-      open ? [...changes].sort((a, b) => a.path.localeCompare(b.path)) : [],
+    () => (open ? sortChangesByDiff(changes) : []),
     [open, changes]
   );
   if (changes.length === 0) return null;
