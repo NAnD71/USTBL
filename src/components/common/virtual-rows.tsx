@@ -10,19 +10,6 @@ import { AutoSizer, List, ListRowProps } from "react-virtualized";
 /** Rows no shorter than this let a long list skip summing every height. */
 const MIN_ROW_HEIGHT = 12;
 
-/** The window's height times `fraction`, but at least `min` px. */
-export const useViewportHeight = (fraction: number, min: number): number => {
-  const [height, setHeight] = useState(min);
-  useEffect(() => {
-    const update = () =>
-      setHeight(Math.max(min, Math.round(window.innerHeight * fraction)));
-    update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
-  }, [fraction, min]);
-  return height;
-};
-
 const isTextField = (target: HTMLElement) =>
   target.tagName === "TEXTAREA" ||
   target.tagName === "SELECT" ||
@@ -342,7 +329,11 @@ const VirtualRows: React.FC<VirtualRowsProps> = ({
               ref={listRef}
               width={width}
               autoHeight={scrollParent}
-              height={scrollParent ? view.height : viewport}
+              height={
+                scrollParent
+                  ? Math.max(view.height, estimatedRowHeight)
+                  : viewport
+              }
               scrollTop={
                 scrollParent
                   ? Math.max(0, view.scrollTop - view.offset)
