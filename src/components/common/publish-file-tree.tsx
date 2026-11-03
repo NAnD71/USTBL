@@ -157,6 +157,13 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
   );
   const filtered = isFilterActive(filter);
   const [query, setQuery] = useState("");
+  const [openDiffs, setOpenDiffs] = useState<Set<string>>(new Set());
+  const toggleDiff = (path: string) =>
+    setOpenDiffs((prev) => {
+      const next = new Set(prev);
+      if (!next.delete(path)) next.add(path);
+      return next;
+    });
   const queryActive = isQueryActive(query);
   const markedNodes = useMemo(
     () => filterNodes(nodes, marks, filter),
@@ -256,7 +263,7 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
         ))}
         <Text w="100%">{t("PublishModpackModal.tree.legend.cycle")}</Text>
       </HStack>
-      <Box maxH="xs" overflowY="auto">
+      <Box>
         {isLoading ? (
           <Center py={4}>
             <BeatLoader size={10} color="gray" />
@@ -283,6 +290,8 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
                 localDeleteCount={
                   localDeleteDirCounts.get(keyOf(data.path)) ?? 0
                 }
+                showDiff={openDiffs.has(data.path)}
+                onToggleDiff={() => toggleDiff(data.path)}
                 onDraftChange={onDraftChange}
               />
             )}
@@ -307,6 +316,9 @@ interface PublishTreeRowProps {
   change: PublishChange | undefined;
   dirChanges: number;
   localDeleteCount: number;
+  /** Held by the tree: a row is destroyed when it scrolls out of view. */
+  showDiff: boolean;
+  onToggleDiff: () => void;
   onDraftChange: (updater: (prev: PublishDraft) => PublishDraft) => void;
 }
 
@@ -322,12 +334,14 @@ const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
   change,
   dirChanges,
   localDeleteCount,
+  showDiff,
+  onToggleDiff,
   onDraftChange,
 }) => {
   const { t } = useTranslation();
   const { config } = useLauncherConfig();
   const primaryColor = config.appearance.theme.primaryColor;
-  const [showDiff, setShowDiff] = useState(false);
+
   const isDir = data.kind === "dir";
   const state = isDir ? view.dirState(data.path) : view.fileState(data.path);
   const canRemove = data.ghost && (isDir || canRemoveFile(draft, data.path));
@@ -522,7 +536,7 @@ const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
             leftIcon={<LuFileDiff />}
             flexShrink={0}
             aria-expanded={showDiff}
-            onClick={() => setShowDiff((prev) => !prev)}
+            onClick={onToggleDiff}
           >
             {t(
               showDiff

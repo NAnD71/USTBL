@@ -32,6 +32,7 @@ import {
   FilePanelToolbar,
 } from "@/components/common/file-panel";
 import TreeView from "@/components/common/tree-view";
+import { useViewportHeight } from "@/components/common/virtual-rows";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
@@ -238,6 +239,10 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
     [shownMain]
   );
   const openFiles = shownMain.length <= OPEN_LIMIT;
+  // The tree draws only the cards in view, so which are open lives here.
+  const [openCards, setOpenCards] = useState<Map<string, boolean>>(new Map());
+  // The tree scrolls inside the dialog, which scrolls for the groups below it.
+  const treeHeight = useViewportHeight(0.55, 320);
 
   const isManager = isVustbManager(vustbAccount);
   // Publishing goes on top of the latest version; behind it the platform
@@ -368,7 +373,8 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const renderEntry = (
     entry: ModpackChangeDetailEntry,
     label: string,
-    withIgnore = true
+    withIgnore = true,
+    inTree = false
   ) => {
     const reveal = revealPath(entry);
     const labelClass: ChangeFilter =
@@ -387,6 +393,13 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
           path={label}
           hunks={entry.hunks}
           defaultOpen={openFiles}
+          {...(inTree
+            ? {
+                open: openCards.get(entry.path) ?? openFiles,
+                onOpenChange: (open: boolean) =>
+                  setOpenCards((prev) => new Map(prev).set(entry.path, open)),
+              }
+            : {})}
           tags={
             <>
               <ChangeTag visual={labelClass} />
@@ -597,10 +610,11 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   defaultExpandedDepth={expandedDepth(shownMain.length)}
                   preserveExpanded
                   expandAll={expandAll}
+                  maxHeight={treeHeight}
                   leafPlaceholderWidth={0}
                   renderNode={({ node: { data } }) =>
                     data.entry ? (
-                      renderEntry(data.entry, data.name)
+                      renderEntry(data.entry, data.name, true, true)
                     ) : (
                       <HStack spacing={2}>
                         <Text fontSize="xs-sm" fontWeight="medium">

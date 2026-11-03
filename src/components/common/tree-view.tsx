@@ -1,11 +1,13 @@
-import { Box, HStack, IconButton, VStack } from "@chakra-ui/react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { Box, HStack, IconButton } from "@chakra-ui/react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
+import VirtualRows from "@/components/common/virtual-rows";
 import {
   ExpansionHistory,
   applyExpansionRequest,
   syncExpandedState,
 } from "@/utils/tree-expansion";
+import { flattenTree, indentRem } from "@/utils/tree-flatten";
 
 export interface TreeNode<T = unknown> {
   id: string;
@@ -28,8 +30,11 @@ export interface TreeNodeRenderContext<T = unknown> {
 interface TreeViewProps<T = unknown> {
   nodes: TreeNode<T>[];
   renderNode: (context: TreeNodeRenderContext<T>) => React.ReactNode;
+  /** Indent per level in Chakra spacing units (0.25rem each). */
   indentSize?: number;
   spacing?: number;
+  /** The tallest the tree grows in px before it scrolls. */
+  maxHeight?: number;
   defaultExpandedDepth?: number;
   preserveExpanded?: boolean;
   expandRequest?: { ids: Set<string> };
@@ -79,6 +84,7 @@ const TreeView = <T,>({
   renderNode,
   indentSize = 3,
   spacing = 1,
+  maxHeight = 320,
   defaultExpandedDepth = 0,
   preserveExpanded = false,
   expandRequest,
@@ -143,51 +149,59 @@ const TreeView = <T,>({
     [expandAll]
   );
 
-  const renderBranch = (node: TreeNode<T>, depth: number): React.ReactNode => {
-    const children = node.children ?? [];
-    const isLeaf = children.length === 0;
-    const isExpanded = expandAll
-      ? !closedIds.has(node.id)
-      : expandedIds.has(node.id);
+  const isOpen = useCallback(
+    (id: string) => (expandAll ? !closedIds.has(id) : expandedIds.has(id)),
+    [expandAll, closedIds, expandedIds]
+  );
+  // Only the lines that are shown exist; the list draws the ones in view.
+  const rows = useMemo(() => flattenTree(nodes, isOpen), [nodes, isOpen]);
 
+  const renderRow = (index: number) => {
+    const { node, depth, isLeaf, isExpanded, posInSet, setSize } = rows[index];
     return (
-      <VStack key={node.id} align="stretch" spacing={spacing}>
-        <HStack
-          spacing={1}
-          w="100%"
-          align="center"
-          minH={6}
-          pl={depth * indentSize}
-        >
-          {!isLeaf ? (
-            <IconButton
-              aria-label={isExpanded ? "collapse" : "expand"}
-              icon={isExpanded ? <LuChevronDown /> : <LuChevronRight />}
-              size="xs"
-              variant="ghost"
-              onClick={() => toggleExpanded(node.id)}
-            />
-          ) : leafPlaceholderWidth > 0 ? (
-            <Box w={`${leafPlaceholderWidth}px`} flexShrink={0} />
-          ) : null}
-          <Box flex="1" minW={0}>
-            {renderNode({ node, depth, isLeaf, isExpanded })}
-          </Box>
-        </HStack>
-        {!isLeaf && isExpanded && (
-          <VStack align="stretch" spacing={spacing}>
-            {children.map((child) => renderBranch(child, depth + 1))}
-          </VStack>
-        )}
-      </VStack>
+      <HStack
+        role="treeitem"
+        aria-level={depth + 1}
+        aria-posinset={posInSet}
+        aria-setsize={setSize}
+        aria-expanded={isLeaf ? undefined : isExpanded}
+        spacing={1}
+        w="100%"
+        align="center"
+        minH={6}
+        pb={spacing}
+        style={{ paddingLeft: `${indentRem(depth, indentSize)}rem` }}
+      >
+        {!isLeaf ? (
+          <IconButton
+            aria-label={isExpanded ? "collapse" : "expand"}
+            icon={isExpanded ? <LuChevronDown /> : <LuChevronRight />}
+            size="xs"
+            variant="ghost"
+            onClick={() => toggleExpanded(node.id)}
+          />
+        ) : leafPlaceholderWidth > 0 ? (
+          <Box w={`${leafPlaceholderWidth}px`} flexShrink={0} />
+        ) : null}
+        <Box flex="1" minW={0}>
+          {renderNode({ node, depth, isLeaf, isExpanded })}
+        </Box>
+      </HStack>
     );
   };
 
   return (
-    <VStack align="stretch" spacing={spacing} w="100%">
-      {nodes.map((node) => renderBranch(node, 0))}
-    </VStack>
+    <Box w="100%">
+      <VirtualRows
+        rowCount={rows.length}
+        rowKey={(index) => rows[index].node.id}
+        renderRow={renderRow}
+        layoutKey={rows}
+        maxHeight={maxHeight}
+        role="tree"
+        rowRole="presentation"
+      />
+    </Box>
   );
 };
-
 export default TreeView;

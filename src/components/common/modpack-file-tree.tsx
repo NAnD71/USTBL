@@ -94,7 +94,7 @@ const ModpackFileTree: React.FC<ModpackFileTreeProps> = ({
   const fileTree = useMemo(() => buildFileTree(paths), [paths]);
 
   return (
-    <Box w="100%" maxH="xs" overflowY="auto">
+    <Box w="100%">
       {isLoading ? (
         <Center py={4}>
           <BeatLoader size={10} color="gray" />
