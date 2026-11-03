@@ -1355,6 +1355,15 @@
       "description": "This modpack downloads {{count}} files from the addresses below, which Modrinth does not approve. These files have not been reviewed by the platform and may be unsafe. Continue only if you trust the modpack author.",
       "trust": "Trust and continue",
       "cancel": "Cancel import"
+    },
+    "mode": {
+      "create": "New instance",
+      "update": "Update existing instance"
+    },
+    "update": {
+      "instance": "Instance to update",
+      "noInstance": "No instance can be updated from a local file",
+      "confirm": "Preview update"
     }
   },
   "InstanceBasicSettings": {

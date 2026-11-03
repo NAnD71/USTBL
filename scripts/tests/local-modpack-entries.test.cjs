@@ -83,3 +83,53 @@ test("the ledger's local rows open the changes dialog and are scanned", () => {
   assert.match(source, /openSharedModal\("modpack-local-changes"/);
   assert.match(source, /\[followedKey, localKey\]/);
 });
+
+test("the import dialog switches to updating an existing instance through the shared staging", () => {
+  const modal = read("src/components/modals/import-modpack-modal.tsx");
+  const hook = read("src/hooks/local-modpack-update.tsx");
+  // Mode switch with create as the default.
+  assert.match(modal, /useState<ImportMode>\("create"\)/);
+  assert.match(modal, /ImportModpackModal\.mode\.update/);
+  // The candidates are the ledger's updatable local imports.
+  assert.match(modal, /ledgerLocalUpdatable\(getInstanceList\(\) \?\? \[\]\)/);
+  // Update mode stages the file already chosen, through the hook's path entry.
+  assert.match(
+    modal,
+    /updateFromPath\(updateTarget\.id, updateTarget\.name, path\)/
+  );
+  assert.match(modal, /isDisabled=\{!updateTarget\}/);
+  // The path entry owns staging; the file button only adds the picker.
+  assert.match(
+    hook,
+    /stageLocalModpackUpdate\(\s*instanceId,\s*picked,\s*label/
+  );
+  assert.match(
+    hook,
+    /await updateFromPath\(instanceId, instanceName, picked\)/
+  );
+  assert.equal((hook.match(/stageLocalModpackUpdate\(/g) || []).length, 1);
+  assert.match(hook, /return \{ updateFromFile, updateFromPath, pickingId \}/);
+});
+
+test("the ledger and the import dialog list the same local imports", () => {
+  const ledgerSource = read("src/components/sync/instance-ledger.tsx");
+  // Both exclude installing imports: the ledger by disabling the button, the
+  // dialog by the shared filter.
+  assert.match(
+    ledgerSource,
+    /isDisabled=\{installing \|\| pickingId !== null\}/
+  );
+  const list = [
+    instance("a", "local"),
+    instance("b", "local", true),
+    instance("c", "modrinth"),
+  ];
+  const enabledInLedger = ledger
+    .ledgerLocalInstances(list)
+    .filter((item) => !helpers.isInstallingInstance(item))
+    .map((item) => item.id);
+  assert.deepEqual(
+    ledger.ledgerLocalUpdatable(list).map((item) => item.id),
+    enabledInLedger
+  );
+});

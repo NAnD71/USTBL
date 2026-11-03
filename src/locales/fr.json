@@ -1355,6 +1355,15 @@
       "description": "Ce modpack télécharge {{count}} fichiers depuis les adresses ci-dessous, qui ne sont pas approuvées par Modrinth. Ces fichiers n'ont pas été vérifiés par la plateforme et peuvent être dangereux. Ne continuez que si vous faites confiance à l'auteur du modpack.",
       "trust": "Faire confiance et continuer",
       "cancel": "Annuler l'importation"
+    },
+    "mode": {
+      "create": "Nouvelle instance",
+      "update": "Mettre à jour une instance existante"
+    },
+    "update": {
+      "instance": "Instance à mettre à jour",
+      "noInstance": "Aucune instance ne peut être mise à jour depuis un fichier local",
+      "confirm": "Aperçu de la mise à jour"
     }
   },
   "InstanceBasicSettings": {

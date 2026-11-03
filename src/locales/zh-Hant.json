@@ -1355,6 +1355,15 @@
       "description": "此整合包要從以下不在 Modrinth 認可範圍內的位址下載 {{count}} 個檔案。這些檔案未經平台審核，可能不安全，請僅在信任整合包作者時繼續。",
       "trust": "信任並繼續",
       "cancel": "取消匯入"
+    },
+    "mode": {
+      "create": "新建實例",
+      "update": "更新已有實例"
+    },
+    "update": {
+      "instance": "要更新的實例",
+      "noInstance": "沒有可以從本機檔案更新的實例",
+      "confirm": "預覽更新"
     }
   },
   "InstanceBasicSettings": {
