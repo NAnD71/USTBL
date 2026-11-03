@@ -3492,6 +3492,13 @@
       "conflicts": "{{count}} fichiers sont en conflit avec vos modifications ; la nouvelle version est appliquée par défaut, vous pouvez les traiter individuellement",
       "autoMerged": "{{count}} fusionnés automatiquement",
       "showAll": "Tout afficher (encore {{count}})",
+      "fileDiff": {
+        "show": "Afficher les différences",
+        "hide": "Masquer les différences",
+        "notText": "Non textuel ou trop volumineux pour afficher les différences",
+        "unavailable": "Impossible d’obtenir le contenu de la nouvelle version, réessayez plus tard",
+        "formatOnly": "Seuls les sauts de ligne ou autres formats diffèrent"
+      },
       "reinstallRequired": "Cette instance ne peut pas être mise à jour directement, car {{latest}} a modifié sa chaîne de composants ; réinstallez-la",
       "restored": "Remplacer les modifications ignorées {{count}}",
       "restoredDescription": "Les modifications ignorées localement seront synchronisées avec la nouvelle version, y compris le remplacement de fichiers du même nom.",

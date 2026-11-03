@@ -662,7 +662,7 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
               {t("FileFilter.empty")}
             </Text>
           )}
-        <PlanChangeGroups plan={shownPlan ?? plan} />
+        <PlanChangeGroups instanceId={instanceId} plan={shownPlan ?? plan} />
         {plan.conflicts.length > 0 && (
           <VStack align="stretch" spacing={3}>
             <HStack justify="space-between" spacing={2}>

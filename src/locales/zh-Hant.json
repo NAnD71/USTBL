@@ -3492,6 +3492,13 @@
       "conflicts": "{{count}} 個檔案與你的修改衝突，預設套用新版，可以逐個處理",
       "autoMerged": "自動合併 {{count}}",
       "showAll": "顯示全部（還有 {{count}} 項）",
+      "fileDiff": {
+        "show": "查看差異",
+        "hide": "收起差異",
+        "notText": "非文字或檔案太大，無法顯示差異",
+        "unavailable": "無法取得新版本的內容，請稍後再試",
+        "formatOnly": "僅換行等格式不同"
+      },
       "reinstallRequired": "{{latest}} 更改了實例的元件鏈，不能直接更新，請重新安裝",
       "restored": "覆蓋已忽略的改動 {{count}}",
       "restoredDescription": "本地忽略過的改動，將與新版本內容同步。包含新版本同名檔案替換。",

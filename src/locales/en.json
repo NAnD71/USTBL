@@ -3492,6 +3492,13 @@
       "conflicts": "{{count}} files conflict with your changes; the new version is applied by default, and you can handle them individually",
       "autoMerged": "{{count}} auto-merged",
       "showAll": "Show all ({{count}} more)",
+      "fileDiff": {
+        "show": "Show diff",
+        "hide": "Hide diff",
+        "notText": "Not text or too large to show a diff",
+        "unavailable": "Unable to get the new version's content; try again later",
+        "formatOnly": "Only line endings or other formatting differ"
+      },
       "reinstallRequired": "This instance cannot be updated directly because {{latest}} changed its component chain; reinstall it",
       "restored": "Overwrite ignored changes {{count}}",
       "restoredDescription": "Locally ignored changes sync with the new version, including same-named file replacements.",
