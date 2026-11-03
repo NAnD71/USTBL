@@ -19,16 +19,19 @@ import {
   Text,
   Tooltip,
   VStack,
-  Wrap,
-  WrapItem,
   useDisclosure,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuChevronDown, LuChevronRight } from "react-icons/lu";
 import { DiffFile, DiffHunks, regionHunk } from "@/components/common/diff-view";
-import FileFilterInput from "@/components/common/file-filter-input";
-import TreeView, { TreeNode } from "@/components/common/tree-view";
+import {
+  ChangeFilterButton,
+  ChangeTag,
+  FilePanelEmpty,
+  FilePanelToolbar,
+} from "@/components/common/file-panel";
+import TreeView from "@/components/common/tree-view";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
@@ -50,7 +53,6 @@ import {
 import {
   CLASS_ORDER,
   ChangeFilter,
-  ChangeTreeNode,
   OPEN_LIMIT,
   buildChangeTree,
   countByClass,
@@ -60,22 +62,13 @@ import {
   revealPath,
   splitByGroup,
 } from "@/utils/modpack-change-detail";
+import { toTreeNodes } from "@/utils/path-tree";
 import { formatByteSize } from "@/utils/string";
 
 interface ModpackLocalChangesModalProps extends Omit<ModalProps, "children"> {
   instanceId: string;
   instanceName: string;
 }
-
-const CLASS_COLORS: Record<ChangeFilter, string> = {
-  modified: "orange",
-  deleted: "red",
-  enable: "gray",
-  disable: "gray",
-  onceChanged: "purple",
-  added: "green",
-  addedExcluded: "gray",
-};
 
 /** A titled section that folds, for the groups under the tree. */
 const ChangeGroup: React.FC<{
@@ -237,15 +230,13 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   // clearing the query brings back what the user had open.
   const expandAll = queryActive && shownMain.length <= AUTO_EXPAND_LIMIT;
   // TreeView resets its expansion whenever `nodes` changes identity.
-  const tree = useMemo(() => {
-    const convert = (list: ChangeTreeNode[]): TreeNode<ChangeTreeNode>[] =>
-      list.map((node) => ({
-        id: node.path.toLowerCase(),
-        data: node,
-        children: convert(node.children),
-      }));
-    return convert(buildChangeTree(shownMain));
-  }, [shownMain]);
+  const tree = useMemo(
+    () =>
+      toTreeNodes(buildChangeTree(shownMain), (node) =>
+        node.path.toLowerCase()
+      ),
+    [shownMain]
+  );
   const openFiles = shownMain.length <= OPEN_LIMIT;
 
   const isManager = isVustbManager(vustbAccount);
@@ -398,15 +389,9 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
           defaultOpen={openFiles}
           tags={
             <>
-              <Badge colorScheme={CLASS_COLORS[labelClass]} flexShrink={0}>
-                {t(`ModpackLocalChangesModal.class.${labelClass}`)}
-              </Badge>
+              <ChangeTag visual={labelClass} />
               {entry.class === "modified" && entry.toggled && (
-                <Badge colorScheme="gray" flexShrink={0}>
-                  {t(
-                    `ModpackLocalChangesModal.class.${entry.disabled ? "disable" : "enable"}`
-                  )}
-                </Badge>
+                <ChangeTag visual={entry.disabled ? "disable" : "enable"} />
               )}
               {entry.disabled && !entry.toggled && (
                 <Badge flexShrink={0}>
@@ -583,35 +568,23 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   )
                 ) : (
                   <>
-                    <Wrap spacing={1.5} pt={1}>
-                      {CLASS_ORDER.filter((name) => counts[name] > 0).map(
-                        (name) => (
-                          <WrapItem key={name}>
-                            <Button
-                              size="xs"
-                              colorScheme={CLASS_COLORS[name]}
-                              variant={filter === name ? "solid" : "outline"}
-                              aria-pressed={filter === name}
-                              onClick={() =>
-                                setFilter((prev) =>
-                                  prev === name ? null : name
-                                )
-                              }
-                            >
-                              {t(`ModpackLocalChangesModal.class.${name}`)}{" "}
-                              {counts[name]}
-                            </Button>
-                          </WrapItem>
-                        )
-                      )}
-                      <WrapItem>
-                        <FileFilterInput
-                          w="180px"
-                          value={query}
-                          onChange={setQuery}
+                    <FilePanelToolbar
+                      query={query}
+                      onQueryChange={setQuery}
+                      controls={CLASS_ORDER.filter(
+                        (name) => counts[name] > 0
+                      ).map((name) => (
+                        <ChangeFilterButton
+                          key={name}
+                          visual={name}
+                          count={counts[name]}
+                          selected={filter === name}
+                          onClick={() =>
+                            setFilter((prev) => (prev === name ? null : name))
+                          }
                         />
-                      </WrapItem>
-                    </Wrap>
+                      ))}
+                    />
                     <Text fontSize="xs" className="secondary-text">
                       {t("ModpackLocalChangesModal.countingRule")}
                     </Text>
@@ -641,11 +614,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
               )}
               {tree.length === 0 &&
                 shownWillDelete.length === 0 &&
-                queryActive && (
-                  <Text fontSize="xs-sm" className="secondary-text">
-                    {t("FileFilter.empty")}
-                  </Text>
-                )}
+                queryActive && <FilePanelEmpty filtered />}
               {shownWillDelete.length > 0 && (
                 <ChangeGroup
                   title={t("ModpackLocalChangesModal.willDelete.title", {

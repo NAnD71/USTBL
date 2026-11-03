@@ -3,8 +3,6 @@ import {
   AlertIcon,
   Button,
   HStack,
-  Icon,
-  IconButton,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -15,14 +13,12 @@ import {
   ModalProps,
   Progress,
   Text,
-  Tooltip,
   VStack,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
-import { LuFoldVertical, LuUnfoldVertical } from "react-icons/lu";
 import { DiffExpandSignal } from "@/components/common/diff-view";
-import FileFilterInput from "@/components/common/file-filter-input";
+import { FilePanelToolbar } from "@/components/common/file-panel";
 import {
   ConflictItem,
   PlanChangeGroups,
@@ -651,7 +647,18 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
           </Text>
         )}
         {plan.changes.length + plan.autoMerged.length + plan.conflicts.length >
-          0 && <FileFilterInput value={fileQuery} onChange={setFileQuery} />}
+          0 && (
+          <FilePanelToolbar
+            query={fileQuery}
+            onQueryChange={setFileQuery}
+            onExpandAll={
+              plan.conflicts.length > 0 ? () => expandAll(true) : undefined
+            }
+            onCollapseAll={
+              plan.conflicts.length > 0 ? () => expandAll(false) : undefined
+            }
+          />
+        )}
         {shownPlan &&
           isQueryActive(fileQuery) &&
           shownPlan.changes.length +
@@ -682,25 +689,6 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
                 )}
               </HStack>
               <HStack spacing={1} flexShrink={0}>
-                {(
-                  [
-                    [true, "expandAll", LuUnfoldVertical],
-                    [false, "collapseAll", LuFoldVertical],
-                  ] as const
-                ).map(([open, key, icon]) => (
-                  <Tooltip
-                    key={key}
-                    label={t(`UpdateModpackModal.choice.${key}`)}
-                  >
-                    <IconButton
-                      size="xs"
-                      variant="ghost"
-                      aria-label={t(`UpdateModpackModal.choice.${key}`)}
-                      icon={<Icon as={icon} />}
-                      onClick={() => expandAll(open)}
-                    />
-                  </Tooltip>
-                ))}
                 <Button
                   size="xs"
                   variant="ghost"

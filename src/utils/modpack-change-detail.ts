@@ -4,6 +4,12 @@ import {
   ModpackChangeClass,
   ModpackChangeDetailEntry,
 } from "@/models/modpack-update";
+import {
+  compareDirsFirst,
+  createPathTree,
+  placePath,
+  sortPathTree,
+} from "@/utils/path-tree";
 
 /** Up to this many entries, the whole tree starts expanded. */
 export const OPEN_LIMIT = 5;
@@ -94,51 +100,31 @@ export interface ChangeTreeNode {
 export const buildChangeTree = (
   entries: ModpackChangeDetailEntry[]
 ): ChangeTreeNode[] => {
-  const roots: ChangeTreeNode[] = [];
-  const dirs = new Map<string, ChangeTreeNode>();
+  const tree = createPathTree<ChangeTreeNode>();
   for (const entry of entries) {
-    const parts = entry.path.split("/").filter(Boolean);
-    let siblings = roots;
-    let current = "";
-    parts.slice(0, -1).forEach((part) => {
-      current = current ? `${current}/${part}` : part;
-      const key = current.toLowerCase();
-      let dir = dirs.get(key);
-      if (!dir) {
-        dir = {
-          path: current,
-          name: part,
-          kind: "dir",
-          count: 0,
-          children: [],
-        };
-        dirs.set(key, dir);
-        siblings.push(dir);
-      }
-      dir.count += 1;
-      siblings = dir.children;
-    });
-    siblings.push({
-      path: entry.path,
-      name: parts[parts.length - 1] ?? entry.path,
-      kind: "file",
-      count: 1,
-      entry,
-      children: [],
+    placePath(tree, entry.path, {
+      makeDir: (path, name) => ({
+        path,
+        name,
+        kind: "dir" as const,
+        count: 0,
+        children: [],
+      }),
+      makeLeaf: (path, name) => ({
+        path: entry.path,
+        name,
+        kind: "file" as const,
+        count: 1,
+        entry,
+        children: [],
+      }),
+      onDir: (dir) => {
+        dir.count += 1;
+      },
+      mergeLeaves: false,
     });
   }
-  const sort = (nodes: ChangeTreeNode[]) => {
-    nodes.sort((a, b) =>
-      a.kind !== b.kind
-        ? a.kind === "dir"
-          ? -1
-          : 1
-        : a.name.localeCompare(b.name)
-    );
-    nodes.forEach((node) => sort(node.children));
-  };
-  sort(roots);
-  return roots;
+  return sortPathTree(tree.roots, compareDirsFirst);
 };
 
 /** Few entries open the whole tree; more open the first level only. */

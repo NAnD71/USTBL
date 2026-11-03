@@ -26,10 +26,14 @@ import {
 } from "react-icons/lu";
 import { BeatLoader } from "react-spinners";
 import BlockToggle from "@/components/common/block-toggle";
-import Empty from "@/components/common/empty";
-import FileFilterInput from "@/components/common/file-filter-input";
+import {
+  ChangeFilterButton,
+  ChangeTag,
+  FilePanelEmpty,
+  FilePanelToolbar,
+} from "@/components/common/file-panel";
 import PublishChangeDiff from "@/components/common/publish-change-diff";
-import TreeView, { TreeNode } from "@/components/common/tree-view";
+import TreeView from "@/components/common/tree-view";
 import { useLauncherConfig } from "@/contexts/config";
 import {
   AUTO_EXPAND_LIMIT,
@@ -69,6 +73,7 @@ import {
   toggleCategory,
   viewOf,
 } from "@/utils/modpack-publish-tree";
+import { toTreeNodes } from "@/utils/path-tree";
 import { branchIds } from "@/utils/tree-expansion";
 
 const STATE_STYLE: Record<
@@ -80,15 +85,6 @@ const STATE_STYLE: Record<
   delete: { colorScheme: "red", icon: <LuTrash2 /> },
   remove: { colorScheme: "gray", icon: <LuX /> },
   mixed: { colorScheme: "purple", icon: <LuMinus /> },
-};
-
-const CHANGE_COLOR: Record<ChangeCategory, string> = {
-  modified: "orange",
-  added: "green",
-  enable: "purple",
-  disable: "purple",
-  onceChanged: "cyan",
-  deleted: "red",
 };
 
 interface PublishFileTreeProps {
@@ -170,15 +166,10 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
     () => filterTreeByQuery(markedNodes, query),
     [markedNodes, query]
   );
-  const tree = useMemo(() => {
-    const convert = (list: PublishNode[]): TreeNode<PublishNode>[] =>
-      list.map((node) => ({
-        id: node.path,
-        data: node,
-        children: convert(node.children),
-      }));
-    return convert(shownNodes);
-  }, [shownNodes]);
+  const tree = useMemo(
+    () => toTreeNodes(shownNodes, (node) => node.path),
+    [shownNodes]
+  );
   // Hits open their parents without touching the remembered expansion, so
   // clearing the query brings back what the user had open.
   const expandAll = useMemo(
@@ -200,44 +191,44 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
     <Box w="100%">
       {!isLoading && (
         <VStack align="stretch" spacing={2} mb={2}>
-          <HStack spacing={2} flexWrap="wrap">
-            <Text fontSize="xs" className="secondary-text">
-              {t("PublishModpackModal.tree.filter.title")}
-            </Text>
-            {CHANGE_CATEGORIES.map((category) => (
-              <Tooltip
-                key={category}
-                label={t(`PublishModpackModal.tree.changeHint.${category}`)}
-              >
-                <Button
-                  size="xs"
-                  colorScheme={CHANGE_COLOR[category]}
-                  variant={
-                    filter.categories.has(category) ? "solid" : "outline"
+          <FilePanelToolbar
+            query={query}
+            onQueryChange={setQuery}
+            controls={
+              <>
+                <Text fontSize="xs" className="secondary-text">
+                  {t("PublishModpackModal.tree.filter.title")}
+                </Text>
+                {CHANGE_CATEGORIES.map((category) => (
+                  <Tooltip
+                    key={category}
+                    label={t(`PublishModpackModal.tree.changeHint.${category}`)}
+                  >
+                    <span>
+                      <ChangeFilterButton
+                        visual={category}
+                        count={counts[category]}
+                        selected={filter.categories.has(category)}
+                        isDisabled={counts[category] === 0}
+                        onClick={() =>
+                          setFilter((prev) => toggleCategory(prev, category))
+                        }
+                      />
+                    </span>
+                  </Tooltip>
+                ))}
+                <BlockToggle
+                  checked={filter.onlyChanged}
+                  onChange={(checked) =>
+                    setFilter((prev) => ({ ...prev, onlyChanged: checked }))
                   }
-                  isDisabled={counts[category] === 0}
-                  aria-pressed={filter.categories.has(category)}
-                  onClick={() =>
-                    setFilter((prev) => toggleCategory(prev, category))
-                  }
+                  aria-label={t("PublishModpackModal.tree.filter.onlyChanged")}
                 >
-                  {t(`PublishModpackModal.tree.change.${category}`)}{" "}
-                  {counts[category]}
-                </Button>
-              </Tooltip>
-            ))}
-            <FileFilterInput w="180px" value={query} onChange={setQuery} />
-            <Box flex="1" />
-            <BlockToggle
-              checked={filter.onlyChanged}
-              onChange={(checked) =>
-                setFilter((prev) => ({ ...prev, onlyChanged: checked }))
-              }
-              aria-label={t("PublishModpackModal.tree.filter.onlyChanged")}
-            >
-              {t("PublishModpackModal.tree.filter.onlyChanged")}
-            </BlockToggle>
-          </HStack>
+                  {t("PublishModpackModal.tree.filter.onlyChanged")}
+                </BlockToggle>
+              </>
+            }
+          />
           {previous === null && (
             <Text fontSize="xs" className="secondary-text">
               {t("PublishModpackModal.tree.noPrevious")}
@@ -297,13 +288,7 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
             )}
           />
         ) : (
-          <Empty
-            withIcon={false}
-            size="sm"
-            description={
-              queryActive || filtered ? t("FileFilter.empty") : undefined
-            }
-          />
+          <FilePanelEmpty filtered={queryActive || filtered} />
         )}
       </Box>
     </Box>
@@ -501,16 +486,9 @@ const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
               }`
             )}
           >
-            <Tag
-              size="sm"
-              variant="subtle"
-              colorScheme={CHANGE_COLOR[category]}
-              flexShrink={0}
-            >
-              <TagLabel>
-                {t(`PublishModpackModal.tree.change.${category}`)}
-              </TagLabel>
-            </Tag>
+            <span>
+              <ChangeTag visual={category} />
+            </span>
           </Tooltip>
         ) : null}
         {!isDir && change?.localIgnored ? (
