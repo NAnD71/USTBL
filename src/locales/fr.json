@@ -3344,6 +3344,7 @@
       "mixed": "Mixte",
       "once": "Première installation seulement",
       "onceHint": "Joindre ce fichier uniquement à la première installation ; il ne sera ensuite ni mis à jour ni réinstallé s’il est supprimé",
+      "onceDir": "Tous les fichiers de ce dossier : première installation seulement",
       "restore": "Rétablir l'héritage",
       "restoreHint": "Supprimer le réglage particulier et suivre le dossier parent",
       "disabled": "Désactivé",

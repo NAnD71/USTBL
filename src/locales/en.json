@@ -3338,6 +3338,7 @@
       "mixed": "Mixed",
       "once": "First install only",
       "onceHint": "Include this file only on first install; it is not updated or restored after deletion",
+      "onceDir": "Files in this directory are all first install only",
       "restore": "Restore inheritance",
       "restoreHint": "Remove the separate setting and follow the parent directory",
       "disabled": "Disabled",
