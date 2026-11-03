@@ -67,12 +67,7 @@ import {
 const isInstanceDetailsPage = (path: string) =>
   path.startsWith("/instances/details/");
 
-interface InstanceSidebarProps {
-  // the whole left column: dropping inside it but outside every section removes
-  columnRef: React.RefObject<HTMLElement>;
-}
-
-const InstanceSidebar: React.FC<InstanceSidebarProps> = ({ columnRef }) => {
+const InstanceSidebar: React.FC = () => {
   const router = useRouter();
   const { t } = useTranslation();
   const toast = useToast();
@@ -225,7 +220,6 @@ const InstanceSidebar: React.FC<InstanceSidebarProps> = ({ columnRef }) => {
 
   const { drag, startDrag } = useSidebarDrag({
     scrollRef,
-    columnRef,
     onDropInstance: handleDropInstance,
     onMoveSection: handleMoveSection,
   });

@@ -57,7 +57,6 @@ export interface SectionMove {
 
 interface Options {
   scrollRef: RefObject<HTMLElement>;
-  columnRef: RefObject<HTMLElement>;
   onDropInstance: (drop: InstanceDrop) => void;
   onMoveSection: (move: SectionMove) => void;
 }
@@ -84,7 +83,6 @@ const sectionRef = (element: HTMLElement): SectionRef => ({
 
 export const useSidebarDrag = ({
   scrollRef,
-  columnRef,
   onDropInstance,
   onMoveSection,
 }: Options) => {
@@ -100,7 +98,6 @@ export const useSidebarDrag = ({
       y: number
     ): { target: DropTargetView; indicator: SectionIndicator | null } => {
       const scroll = scrollRef.current;
-      const column = columnRef.current;
       const none = {
         target: { type: "none" } as DropTargetView,
         indicator: null,
@@ -128,10 +125,8 @@ export const useSidebarDrag = ({
           }
           return { target: { type: "blank" }, indicator: null };
         }
-        if (column && contains(column.getBoundingClientRect(), x, y)) {
-          return { target: { type: "blank" }, indicator: null };
-        }
-        return none;
+        // Anywhere in the window outside the sections takes it out.
+        return { target: { type: "blank" }, indicator: null };
       }
 
       // Sections: directory sections share one slot, measured as a block.
@@ -184,7 +179,7 @@ export const useSidebarDrag = ({
         },
       };
     },
-    [columnRef, scrollRef]
+    [scrollRef]
   );
 
   const publish = useCallback(() => {
