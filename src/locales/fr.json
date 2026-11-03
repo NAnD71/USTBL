@@ -867,7 +867,9 @@
       "disable": "Désactiver"
     },
     "expandAll": "Tout développer",
-    "collapseAll": "Tout réduire"
+    "collapseAll": "Tout réduire",
+    "expandSubtree": "Développer récursivement",
+    "collapseSubtree": "Réduire récursivement"
   },
   "FileError": {
     "FILE_BLOCKED_BY_ANTIVIRUS": "Le fichier {{file}} a été bloqué par l'antivirus. Autorisez-le dans Sécurité Windows, ou ajoutez le dossier du jeu aux exclusions, puis réessayez.",

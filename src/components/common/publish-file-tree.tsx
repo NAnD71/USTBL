@@ -31,6 +31,7 @@ import {
   ChangeTag,
   FilePanelEmpty,
   FilePanelToolbar,
+  RecursiveToggle,
 } from "@/components/common/file-panel";
 import PublishChangeDiff from "@/components/common/publish-change-diff";
 import TreeView, { TreeCommand } from "@/components/common/tree-view";
@@ -296,10 +297,12 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
             expandRequest={expandRequest}
             expandAll={expandAll}
             command={command}
-            renderNode={({ node: { data } }) => (
+            renderNode={({ node: { data }, isExpanded, expandSubtree }) => (
               <PublishTreeRow
                 instanceId={instanceId}
                 data={data}
+                isExpanded={isExpanded}
+                onExpandSubtree={expandSubtree}
                 context={context}
                 draft={draft}
                 view={view}
@@ -328,6 +331,8 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
 interface PublishTreeRowProps {
   instanceId: string;
   data: PublishNode;
+  isExpanded: boolean;
+  onExpandSubtree: (open: boolean) => void;
   context: PublishContext;
   draft: PublishDraft;
   view: ReturnType<typeof viewOf>;
@@ -346,6 +351,8 @@ interface PublishTreeRowProps {
 const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
   instanceId,
   data,
+  isExpanded,
+  onExpandSubtree,
   context,
   draft,
   view,
@@ -549,6 +556,9 @@ const PublishTreeRow: React.FC<PublishTreeRowProps> = ({
             </TagLabel>
           </Tag>
         ) : null}
+        {isDir && (
+          <RecursiveToggle open={isExpanded} onOpenChange={onExpandSubtree} />
+        )}
         <Box flex="1" />
         {canDiff ? (
           <Button

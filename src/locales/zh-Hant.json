@@ -867,7 +867,9 @@
       "disable": "禁用"
     },
     "expandAll": "全部展開",
-    "collapseAll": "全部摺疊"
+    "collapseAll": "全部摺疊",
+    "expandSubtree": "遞迴展開",
+    "collapseSubtree": "遞迴摺疊"
   },
   "FileError": {
     "FILE_BLOCKED_BY_ANTIVIRUS": "檔案 {{file}} 被防毒軟體攔截。請在 Windows 安全性中允許該檔案，或把遊戲目錄加入排除項後重試。",

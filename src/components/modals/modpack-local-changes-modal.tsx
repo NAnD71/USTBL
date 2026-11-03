@@ -36,6 +36,7 @@ import {
   ChangeTag,
   FilePanelEmpty,
   FilePanelToolbar,
+  RecursiveToggle,
 } from "@/components/common/file-panel";
 import TreeView, { TreeCommand } from "@/components/common/tree-view";
 import VirtualRows, {
@@ -641,7 +642,11 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                   command={command}
                   maxHeight={treeHeight}
                   leafPlaceholderWidth={0}
-                  renderNode={({ node: { data } }) =>
+                  renderNode={({
+                    node: { data },
+                    isExpanded,
+                    expandSubtree,
+                  }) =>
                     data.entry ? (
                       renderEntry(data.entry, data.name)
                     ) : (
@@ -650,6 +655,10 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
                           {data.name}
                         </Text>
                         <Badge flexShrink={0}>{data.count}</Badge>
+                        <RecursiveToggle
+                          open={isExpanded}
+                          onOpenChange={expandSubtree}
+                        />
                       </HStack>
                     )
                   }

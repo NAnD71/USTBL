@@ -867,7 +867,9 @@
       "disable": "禁用"
     },
     "expandAll": "全部展开",
-    "collapseAll": "全部折叠"
+    "collapseAll": "全部折叠",
+    "expandSubtree": "递归展开",
+    "collapseSubtree": "递归折叠"
   },
   "FileError": {
     "FILE_BLOCKED_BY_ANTIVIRUS": "文件 {{file}} 被杀毒软件拦截。请在 Windows 安全中心允许该文件，或把游戏目录加入排除项后重试。",

@@ -867,7 +867,9 @@
       "disable": "Disable"
     },
     "expandAll": "Expand all",
-    "collapseAll": "Collapse all"
+    "collapseAll": "Collapse all",
+    "expandSubtree": "Expand recursively",
+    "collapseSubtree": "Collapse recursively"
   },
   "FileError": {
     "FILE_BLOCKED_BY_ANTIVIRUS": "File {{file}} was blocked by antivirus software. Allow the file in Windows Security, or add the game directory to the exclusions, then try again.",
