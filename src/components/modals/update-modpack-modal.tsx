@@ -27,6 +27,7 @@ import {
   ConflictItem,
   PlanChangeGroups,
 } from "@/components/modpack-update-lists";
+import { VersionChangeRow } from "@/components/modpack-version-change";
 import { OptionalFilesList } from "@/components/optional-files-list";
 import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
@@ -627,41 +628,20 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
               {t("UpdateModpackModal.plan.componentChanges.title")}
             </Text>
             {plan.componentChanges?.length ? (
-              plan.componentChanges.map((change) => {
-                const name = componentDisplayName(change.uid);
-                const from = change.from || "-";
-                const to = change.to || "-";
-                return (
-                  <Text key={change.uid} fontSize="xs-sm">
-                    {change.from == null
-                      ? t("UpdateModpackModal.plan.componentChanges.added", {
-                          name,
-                          to,
-                        })
-                      : change.to == null
-                        ? t(
-                            "UpdateModpackModal.plan.componentChanges.removed",
-                            { name }
-                          )
-                        : t(
-                            "UpdateModpackModal.plan.componentChanges.changed",
-                            {
-                              name,
-                              from,
-                              to,
-                            }
-                          )}
-                  </Text>
-                );
-              })
+              plan.componentChanges.map((change) => (
+                <VersionChangeRow
+                  key={change.uid}
+                  name={componentDisplayName(change.uid)}
+                  from={change.from}
+                  to={change.to}
+                />
+              ))
             ) : plan.loaderChange ? (
-              <Text fontSize="xs-sm">
-                {t("UpdateModpackModal.plan.loaderChange", {
-                  from: plan.loaderChange.from.version,
-                  to: plan.loaderChange.to.version,
-                  loader: plan.loaderChange.to.type,
-                })}
-              </Text>
+              <VersionChangeRow
+                name={plan.loaderChange.to.type}
+                from={plan.loaderChange.from.version}
+                to={plan.loaderChange.to.version}
+              />
             ) : null}
           </VStack>
         )}

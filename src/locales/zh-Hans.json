@@ -3483,12 +3483,10 @@
       "disable": "禁用 {{count}}",
       "enable": "启用 {{count}}",
       "retire": "休眠 {{count}}",
-      "loaderChange": "{{loader}} 将从 {{from}} 切换到 {{to}}",
       "componentChanges": {
         "title": "组件变化",
-        "changed": "{{name}} {{from}} → {{to}}",
-        "added": "{{name}} 新增 {{to}}",
-        "removed": "{{name}} 移除"
+        "addedTag": "新增",
+        "removedTag": "移除"
       },
       "restoreComponents": "新版本调整了游戏组件，更新时会一并重建游戏的版本配置与依赖库",
       "conflicts": "{{count}} 个文件和你的修改冲突，默认应用新版，可以逐个处理",
