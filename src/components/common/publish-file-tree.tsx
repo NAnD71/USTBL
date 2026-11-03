@@ -200,49 +200,33 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
   const label = (state: ShownState) => t(`PublishModpackModal.tree.${state}`);
 
   return (
-    <Box w="100%">
+    // The card behind is opaque; the toolbar that sticks to the top takes its color.
+    <Box w="100%" bg="inherit">
       {!isLoading && (
-        <VStack align="stretch" spacing={2} mb={2}>
-          <FilePanelToolbar
-            query={query}
-            onQueryChange={setQuery}
-            onExpandAll={() => setCommand({ type: "expand" })}
-            onCollapseAll={() => setCommand({ type: "collapse" })}
-            controls={
-              <>
-                <Text fontSize="xs" className="secondary-text">
-                  {t("PublishModpackModal.tree.filter.title")}
-                </Text>
-                {CHANGE_CATEGORIES.map((category) => (
-                  <Tooltip
-                    key={category}
-                    label={t(`PublishModpackModal.tree.changeHint.${category}`)}
-                  >
-                    <span>
-                      <ChangeFilterButton
-                        visual={category}
-                        count={counts[category]}
-                        selected={filter.categories.has(category)}
-                        isDisabled={counts[category] === 0}
-                        onClick={() =>
-                          setFilter((prev) => toggleCategory(prev, category))
-                        }
-                      />
-                    </span>
-                  </Tooltip>
-                ))}
-                <BlockToggle
-                  checked={filter.onlyChanged}
-                  onChange={(checked) =>
-                    setFilter((prev) => ({ ...prev, onlyChanged: checked }))
-                  }
-                  aria-label={t("PublishModpackModal.tree.filter.onlyChanged")}
-                >
-                  {t("PublishModpackModal.tree.filter.onlyChanged")}
-                </BlockToggle>
-              </>
-            }
-          />
+        <VStack align="stretch" spacing={1} mb={2}>
+          <HStack spacing={2} flexWrap="wrap">
+            <Text fontSize="xs" className="secondary-text">
+              {t("PublishModpackModal.tree.filter.title")}
+            </Text>
+            {CHANGE_CATEGORIES.map((category) => (
+              <Tooltip
+                key={category}
+                label={t(`PublishModpackModal.tree.changeHint.${category}`)}
+              >
+                <span>
+                  <ChangeFilterButton
+                    visual={category}
+                    count={counts[category]}
+                    selected={filter.categories.has(category)}
+                    isDisabled={counts[category] === 0}
+                    onClick={() =>
+                      setFilter((prev) => toggleCategory(prev, category))
+                    }
+                  />
+                </span>
+              </Tooltip>
+            ))}
+          </HStack>
           {previous === null && (
             <Text fontSize="xs" className="secondary-text">
               {t("PublishModpackModal.tree.noPrevious")}
@@ -270,6 +254,34 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
         ))}
         <Text w="100%">{t("PublishModpackModal.tree.legend.cycle")}</Text>
       </HStack>
+      {!isLoading && (
+        <Box
+          data-sticky-top
+          position="sticky"
+          top={-2}
+          zIndex="sticky"
+          bg="inherit"
+          py={1.5}
+        >
+          <FilePanelToolbar
+            query={query}
+            onQueryChange={setQuery}
+            onExpandAll={() => setCommand({ type: "expand" })}
+            onCollapseAll={() => setCommand({ type: "collapse" })}
+            controls={
+              <BlockToggle
+                checked={filter.onlyChanged}
+                onChange={(checked) =>
+                  setFilter((prev) => ({ ...prev, onlyChanged: checked }))
+                }
+                aria-label={t("PublishModpackModal.tree.filter.onlyChanged")}
+              >
+                {t("PublishModpackModal.tree.filter.onlyChanged")}
+              </BlockToggle>
+            }
+          />
+        </Box>
+      )}
       <Box>
         {isLoading ? (
           <Center py={4}>
@@ -278,6 +290,7 @@ const PublishFileTree: React.FC<PublishFileTreeProps> = ({
         ) : tree.length > 0 ? (
           <TreeView
             nodes={tree}
+            scrollParent
             defaultExpandedDepth={0}
             preserveExpanded
             expandRequest={expandRequest}

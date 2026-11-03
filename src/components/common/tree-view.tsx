@@ -37,6 +37,11 @@ interface TreeViewProps<T = unknown> {
   spacing?: number;
   /** The tallest the tree grows in px before it scrolls. */
   maxHeight?: number;
+  /**
+   * Grow to the full height of the rows and let the nearest scrolling ancestor
+   * scroll them; `maxHeight` is then ignored.
+   */
+  scrollParent?: boolean;
   defaultExpandedDepth?: number;
   preserveExpanded?: boolean;
   expandRequest?: { ids: Set<string> };
@@ -96,6 +101,7 @@ const TreeView = <T,>({
   indentSize = 3,
   spacing = 1,
   maxHeight = 320,
+  scrollParent = false,
   defaultExpandedDepth = 0,
   preserveExpanded = false,
   expandRequest,
@@ -222,6 +228,7 @@ const TreeView = <T,>({
         renderRow={renderRow}
         layoutKey={rows}
         maxHeight={maxHeight}
+        scrollParent={scrollParent}
         role="tree"
         rowRole="presentation"
       />
