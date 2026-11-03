@@ -3504,6 +3504,8 @@
       "hunk": "競合 {{number}}（元ファイルの{{from}}～{{to}}行）",
       "allKeepLocal": "すべてローカルを保持",
       "allTakeRemote": "すべて新しいバージョンを使用",
+      "expandAll": "すべて展開",
+      "collapseAll": "すべて折りたたむ",
       "localSide": "ローカル",
       "remoteSide": "新しいバージョン"
     },

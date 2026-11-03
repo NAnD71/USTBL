@@ -3504,6 +3504,8 @@
       "hunk": "Conflict {{number}} (lines {{from}}–{{to}} in the original file)",
       "allKeepLocal": "Keep all local",
       "allTakeRemote": "Use new version for all",
+      "expandAll": "Expand all",
+      "collapseAll": "Collapse all",
       "localSide": "Local",
       "remoteSide": "New version"
     },

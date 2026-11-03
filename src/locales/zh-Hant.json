@@ -3504,6 +3504,8 @@
       "hunk": "第 {{number}} 處衝突（原檔案第 {{from}}-{{to}} 行）",
       "allKeepLocal": "全部保留本機",
       "allTakeRemote": "全部使用新版本",
+      "expandAll": "全部展開",
+      "collapseAll": "全部摺疊",
       "localSide": "本機",
       "remoteSide": "新版本"
     },

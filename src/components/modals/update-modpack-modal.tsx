@@ -3,6 +3,8 @@ import {
   AlertIcon,
   Button,
   HStack,
+  Icon,
+  IconButton,
   Modal,
   ModalBody,
   ModalCloseButton,
@@ -13,10 +15,13 @@ import {
   ModalProps,
   Progress,
   Text,
+  Tooltip,
   VStack,
 } from "@chakra-ui/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
+import { LuFoldVertical, LuUnfoldVertical } from "react-icons/lu";
+import { DiffExpandSignal } from "@/components/common/diff-view";
 import {
   ConflictItem,
   PlanChangeGroups,
@@ -445,6 +450,28 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
     []
   );
 
+  /** Answer all blocks of one file with a single update. */
+  const chooseMany = useCallback(
+    (keys: string[], choice: ModpackConflictChoice) =>
+      setChoices((prev) => {
+        const next = { ...prev };
+        for (const key of keys) next[key] = choice;
+        return next;
+      }),
+    []
+  );
+
+  // Conflict cards start open; the two buttons open or close every card at once.
+  const [expandSignal, setExpandSignal] = useState<DiffExpandSignal>({
+    open: true,
+    token: 0,
+  });
+  const expandAll = useCallback(
+    (open: boolean) =>
+      setExpandSignal((prev) => ({ open, token: prev.token + 1 })),
+    []
+  );
+
   const handleResume = useCallback(async () => {
     if (resumeInFlight.current) return;
     resumeInFlight.current = true;
@@ -627,6 +654,25 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
                 })}
               </Text>
               <HStack spacing={1} flexShrink={0}>
+                {(
+                  [
+                    [true, "expandAll", LuUnfoldVertical],
+                    [false, "collapseAll", LuFoldVertical],
+                  ] as const
+                ).map(([open, key, icon]) => (
+                  <Tooltip
+                    key={key}
+                    label={t(`UpdateModpackModal.choice.${key}`)}
+                  >
+                    <IconButton
+                      size="xs"
+                      variant="ghost"
+                      aria-label={t(`UpdateModpackModal.choice.${key}`)}
+                      icon={<Icon as={icon} />}
+                      onClick={() => expandAll(open)}
+                    />
+                  </Tooltip>
+                ))}
                 <Button
                   size="xs"
                   variant="ghost"
@@ -650,7 +696,9 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
                 choices={choices}
                 primaryColor={primaryColor}
                 onChoose={chooseOne}
+                onChooseMany={chooseMany}
                 onReveal={revealConflictFile}
+                expandSignal={expandSignal}
               />
             ))}
           </VStack>

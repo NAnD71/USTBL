@@ -3504,6 +3504,8 @@
       "hunk": "第 {{number}} 处冲突（原文件第 {{from}}-{{to}} 行）",
       "allKeepLocal": "全部保留本地",
       "allTakeRemote": "全部使用新版本",
+      "expandAll": "全部展开",
+      "collapseAll": "全部折叠",
       "localSide": "本地",
       "remoteSide": "新版本"
     },
