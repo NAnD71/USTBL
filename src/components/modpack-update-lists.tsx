@@ -23,6 +23,7 @@ import {
   ModpackMergeConflict,
   ModpackUpdatePlan,
 } from "@/models/modpack-update";
+import { choiceOf } from "@/utils/modpack-update-choices";
 import { groupPlanChanges } from "@/utils/modpack-update-groups";
 import { sortChangesByDiff } from "@/utils/modpack-update-order";
 
@@ -369,11 +370,6 @@ interface ConflictItemProps {
   onReveal: (path: string) => void;
   expandSignal?: DiffExpandSignal;
 }
-
-const choiceOf = (
-  choices: Record<string, ModpackConflictChoice>,
-  key: string
-): ModpackConflictChoice => choices[key] ?? "keepLocal";
 
 /**
  * Re-render a conflict only when the conflict itself or one of its own

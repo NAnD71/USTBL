@@ -3491,7 +3491,7 @@
         "removed": "{{name}} 移除"
       },
       "restoreComponents": "新版本调整了游戏组件，更新时会一并重建游戏的版本配置与依赖库",
-      "conflicts": "{{count}} 个文件和你的修改冲突，默认保留本地，可以逐个处理",
+      "conflicts": "{{count}} 个文件和你的修改冲突，默认应用新版，可以逐个处理",
       "autoMerged": "自动合并 {{count}}",
       "showAll": "显示全部（还有 {{count}} 项）",
       "reinstallRequired": "{{latest}} 更改了实例的组件链，不能直接更新，请重新安装",
@@ -3510,16 +3510,16 @@
       "modifiedLocallyChangedRemotely": "本地和新版本在此文件的变动发生冲突",
       "modifiedLocallyRemovedRemotely": "本地修改了此文件，新版本不再包含此文件",
       "deletedLocallyChangedRemotely": "本地删除了此文件，新版本有此文件的修改版",
-      "unmanagedFileInTheWay": "新版本新增同名文件，会对此文件进行替换",
+      "unmanagedFileInTheWay": "新版本新增与本地新增文件同名，会用新版本替换本地",
       "remanage": "整合包重新管理它，但本地的内容和新版本不一样"
     },
     "choice": {
       "keepLocal": "保留本地",
-      "takeRemote": "使用新版本",
+      "takeRemote": "应用新版",
       "revealFile": "在文件夹中显示",
       "hunk": "第 {{number}} 处冲突（原文件第 {{from}}-{{to}} 行）",
       "allKeepLocal": "全部保留本地",
-      "allTakeRemote": "全部使用新版本",
+      "allTakeRemote": "全部应用新版",
       "expandAll": "全部展开",
       "collapseAll": "全部折叠",
       "localSide": "本地",

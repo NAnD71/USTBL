@@ -3491,7 +3491,7 @@
         "removed": "{{name}} removed"
       },
       "restoreComponents": "This version changes the game components. The update will also rebuild the game's version profile and libraries.",
-      "conflicts": "{{count}} files conflict with your changes; keep local by default and handle them individually",
+      "conflicts": "{{count}} files conflict with your changes; the new version is applied by default, and you can handle them individually",
       "autoMerged": "{{count}} auto-merged",
       "showAll": "Show all ({{count}} more)",
       "reinstallRequired": "This instance cannot be updated directly because {{latest}} changed its component chain; reinstall it",
@@ -3510,16 +3510,16 @@
       "modifiedLocallyChangedRemotely": "Local changes and the new version’s changes to this file conflict",
       "modifiedLocallyRemovedRemotely": "Modified locally, but this file is no longer included in the new version",
       "deletedLocallyChangedRemotely": "Deleted locally, but the new version has a modified copy",
-      "unmanagedFileInTheWay": "The new version adds a same-named file and will replace this one",
+      "unmanagedFileInTheWay": "The new version adds a file with the same name as a file added locally and will replace the local one",
       "remanage": "The modpack manages it again, but local contents differ from the new version"
     },
     "choice": {
       "keepLocal": "Keep local",
-      "takeRemote": "Use new version",
+      "takeRemote": "Apply new version",
       "revealFile": "Show in folder",
       "hunk": "Conflict {{number}} (lines {{from}}–{{to}} in the original file)",
       "allKeepLocal": "Keep all local",
-      "allTakeRemote": "Use new version for all",
+      "allTakeRemote": "Apply new version to all",
       "expandAll": "Expand all",
       "collapseAll": "Collapse all",
       "localSide": "Local",

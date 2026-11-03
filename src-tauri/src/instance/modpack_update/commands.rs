@@ -2719,7 +2719,7 @@ fn remote_if_equivalent(path: &str, merged: Vec<u8>, remote: &[u8]) -> Vec<u8> {
 }
 
 /// Describe how each conflict was answered, for the apply log: the whole
-/// file, single blocks (`path#index`), or the default keep-local.
+/// file, single blocks (`path#index`), or the default (take the new version).
 pub(super) fn describe_conflict_resolutions(
   diff: &super::diff::Diff,
   choices: &BTreeMap<String, ConflictChoice>,
@@ -2751,7 +2751,7 @@ pub(super) fn selected_hunk_contents(
 ) -> USTBLResult<BTreeMap<String, Vec<u8>>> {
   let mut result = prepared.merged_contents.clone();
   for conflict in &prepared.diff.conflicts {
-    if conflict.hunks.is_empty() && choices.get(&conflict.path) != Some(&ConflictChoice::TakeRemote)
+    if conflict.hunks.is_empty() && choices.get(&conflict.path) == Some(&ConflictChoice::KeepLocal)
     {
       if let Some(bytes) = prepared.restored_locals.get(&conflict.path) {
         result.insert(conflict.path.clone(), bytes.clone());
@@ -2768,7 +2768,7 @@ pub(super) fn selected_hunk_contents(
       .unwrap_or(0);
     let selected: Vec<usize> = (0..)
       .take(hunk_count)
-      .filter(|index| choices.get(&format!("{path}#{index}")) == Some(&ConflictChoice::TakeRemote))
+      .filter(|index| choices.get(&format!("{path}#{index}")) != Some(&ConflictChoice::KeepLocal))
       .collect();
     if hunk_count == 0 {
       continue;
@@ -2836,7 +2836,7 @@ async fn materialize_text_candidates(
 }
 
 /// Apply the plan the player confirmed. `choices` answers conflicts by path;
-/// anything unanswered keeps the local file.
+/// anything unanswered takes the new version.
 #[tauri::command]
 pub async fn apply_modpack_update(
   app: AppHandle,
@@ -5211,16 +5211,16 @@ mod tests {
     assert_eq!(
       describe_conflict_resolutions(&diff, &choices),
       vec![
-        "config/a.json:hunks[#0=TakeRemote,#1=KeepLocal]".to_string(),
+        "config/a.json:hunks[#0=TakeRemote,#1=TakeRemote]".to_string(),
         "mods/b.jar:file=TakeRemote".to_string(),
       ]
     );
-    // Unanswered conflicts are reported as the keep-local default.
+    // Unanswered conflicts are reported as the take-remote default.
     assert_eq!(
       describe_conflict_resolutions(&diff, &BTreeMap::new()),
       vec![
-        "config/a.json:hunks[#0=KeepLocal,#1=KeepLocal]".to_string(),
-        "mods/b.jar:file=KeepLocal".to_string(),
+        "config/a.json:hunks[#0=TakeRemote,#1=TakeRemote]".to_string(),
+        "mods/b.jar:file=TakeRemote".to_string(),
       ]
     );
   }

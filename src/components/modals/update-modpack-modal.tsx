@@ -46,6 +46,7 @@ import {
   failedUpdatePlans,
   rememberedChoices,
   resolvePlanChoices,
+  withDefaultChoices,
 } from "@/utils/modpack-update-choices";
 import { sortConflicts } from "@/utils/modpack-update-order";
 import { pendingUpdateLabels } from "@/utils/rename-suggestion";
@@ -345,7 +346,7 @@ const UpdateModpackModal: React.FC<UpdateModpackModalProps> = ({
       const response = await ModpackUpdateService.applyModpackUpdate(
         instanceId,
         plan.planHash,
-        choices,
+        withDefaultChoices(plan.conflicts, choices),
         optionalPicksRef.current
       );
       if (response.status !== "success") pendingUpdateLabels.delete(instanceId);
