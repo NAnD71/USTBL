@@ -9,7 +9,7 @@ import { ModpackUpdateService } from "@/services/modpack-update";
 /** Which note replaces the diff, if the result has nothing to draw. */
 export const fileDiffNotice = (
   diff: ModpackFileDiff
-): "notText" | "unavailable" | "formatOnly" | null => {
+): ModpackFileDiff["unavailable"] | "formatOnly" | null => {
   if (diff.unavailable) return diff.unavailable;
   if (!diff.hunks) return "unavailable";
   return diff.hunks.length === 0 ? "formatOnly" : null;

@@ -3,7 +3,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { BeatLoader } from "react-spinners";
 import { DiffHunks } from "@/components/common/diff-view";
-import { ModpackDiffHunk } from "@/models/modpack-update";
+import { PublishFileDiff } from "@/models/modpack-update";
 import { CampusModpackService } from "@/services/campus-modpack";
 import { PublishChange } from "@/utils/modpack-publish-tree";
 import { formatByteSize } from "@/utils/string";
@@ -14,27 +14,23 @@ interface PublishChangeDiffProps {
 }
 
 /**
- * How a file's content differs from the previous release. The launcher keeps
- * the previous text only for files it installed itself; without it, or for a
- * file that is not text, only the two sizes can be told.
+ * How a file's content differs from the previous release.
  */
 const PublishChangeDiff: React.FC<PublishChangeDiffProps> = ({
   instanceId,
   change,
 }) => {
   const { t } = useTranslation();
-  // undefined while loading, null when no diff can be drawn.
-  const [unavailable, setUnavailable] = useState(false);
-  const [hunks, setHunks] = useState<ModpackDiffHunk[] | null | undefined>();
+  // undefined while loading.
+  const [diff, setDiff] = useState<PublishFileDiff | null | undefined>();
 
   useEffect(() => {
     if (!change.previousSha1) {
-      setHunks(null);
+      setDiff({ hunks: null, unavailable: "baseMissing" });
       return;
     }
     let isActive = true;
-    setHunks(undefined);
-    setUnavailable(false);
+    setDiff(undefined);
     CampusModpackService.diffCampusModpackPublishFile(
       instanceId,
       change.path,
@@ -44,10 +40,9 @@ const PublishChangeDiff: React.FC<PublishChangeDiffProps> = ({
     ).then((response) => {
       if (isActive) {
         if (response.status === "success") {
-          setHunks(response.data);
+          setDiff(response.data);
         } else {
-          setUnavailable(true);
-          setHunks(null);
+          setDiff(null);
         }
       }
     });
@@ -67,18 +62,16 @@ const PublishChangeDiff: React.FC<PublishChangeDiffProps> = ({
     local: formatByteSize(change.localSize ?? 0),
   };
 
-  if (hunks === undefined) {
+  if (diff === undefined) {
     return <BeatLoader size={6} color="gray" />;
   }
-  if (hunks === null || hunks.length === 0) {
+  if (diff === null || diff.hunks === null || diff.hunks.length === 0) {
     return (
       <Text fontSize="xs" className="secondary-text">
         {t(
-          unavailable
-            ? "PublishModpackModal.tree.diff.unavailable"
-            : hunks === null
-              ? "PublishModpackModal.tree.diff.differs"
-              : "PublishModpackModal.tree.diff.formatOnly",
+          diff === null || diff.hunks === null
+            ? "PublishModpackModal.tree.diff.differs"
+            : "PublishModpackModal.tree.diff.formatOnly",
           sizes
         )}
       </Text>
@@ -86,7 +79,7 @@ const PublishChangeDiff: React.FC<PublishChangeDiffProps> = ({
   }
   return (
     <Box maxH="64" overflow="auto" borderWidth="1px" borderRadius="md">
-      <DiffHunks hunks={hunks} />
+      <DiffHunks hunks={diff.hunks} />
     </Box>
   );
 };
