@@ -128,7 +128,8 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const primaryColor = config.appearance.theme.primaryColor;
   const toast = useToast();
   const { openSharedModal } = useSharedModals();
-  const { modpackChecks, checkModpackUpdate } = useGlobalData();
+  const { modpackChecks, checkModpackUpdate, getInstanceList } =
+    useGlobalData();
 
   const [detail, setDetail] = useState<ModpackChangeDetail | null>(null);
   const [failed, setFailed] = useState(false);
@@ -250,7 +251,12 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
   const isManager = isVustbManager(vustbAccount);
   // Publishing goes on top of the latest version; behind it the platform
   // refuses, so the player updates first.
-  const behind = modpackChecks[instanceId]?.status === "available";
+  // A local import has no line to publish to.
+  const isLocalImport =
+    getInstanceList()?.find((instance) => instance.id === instanceId)?.origin
+      ?.platform === "local";
+  const behind =
+    !isLocalImport && modpackChecks[instanceId]?.status === "available";
   const publishBlocker = behind
     ? t("ModpackLocalChangesModal.publishHint.updateFirst")
     : null;
@@ -682,7 +688,7 @@ const ModpackLocalChangesModal: React.FC<ModpackLocalChangesModalProps> = ({
           <Button variant="ghost" mr={2} onClick={modalProps.onClose}>
             {t("General.close")}
           </Button>
-          {isManager && (
+          {isManager && !isLocalImport && (
             <Tooltip label={publishBlocker} isDisabled={!publishBlocker}>
               {/* A disabled button fires no hover, so the box carries the tooltip. */}
               <Box>
