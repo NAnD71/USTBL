@@ -8,9 +8,10 @@ use crate::account::helpers::authlib_injector::jar::check_authlib_jar;
 use crate::account::helpers::authlib_injector::{self};
 use crate::account::helpers::{microsoft, misc, offline, skin_backup, vustb, vustb_presence};
 use crate::account::models::{
-  AccountError, AccountInfo, AuthServer, DeviceAuthResponseInfo, Player, PlayerInfo, PlayerType,
-  PresetRole, SkinModel, Texture, TextureType, VustbAccount, VustbCheckinResult, VustbFriend,
-  VustbServerMessage, VustbServerMessageGroup, VustbSession, VustbTexture, VustbTexturePage,
+  AccountError, AccountInfo, AuthServer, DeviceAuthResponseInfo, OAuthTokens, Player, PlayerInfo,
+  PlayerType, PresetRole, SkinModel, Texture, TextureType, VustbAccount, VustbCheckinResult,
+  VustbFriend, VustbServerMessage, VustbServerMessageGroup, VustbSession, VustbTexture,
+  VustbTexturePage,
 };
 use crate::error::USTBLResult;
 use crate::launcher_config::models::LauncherConfig;
@@ -869,6 +870,37 @@ pub async fn logout_vustb_account(app: AppHandle) -> USTBLResult<()> {
   misc::check_full_login_availability(&app).await
 }
 
+/// Replace a role after reauthentication. vUSTB tokens belong to the account,
+/// so the independent session and every vUSTB role must move to them together.
+fn replace_relogged_player(
+  state: &mut AccountInfo,
+  player_id: &str,
+  new_player: PlayerInfo,
+) -> USTBLResult<()> {
+  let tokens = if is_vustb_player(&new_player) {
+    Some(OAuthTokens {
+      access_token: new_player
+        .access_token
+        .clone()
+        .ok_or(AccountError::Expired)?,
+      refresh_token: new_player.refresh_token.clone(),
+      id_token: None,
+    })
+  } else {
+    None
+  };
+  let player = state
+    .players
+    .iter_mut()
+    .find(|player| player.id == player_id)
+    .ok_or(AccountError::NotFound)?;
+  *player = new_player;
+  if let Some(tokens) = tokens {
+    vustb::apply_tokens(state, &tokens);
+  }
+  Ok(())
+}
+
 #[tauri::command]
 pub async fn relogin_player_oauth(
   app: AppHandle,
@@ -913,15 +945,8 @@ pub async fn relogin_player_oauth(
 
   {
     let mut account_state = account_binding.lock()?;
-
-    if let Some(player) = account_state
-      .players
-      .iter_mut()
-      .find(|player| player.id == player_id)
-    {
-      *player = new_player;
-      account_state.save()?;
-    }
+    replace_relogged_player(&mut account_state, &player_id, new_player)?;
+    account_state.save()?;
   }
 
   misc::check_full_login_availability(&app).await
@@ -1309,6 +1334,62 @@ mod deletion_tests {
     player.player_type = PlayerType::ThirdParty;
     player.auth_server_url = Some("https://other.example/skinapi/".into());
     assert!(!is_vustb_player(&player));
+  }
+}
+
+#[cfg(test)]
+mod relogin_tests {
+  use super::*;
+
+  fn state() -> AccountInfo {
+    serde_json::from_value(serde_json::json!({
+      "players": [{
+        "id": "cloud", "name": "Cloud", "uuid": "00000000-0000-0000-0000-000000000001",
+        "playerType": "3rdparty", "authServerUrl": USTB_AUTH_SERVER_URL,
+        "accessToken": "old-access", "refreshToken": "old-refresh", "textures": []
+      }],
+      "authServers": [],
+      "vustbSession": {"accessToken": "old-access", "refreshToken": "old-refresh"},
+      "isOauthProcessing": false
+    }))
+    .unwrap()
+  }
+
+  #[test]
+  fn vustb_relogin_replaces_the_session_and_every_role_token() {
+    let mut state = state();
+    let mut other = state.players[0].clone();
+    other.id = "other".into();
+    state.players.push(other);
+    let mut player = state.players[0].clone();
+    player.access_token = Some("new-access".into());
+    player.refresh_token = Some("new-refresh".into());
+
+    replace_relogged_player(&mut state, "cloud", player).unwrap();
+
+    let session = state.vustb_session.unwrap();
+    assert_eq!(session.access_token, "new-access");
+    assert_eq!(session.refresh_token.as_deref(), Some("new-refresh"));
+    for player in &state.players {
+      assert_eq!(player.access_token.as_deref(), Some("new-access"));
+      assert_eq!(player.refresh_token.as_deref(), Some("new-refresh"));
+    }
+  }
+
+  #[test]
+  fn unrelated_relogin_does_not_touch_the_vustb_session() {
+    let mut state = state();
+    let mut player = state.players[0].clone();
+    player.auth_server_url = Some("https://other.example/skinapi/".into());
+    player.access_token = Some("other-access".into());
+
+    replace_relogged_player(&mut state, "cloud", player).unwrap();
+
+    assert_eq!(
+      state.players[0].access_token.as_deref(),
+      Some("other-access")
+    );
+    assert_eq!(state.vustb_session.unwrap().access_token, "old-access");
   }
 }
 
