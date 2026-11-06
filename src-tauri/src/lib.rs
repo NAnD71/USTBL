@@ -100,11 +100,13 @@ pub async fn run() -> i32 {
     .plugin(tauri_plugin_os::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-      let main_window = app.get_webview_window("main").expect("no main window");
-
-      let _ = main_window.show(); // may hide by launcher_visibility settings
-                                  // FIXME: this show() seems no use in macOS build mode (ref: https://github.com/tauri-apps/tauri/issues/13400#issuecomment-2866462355).
-      let _ = main_window.set_focus();
+      // The main window may not exist yet: it is created at the end of setup.
+      // It shows itself once the frontend is ready, so there is nothing to do in that case.
+      if let Some(main_window) = app.get_webview_window("main") {
+        let _ = main_window.show(); // may hide by launcher_visibility settings
+                                    // FIXME: this show() seems no use in macOS build mode (ref: https://github.com/tauri-apps/tauri/issues/13400#issuecomment-2866462355).
+        let _ = main_window.set_focus();
+      }
     }))
     .plugin(
       tauri_plugin_window_state::Builder::new()
