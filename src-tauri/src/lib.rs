@@ -88,6 +88,37 @@ pub(crate) fn position_tray_popup(
   }
 }
 
+/// Tauri builds `create: true` windows before `setup` runs, so their pages could invoke commands
+/// before the state is managed. `main` and `tray_popup` are therefore `create: false` in
+/// `tauri.conf.json` and built here, after all `manage()` calls.
+fn create_startup_windows(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
+  let build = |label: &str| -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
+    let config = app
+      .config()
+      .app
+      .windows
+      .iter()
+      .find(|w| w.label == label)
+      .ok_or_else(|| format!("window config `{label}` not found"))?;
+    Ok(tauri::WebviewWindowBuilder::from_config(app.handle(), config)?.build()?)
+  };
+
+  build("main")?;
+
+  let tray_popup = build("tray_popup")?;
+  let _ = tray_popup.set_skip_taskbar(true);
+  let app_handle = app.handle().clone();
+  tray_popup.on_window_event(move |event| {
+    if matches!(event, tauri::WindowEvent::Focused(false)) {
+      if let Some(window) = app_handle.get_webview_window("tray_popup") {
+        let _ = window.hide();
+      }
+    }
+  });
+
+  Ok(())
+}
+
 pub async fn run() -> i32 {
   tauri::Builder::default()
     .plugin(tauri_plugin_clipboard_manager::init())
@@ -324,18 +355,6 @@ pub async fn run() -> i32 {
       app.manage(tokio::sync::Mutex::new(
         accelerator::ipv6::Ipv6Service::default(),
       ));
-      if let Some(tray_popup) = app.get_webview_window("tray_popup") {
-        let _ = tray_popup.set_skip_taskbar(true);
-        let app_handle = app.handle().clone();
-        tray_popup.on_window_event(move |event| {
-          if matches!(event, tauri::WindowEvent::Focused(false)) {
-            if let Some(window) = app_handle.get_webview_window("tray_popup") {
-              let _ = window.hide();
-            }
-          }
-        });
-      }
-
       let account_info = AccountInfo::load().unwrap_or_default();
       app.manage(Mutex::new(account_info.clone()));
 
@@ -484,6 +503,8 @@ pub async fn run() -> i32 {
           log::warn!("Failed to register deep links: {e}");
         }
       }
+
+      create_startup_windows(app)?;
 
       Ok(())
     })
