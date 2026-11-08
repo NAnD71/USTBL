@@ -15,6 +15,7 @@ use super::text_diff::{edits, lines_of, Edit};
 use crate::file_error::{tag, AtPath};
 use crate::instance::helpers::modpack::baseline::ModpackBaseline;
 use crate::instance::helpers::modpack::{base_store, text};
+use crate::storage::{write_atomic, Durability};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
@@ -217,7 +218,7 @@ pub fn write(root: &Path, ignores: &Ignores) -> io::Result<()> {
       if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).at_in(parent, root)?;
       }
-      fs::write(&path, bytes).at_in(&path, root)
+      write_atomic(&path, &bytes, Durability::Sync).at_in(&path, root)
     }
     None => match fs::remove_file(&path) {
       Err(error) if error.kind() != io::ErrorKind::NotFound => Err(tag(error, &path, Some(root))),

@@ -4,6 +4,7 @@
 use super::remote::UPDATE_DIR;
 use crate::error::USTBLResult;
 use crate::instance::models::misc::InstanceError;
+use crate::storage::write_json_atomic;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::PathBuf;
@@ -33,11 +34,8 @@ pub fn write_update_notice(
   instance_dir: &std::path::Path,
   notice: &UpdateNotice,
 ) -> USTBLResult<()> {
-  let dir = instance_dir.join(UPDATE_DIR);
-  fs::create_dir_all(&dir).map_err(|_| InstanceError::FileOperationError)?;
-  let path = notice_path(instance_dir);
-  let data = serde_json::to_string_pretty(notice).map_err(|_| InstanceError::FileOperationError)?;
-  fs::write(path, data).map_err(|_| InstanceError::FileOperationError)?;
+  write_json_atomic(&notice_path(instance_dir), notice)
+    .map_err(|_| InstanceError::FileOperationError)?;
   Ok(())
 }
 

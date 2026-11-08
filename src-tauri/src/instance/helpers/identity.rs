@@ -4,6 +4,7 @@
 
 use crate::instance::constants::INSTANCE_CFG_FILE_NAME;
 use crate::instance::models::misc::Instance;
+use crate::storage::{write_atomic, Durability};
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::Path;
@@ -36,7 +37,7 @@ fn patch_cfg(version_path: &Path, patch: impl FnOnce(&mut Instance)) -> bool {
   patch(&mut instance);
   serde_json::to_string_pretty(&instance)
     .ok()
-    .is_some_and(|text| fs::write(&path, text).is_ok())
+    .is_some_and(|text| write_atomic(&path, text.as_bytes(), Durability::Sync).is_ok())
 }
 
 /// The id stored for an instance, assigning and writing a new one when the

@@ -43,6 +43,7 @@ use crate::launch::models::LaunchingState;
 use crate::launcher_config::commands::retrieve_launcher_config;
 use crate::resource::helpers::misc::{download_source_candidates, get_source_priority_list};
 use crate::resource::models::{ModLoaderResourceInfo, ResourceType};
+use crate::storage::{write_atomic, Durability};
 use crate::tasks::download::DownloadParam;
 use crate::tasks::download::DownloadTransferOptions;
 use crate::tasks::events::TauriEventSink;
@@ -335,10 +336,9 @@ fn campus_install_record(root: &Path) -> PathBuf {
 
 fn save_campus_install_record(root: &Path, record: &CampusInstallRecord) -> USTBLResult<()> {
   let path = campus_install_record(root);
+  let bytes = serde_json::to_vec_pretty(record)?;
   fs::create_dir_all(path.parent().unwrap()).at_in(path.parent().unwrap(), root)?;
-  let temporary = path.with_extension("json.tmp");
-  fs::write(&temporary, serde_json::to_vec_pretty(record)?).at_in(&temporary, root)?;
-  fs::rename(&temporary, &path).at_in(&path, root)?;
+  write_atomic(&path, &bytes, Durability::Sync).at_in(&path, root)?;
   Ok(())
 }
 
