@@ -18,6 +18,16 @@ impl LoaderLifecycle {
     let _guard = self.0.lock().await;
     work.await
   }
+
+  /// One whole read, change and save of the config at `at`, under this lock.
+  /// The config is read again inside the lock, so `at` only locates the file.
+  pub async fn edit(
+    &self,
+    at: &Instance,
+    change: impl FnOnce(&mut Instance),
+  ) -> USTBLResult<Instance> {
+    self.run(edit_config(at, change)).await
+  }
 }
 
 pub(crate) static LOADER_LIFECYCLE: LoaderLifecycle = LoaderLifecycle::new();
@@ -163,6 +173,9 @@ pub(crate) async fn edit_config(
   change: impl FnOnce(&mut Instance),
 ) -> USTBLResult<Instance> {
   let mut instance = at.load_json_cfg().await?;
+  // The stored path is where the config lived when it was written. The caller
+  // located the file through `at`, and the save must go back to that same file.
+  instance.version_path = at.version_path.clone();
   change(&mut instance);
   instance.save_json_cfg().await?;
   Ok(instance)

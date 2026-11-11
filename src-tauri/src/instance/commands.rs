@@ -3,22 +3,22 @@ use crate::error::USTBLResult;
 use crate::instance::helpers::client_json::{replace_native_libraries, McClientInfo};
 use crate::instance::helpers::deletion::{delete_instance_files, InstanceDeletionProgress};
 use crate::instance::helpers::game_version::{build_game_version_cmp_fn, compare_game_versions};
-use crate::instance::helpers::identity::{new_instance_id, write_display_name};
+use crate::instance::helpers::identity::{new_instance_id, persist_display_name};
 use crate::instance::helpers::loader::common::{execute_processors, install_mod_loader};
-use crate::instance::helpers::loader::forge::download_forge_libraries;
 use crate::instance::helpers::loader::forge::InstallProfile;
+use crate::instance::helpers::loader::forge::{download_forge_libraries, forge_installer_missing};
 use crate::instance::helpers::loader::neoforge::download_neoforge_libraries;
 use crate::instance::helpers::loader::optifine::download_optifine_libraries;
 use crate::instance::helpers::loader::optifine::{
   download_optifine_installer, finish_optifine_install,
 };
 use crate::instance::helpers::loader_lifecycle::{
-  claim_install, complete_install, fail_download, loader_patch_ready, optifine_patch_ready,
-  preparation_allowed, LOADER_LIFECYCLE,
+  claim_install, complete_install, loader_patch_ready, optifine_patch_ready, preparation_allowed,
+  LOADER_LIFECYCLE,
 };
 use crate::instance::helpers::misc::{
   check_folder, existing_folder_names, get_instance_game_config, get_instance_subdir_path_by_id,
-  get_instance_subdir_paths, migrate_selected_instance_id, owns_files,
+  get_instance_subdir_paths, migrate_selected_instance_id, owns_files, record_failed_preparation,
   refresh_and_update_instances, resolve_isolation, InstanceFolderCheck,
 };
 use crate::instance::helpers::modpack::base_store;
@@ -316,24 +316,28 @@ pub async fn rename_instance(
   let in_table = {
     let binding = app.state::<Mutex<HashMap<String, Instance>>>();
     let state = binding.lock().unwrap();
-    state
-      .get(&instance_id)
-      .map(|instance| (instance.version_path.clone(), instance.name.clone()))
+    state.get(&instance_id).cloned()
   };
-  let (version_path, folder, pending) = match in_table {
-    Some((version_path, folder)) => (version_path, folder, false),
+  let (located, pending) = match in_table {
+    Some(instance) => (instance, false),
     // A pending install is not in the table yet, but it has a config to write.
     None => {
-      let pending = crate::instance::modpack_update::commands::pending_campus_instances(&app);
+      let mut pending = crate::instance::modpack_update::commands::pending_campus_instances(&app);
       let instance = pending
-        .get(&instance_id)
+        .remove(&instance_id)
         .ok_or(InstanceError::InstanceNotFoundByID)?;
-      (instance.version_path.clone(), instance.name.clone(), true)
+      (instance, true)
     }
   };
-  if !write_display_name(&version_path, &display_name) {
-    return Err(InstanceError::FileCreationFailed.into());
-  }
+  let folder = located.name.clone();
+  // The saved config is read again under LOADER_LIFECYCLE, so a scan or loader
+  // claim that started earlier cannot write its older copy over the new name.
+  persist_display_name(&LOADER_LIFECYCLE, &located, &display_name)
+    .await
+    .map_err(|error| {
+      log::warn!("Could not save the display name of {instance_id}: {error:?}");
+      InstanceError::FileCreationFailed
+    })?;
   if !pending {
     let binding = app.state::<Mutex<HashMap<String, Instance>>>();
     let mut state = binding.lock().unwrap();
@@ -1386,7 +1390,11 @@ pub async fn prepare_mod_loader_install(
   instance_id: String,
   component: String,
 ) -> USTBLResult<bool> {
-  LOADER_LIFECYCLE
+  let optifine = component == "optifine";
+  // Everything except a Forge installer download runs under the lock. That
+  // download resolves its URL over the network, so it is handed back and runs
+  // after the lock is released.
+  let deferred = LOADER_LIFECYCLE
     .run(async {
       let instance = {
         let state = app.state::<Mutex<HashMap<String, Instance>>>();
@@ -1397,7 +1405,6 @@ pub async fn prepare_mod_loader_install(
           .ok_or(InstanceError::InstanceNotFoundByID)?;
         instance
       };
-      let optifine = component == "optifine";
       let status = if optifine {
         instance
           .optifine
@@ -1409,56 +1416,76 @@ pub async fn prepare_mod_loader_install(
         instance.mod_loader.status.clone()
       };
       if !preparation_allowed(&status) {
-        return Ok(false);
+        return Ok(Preparation::NotAllowed);
       }
-      let result = async {
-        let priority = {
-          let state = app.state::<Mutex<LauncherConfig>>();
-          let config = state.lock()?;
-          get_source_priority_list(&config)
-        };
-        let mut client = load_json_async::<McClientInfo>(
-          &instance
-            .version_path
-            .join(format!("{}.json", instance.name)),
-        )
-        .await?;
-        if optifine {
-          download_optifine_libraries(&app, &priority, &instance, &mut client).await
-        } else {
-          match instance.mod_loader.loader_type {
-            ModLoaderType::Forge | ModLoaderType::LegacyForge => {
-              download_forge_libraries(&app, &priority, &instance, &mut client).await
-            }
-            ModLoaderType::NeoForge => {
-              download_neoforge_libraries(&app, &priority, &instance, &mut client).await
-            }
-            _ => Ok(()),
-          }
+      let forge = matches!(
+        instance.mod_loader.loader_type,
+        ModLoaderType::Forge | ModLoaderType::LegacyForge
+      );
+      if !optifine && forge && forge_installer_missing(&app, &instance) {
+        return Ok(Preparation::Deferred(instance));
+      }
+      match run_loader_preparation(&app, &instance, optifine).await {
+        Ok(()) => Ok(Preparation::Done),
+        Err(error) => {
+          record_failed_preparation(&app, &instance, optifine).await;
+          Err(error)
         }
       }
-      .await;
-      if let Err(error) = result {
-        // Only the status changes; `instance` is a memory snapshot and must not
-        // be written back as a whole.
-        if let Err(save_error) = fail_download(&instance, optifine).await {
-          log::warn!("Could not save the failed download state: {save_error:?}");
-        }
-        let state = app.state::<Mutex<HashMap<String, Instance>>>();
-        if let Some(current) = state.lock()?.get_mut(&instance_id) {
-          if optifine {
-            if let Some(value) = &mut current.optifine {
-              value.status = ModLoaderStatus::DownloadFailed;
-            }
-          } else {
-            current.mod_loader.status = ModLoaderStatus::DownloadFailed;
-          }
-        }
-        return Err(error);
-      }
-      Ok(true)
     })
-    .await
+    .await?;
+  let instance = match deferred {
+    Preparation::NotAllowed => return Ok(false),
+    Preparation::Done => return Ok(true),
+    Preparation::Deferred(instance) => instance,
+  };
+  if let Err(error) = run_loader_preparation(&app, &instance, false).await {
+    LOADER_LIFECYCLE
+      .run(record_failed_preparation(&app, &instance, false))
+      .await;
+    return Err(error);
+  }
+  Ok(true)
+}
+
+enum Preparation {
+  NotAllowed,
+  Done,
+  Deferred(Instance),
+}
+
+/// Download the libraries of a claimed loader or OptiFine install. Reads the
+/// client json itself and takes no lock; the caller decides whether it runs
+/// under LOADER_LIFECYCLE.
+async fn run_loader_preparation(
+  app: &AppHandle,
+  instance: &Instance,
+  optifine: bool,
+) -> USTBLResult<()> {
+  let priority = {
+    let state = app.state::<Mutex<LauncherConfig>>();
+    let config = state.lock()?;
+    get_source_priority_list(&config)
+  };
+  let mut client = load_json_async::<McClientInfo>(
+    &instance
+      .version_path
+      .join(format!("{}.json", instance.name)),
+  )
+  .await?;
+  if optifine {
+    download_optifine_libraries(app, &priority, instance, &mut client).await
+  } else {
+    match instance.mod_loader.loader_type {
+      ModLoaderType::Forge | ModLoaderType::LegacyForge => {
+        download_forge_libraries(app, &priority, instance, &mut client).await
+      }
+      ModLoaderType::NeoForge => {
+        download_neoforge_libraries(app, &priority, instance, &mut client).await
+      }
+      _ => Ok(()),
+    }
+  }
 }
 
 async fn finish_mod_loader_install_inner(app: &AppHandle, instance_id: &str) -> USTBLResult<bool> {

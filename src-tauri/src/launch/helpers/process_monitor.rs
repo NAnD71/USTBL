@@ -1,4 +1,5 @@
 use crate::error::USTBLResult;
+use crate::instance::helpers::loader_lifecycle::{LoaderLifecycle, LOADER_LIFECYCLE};
 use crate::instance::models::misc::{Instance, InstanceError};
 use crate::launch::constants::*;
 use crate::launch::helpers::playtime_sync;
@@ -15,7 +16,7 @@ use std::path::PathBuf;
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use std::{fs, thread};
 use tauri::path::BaseDirectory;
@@ -26,8 +27,6 @@ use tokio::sync::Notify;
 const POLLING_OPERATION_INTERVAL_MS: u64 = 2000;
 const PLAY_TIME_SAVE_INTERVAL_SECONDS: u64 = 600;
 const INSTANCE_PLAY_TIME_UPDATED_EVENT: &str = "instance:play-time-updated";
-static PLAY_TIME_WRITE_LOCK: LazyLock<tokio::sync::Mutex<()>> =
-  LazyLock::new(|| tokio::sync::Mutex::new(()));
 
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -83,12 +82,27 @@ fn play_time_checkpoint(elapsed_seconds: u64, finishing: bool) -> u64 {
   }
 }
 
+/// Add played seconds to the saved config. The config is read again inside the
+/// lifecycle lock and only `play_time` changes, so a loader scan or claim that
+/// read it earlier cannot save an older copy over the added seconds. Nothing is
+/// written when the config cannot be read; the caller retries with the next delta.
+async fn persist_play_time(
+  lifecycle: &LoaderLifecycle,
+  at: &Instance,
+  delta_seconds: u64,
+) -> USTBLResult<Instance> {
+  lifecycle
+    .edit(at, |instance| {
+      instance.play_time = instance.play_time.saturating_add(u128::from(delta_seconds));
+    })
+    .await
+}
+
 async fn record_play_time_delta(
   app: &AppHandle,
   instance_id: &str,
   delta_seconds: u64,
 ) -> USTBLResult<u128> {
-  let _write_guard = PLAY_TIME_WRITE_LOCK.lock().await;
   let instance_in_mem = {
     let binding = app.state::<Mutex<HashMap<String, Instance>>>();
     let instance = binding
@@ -99,13 +113,9 @@ async fn record_play_time_delta(
     instance
   };
 
-  let mut instance = instance_in_mem
-    .load_json_cfg()
-    .await
-    .unwrap_or(instance_in_mem);
-  instance.play_time = instance.play_time.saturating_add(u128::from(delta_seconds));
-  instance.save_json_cfg().await?;
-  let play_time = instance.play_time;
+  let play_time = persist_play_time(&LOADER_LIFECYCLE, &instance_in_mem, delta_seconds)
+    .await?
+    .play_time;
 
   let binding = app.state::<Mutex<HashMap<String, Instance>>>();
   if let Ok(mut instances) = binding.lock() {
@@ -368,7 +378,11 @@ pub async fn monitor_process(
 
 #[cfg(test)]
 mod tests {
-  use super::play_time_checkpoint;
+  use super::{persist_play_time, play_time_checkpoint};
+  use crate::instance::helpers::loader_lifecycle::LoaderLifecycle;
+  use crate::instance::models::misc::Instance;
+  use std::path::{Path, PathBuf};
+  use tokio::sync::oneshot;
 
   #[test]
   fn running_play_time_is_persisted_at_ten_minute_boundaries() {
@@ -383,8 +397,87 @@ mod tests {
     assert_eq!(play_time_checkpoint(61, true), 61);
     assert_eq!(play_time_checkpoint(1201, true), 1201);
   }
-}
 
+  fn temp_root(tag: &str) -> PathBuf {
+    let root = std::env::temp_dir().join(format!("ustbl-playtime-{tag}-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    root
+  }
+
+  fn instance_at(root: &Path) -> Instance {
+    Instance {
+      version_path: root.to_path_buf(),
+      ..Default::default()
+    }
+  }
+
+  /// A loader refresh: reads the config, pauses, then saves its copy whole.
+  async fn refresh_paused(
+    lifecycle: &LoaderLifecycle,
+    root: &Path,
+    read: oneshot::Sender<()>,
+    go: oneshot::Receiver<()>,
+  ) {
+    lifecycle
+      .run(async {
+        let mut cfg = instance_at(root).load_json_cfg().await.unwrap();
+        read.send(()).unwrap();
+        go.await.unwrap();
+        cfg.description = "refreshed".into();
+        cfg.save_json_cfg().await.unwrap();
+      })
+      .await
+  }
+
+  fn seed_play_time(root: &Path, play_time: u128) {
+    let mut instance = instance_at(root);
+    instance.play_time = play_time;
+    std::fs::write(
+      root.join(crate::instance::constants::INSTANCE_CFG_FILE_NAME),
+      serde_json::to_string(&instance).unwrap(),
+    )
+    .unwrap();
+  }
+
+  /// Regression: play time used to be written under its own lock, which a loader
+  /// refresh does not hold. A refresh that read the config before the play time
+  /// write saved its stale copy and dropped the added seconds.
+  /// Expected: the play time queues behind the refresh and 160 seconds stay.
+  #[tokio::test]
+  async fn play_time_added_during_a_refresh_is_not_overwritten_by_it() {
+    let root = temp_root("refresh-race");
+    seed_play_time(&root, 100);
+    let lifecycle = LoaderLifecycle::new();
+
+    let (read_tx, read_rx) = oneshot::channel();
+    let (go_tx, go_rx) = oneshot::channel();
+    let refresh = refresh_paused(&lifecycle, &root, read_tx, go_rx);
+    let located = instance_at(&root);
+    let playtime = persist_play_time(&lifecycle, &located, 60);
+    let release = async {
+      read_rx.await.unwrap();
+      go_tx.send(()).unwrap();
+    };
+    // `refresh` is polled first, so it takes the lock before `playtime` queues.
+    let ((), added, ()) = tokio::join!(refresh, playtime, release);
+    assert_eq!(added.unwrap().play_time, 160);
+    let saved = instance_at(&root).load_json_cfg().await.unwrap();
+    assert_eq!(saved.play_time, 160);
+    assert_eq!(saved.description, "refreshed");
+    std::fs::remove_dir_all(root).unwrap();
+  }
+
+  #[tokio::test]
+  async fn play_time_is_not_written_when_the_config_cannot_be_read() {
+    let root = temp_root("unreadable");
+    let result = persist_play_time(&LoaderLifecycle::new(), &instance_at(&root), 60).await;
+    assert!(result.is_err());
+    assert!(!root
+      .join(crate::instance::constants::INSTANCE_CFG_FILE_NAME)
+      .exists());
+    std::fs::remove_dir_all(root).unwrap();
+  }
+}
 pub fn kill_process(pid: u32) -> USTBLResult<()> {
   // KNOWN ISSUE: kill process means exit abnormally, which will not close the game-log window automatically.
   #[cfg(any(target_os = "linux", target_os = "macos"))]

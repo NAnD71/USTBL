@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::fs::{self, File};
 use std::io::Read;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::AppHandle;
 use tauri_plugin_http::reqwest;
 use url::Url;
@@ -98,6 +98,27 @@ pub async fn install_forge_loader(
   Ok(())
 }
 
+fn forge_installer_path(lib_dir: &Path, loader_version: &str) -> USTBLResult<PathBuf> {
+  let coord = format!("net.minecraftforge:forge:{loader_version}-installer");
+  Ok(lib_dir.join(convert_library_name_to_path(&coord, None)?))
+}
+
+/// Whether `download_forge_libraries` still has to fetch the installer. That path
+/// resolves the installer URL over the network, so a caller that holds
+/// LOADER_LIFECYCLE checks this and runs the download after releasing the lock.
+pub fn forge_installer_missing(app: &AppHandle, instance: &Instance) -> bool {
+  let Some(lib_dir) = get_instance_subdir_paths(app, instance, &[&InstanceSubdirType::Libraries])
+    .and_then(|dirs| dirs.into_iter().next())
+  else {
+    return false;
+  };
+  installer_missing(&lib_dir, &instance.mod_loader.version)
+}
+
+fn installer_missing(lib_dir: &Path, loader_version: &str) -> bool {
+  forge_installer_path(lib_dir, loader_version).is_ok_and(|path| !is_valid_installer(&path))
+}
+
 pub async fn download_forge_libraries(
   app: &AppHandle,
   priority: &[SourceType],
@@ -121,12 +142,7 @@ pub async fn download_forge_libraries(
   };
   let mut task_params = vec![];
 
-  let installer_coord = format!(
-    "net.minecraftforge:forge:{}-installer",
-    instance.mod_loader.version
-  );
-  let installer_rel = convert_library_name_to_path(&installer_coord, None)?;
-  let installer_path = lib_dir.join(&installer_rel);
+  let installer_path = forge_installer_path(lib_dir, &instance.mod_loader.version)?;
   let bin_patch = lib_dir.join(convert_library_name_to_path(
     &format!(
       "net.minecraftforge:forge:{}:clientdata@lzma",
@@ -565,4 +581,28 @@ pub struct LegacyInstallProfile {
 pub struct LegacyLibrariesValue {
   pub name: String,
   pub url: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{forge_installer_path, installer_missing};
+
+  #[test]
+  fn the_installer_is_missing_until_a_readable_archive_is_in_place() {
+    let lib_dir = std::env::temp_dir().join(format!("ustbl-forge-{}", uuid::Uuid::new_v4()));
+    let version = "1.20.1-47.2.0";
+    assert!(installer_missing(&lib_dir, version));
+
+    let path = forge_installer_path(&lib_dir, version).unwrap();
+    std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+    std::fs::write(&path, b"PK\x03\x04truncated").unwrap();
+    assert!(installer_missing(&lib_dir, version));
+
+    // An empty zip is just its end-of-central-directory record.
+    let mut empty_zip = b"PK\x05\x06".to_vec();
+    empty_zip.extend([0u8; 18]);
+    std::fs::write(&path, empty_zip).unwrap();
+    assert!(!installer_missing(&lib_dir, version));
+    std::fs::remove_dir_all(lib_dir).unwrap();
+  }
 }

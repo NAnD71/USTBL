@@ -4,11 +4,11 @@ use crate::instance::helpers::client_json::{libraries_to_info, patches_to_info, 
 use crate::instance::helpers::identity::{
   dedup_instance_ids, migrated_selected_id, read_or_assign_id,
 };
-use crate::instance::helpers::loader::forge::download_forge_libraries;
+use crate::instance::helpers::loader::forge::{download_forge_libraries, forge_installer_missing};
 use crate::instance::helpers::loader::neoforge::download_neoforge_libraries;
 use crate::instance::helpers::loader::optifine::download_optifine_libraries;
 use crate::instance::helpers::loader_lifecycle::{
-  claim_download, recover_interrupted, LOADER_LIFECYCLE,
+  claim_download, fail_download, recover_interrupted, LOADER_LIFECYCLE,
 };
 use crate::instance::models::misc::{
   Instance, InstanceError, InstanceSubdirType, ModLoader, ModLoaderStatus, ModLoaderType, OptiFine,
@@ -221,6 +221,72 @@ pub fn check_folder(existing: &HashSet<String>, folder: &str) -> InstanceFolderC
   }
 }
 
+/// A Forge installer download that a refresh claimed but has not run. Resolving
+/// the installer URL can take a network round trip, which must not happen while
+/// the refresh holds LOADER_LIFECYCLE, so the claim (persisted under the lock) is
+/// kept and the download runs after the lock is released.
+pub(crate) struct DeferredPreparation {
+  instance: Instance,
+  client: McClientInfo,
+}
+
+/// Persist a failed loader or OptiFine download and publish it to the instance
+/// table. Only the status changes, from the file on disk; `instance` is a
+/// snapshot and must not be written back as a whole. Call while holding
+/// LOADER_LIFECYCLE.
+pub(crate) async fn record_failed_preparation(
+  app: &AppHandle,
+  instance: &Instance,
+  optifine: bool,
+) {
+  if let Err(error) = fail_download(instance, optifine).await {
+    log::warn!("Could not save the failed download state: {error:?}");
+  }
+  let state = app.state::<Mutex<HashMap<String, Instance>>>();
+  let Ok(mut table) = state.lock() else {
+    return;
+  };
+  if let Some(current) = table.get_mut(&instance.id) {
+    if optifine {
+      if let Some(value) = &mut current.optifine {
+        value.status = ModLoaderStatus::DownloadFailed;
+      }
+    } else {
+      current.mod_loader.status = ModLoaderStatus::DownloadFailed;
+    }
+  }
+}
+
+/// Run the downloads a refresh deferred. Call after releasing LOADER_LIFECYCLE;
+/// a failure takes the lock again only to record it.
+pub(crate) async fn run_deferred_preparations(app: &AppHandle, deferred: Vec<DeferredPreparation>) {
+  for DeferredPreparation {
+    instance,
+    mut client,
+  } in deferred
+  {
+    let result = async {
+      let priority = {
+        let state = app.state::<Mutex<LauncherConfig>>();
+        let config = state.lock()?;
+        get_source_priority_list(&config)
+      };
+      download_forge_libraries(app, &priority, &instance, &mut client).await
+    }
+    .await;
+    if let Err(error) = result {
+      log::warn!(
+        "Failed to install mod loader for {}: {:?}",
+        instance.name,
+        error
+      );
+      LOADER_LIFECYCLE
+        .run(record_failed_preparation(app, &instance, false))
+        .await;
+    }
+  }
+}
+
 async fn refresh_instance(
   app: &AppHandle,
   mut version_path: PathBuf,
@@ -228,6 +294,7 @@ async fn refresh_instance(
   jar_path: PathBuf,
   json_path: PathBuf,
   is_first_run: bool,
+  deferred: &mut Vec<DeferredPreparation>,
 ) -> USTBLResult<Option<Instance>> {
   let mut client_data = match load_json_async::<McClientInfo>(&json_path).await {
     Ok(v) => v,
@@ -252,6 +319,9 @@ async fn refresh_instance(
   .load_json_cfg()
   .await
   .unwrap_or_default();
+  // The saved path is where the config lived when it was written, which is wrong
+  // for a copied folder. Claims and failures save through this value.
+  cfg_read.version_path = version_path.clone();
   cfg_read.id = read_or_assign_id(&version_path, &cfg_read.id);
 
   if cfg_read.mod_loader.status != ModLoaderStatus::Installed {
@@ -266,7 +336,15 @@ async fn refresh_instance(
           match cfg_read.mod_loader.loader_type {
             ModLoaderType::Forge => {
               if claim_download(&mut cfg_read, false).await? {
-                download_forge_libraries(app, &priority_list, &cfg_read, &mut client_data).await?;
+                if forge_installer_missing(app, &cfg_read) {
+                  deferred.push(DeferredPreparation {
+                    instance: cfg_read.clone(),
+                    client: client_data.clone(),
+                  });
+                } else {
+                  download_forge_libraries(app, &priority_list, &cfg_read, &mut client_data)
+                    .await?;
+                }
               }
             }
             ModLoaderType::NeoForge => {
@@ -400,15 +478,24 @@ pub async fn refresh_instances(
   game_directory: &GameDirectory,
   is_first_run: bool,
 ) -> USTBLResult<Vec<Instance>> {
-  LOADER_LIFECYCLE
-    .run(refresh_instances_inner(app, game_directory, is_first_run))
-    .await
+  let mut deferred = vec![];
+  let instances = LOADER_LIFECYCLE
+    .run(refresh_instances_inner(
+      app,
+      game_directory,
+      is_first_run,
+      &mut deferred,
+    ))
+    .await;
+  run_deferred_preparations(app, deferred).await;
+  instances
 }
 
 async fn refresh_instances_inner(
   app: &AppHandle,
   game_directory: &GameDirectory,
   is_first_run: bool,
+  deferred: &mut Vec<DeferredPreparation>,
 ) -> USTBLResult<Vec<Instance>> {
   let mut instances = vec![];
   // traverse the "versions" directory
@@ -452,6 +539,7 @@ async fn refresh_instances_inner(
       jar_path,
       json_path,
       is_first_run,
+      deferred,
     )
     .await
     {
@@ -480,10 +568,13 @@ async fn refresh_all_instances(
   app: &AppHandle,
   game_directories: &[GameDirectory],
   is_first_run: bool,
+  deferred: &mut Vec<DeferredPreparation>,
 ) -> HashMap<String, Instance> {
   let mut ordered = vec![];
   for game_directory in game_directories {
-    if let Ok(instances) = refresh_instances_inner(app, game_directory, is_first_run).await {
+    if let Ok(instances) =
+      refresh_instances_inner(app, game_directory, is_first_run, deferred).await
+    {
       ordered.extend(instances);
     }
   }
@@ -514,19 +605,29 @@ pub fn migrate_selected_instance_id(app: &AppHandle, instances: &HashMap<String,
 }
 
 pub async fn refresh_and_update_instances(app: &AppHandle, is_first_run: bool) {
+  let mut deferred = vec![];
   LOADER_LIFECYCLE
-    .run(refresh_and_update_instances_inner(app, is_first_run))
+    .run(refresh_and_update_instances_inner(
+      app,
+      is_first_run,
+      &mut deferred,
+    ))
     .await;
+  run_deferred_preparations(app, deferred).await;
 }
 
-async fn refresh_and_update_instances_inner(app: &AppHandle, is_first_run: bool) {
+async fn refresh_and_update_instances_inner(
+  app: &AppHandle,
+  is_first_run: bool,
+  deferred: &mut Vec<DeferredPreparation>,
+) {
   // get launcher config -> local game directories
   let local_game_directories = {
     let binding = app.state::<Mutex<LauncherConfig>>();
     let state = binding.lock().unwrap();
     state.local_game_directories.clone()
   };
-  let instances = refresh_all_instances(app, &local_game_directories, is_first_run).await;
+  let instances = refresh_all_instances(app, &local_game_directories, is_first_run, deferred).await;
   // update the instances in the app state
   {
     let binding = app.state::<Mutex<HashMap<String, Instance>>>();

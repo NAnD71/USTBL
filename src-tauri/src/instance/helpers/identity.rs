@@ -2,7 +2,9 @@
 //! the folder name is only the on-disk name and the display name is only for
 //! people. Instances written by older versions carry the id `<game dir>:<folder>`.
 
+use crate::error::USTBLResult;
 use crate::instance::constants::INSTANCE_CFG_FILE_NAME;
+use crate::instance::helpers::loader_lifecycle::LoaderLifecycle;
 use crate::instance::models::misc::Instance;
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -68,11 +70,19 @@ pub fn reassign_id(version_path: &Path) -> String {
   id
 }
 
-/// Persists a new display name without touching any other field.
-pub fn write_display_name(version_path: &Path, display_name: &str) -> bool {
-  patch_cfg(version_path, |instance| {
-    instance.display_name = display_name.to_string()
-  })
+/// Persists a new display name without touching any other field. The config is
+/// read again inside the lifecycle lock, so a loader scan or claim that started
+/// earlier cannot save its older copy over the name. Returns the saved config.
+pub(crate) async fn persist_display_name(
+  lifecycle: &LoaderLifecycle,
+  at: &Instance,
+  display_name: &str,
+) -> USTBLResult<Instance> {
+  lifecycle
+    .edit(at, |instance| {
+      instance.display_name = display_name.to_string()
+    })
+    .await
 }
 
 /// Keeps the first instance of every id in the given order and gives the others
@@ -293,18 +303,85 @@ mod tests {
     assert_eq!(migrated_selected_id(&table, &id), None);
   }
 
-  #[test]
-  fn writing_the_display_name_changes_only_that_field() {
+  fn located_at(root: &Path) -> Instance {
+    Instance {
+      version_path: root.to_path_buf(),
+      ..Default::default()
+    }
+  }
+
+  #[tokio::test]
+  async fn writing_the_display_name_changes_only_that_field() {
     let root = temp_root("rename");
     let mut original = instance(&new_instance_id(), "games", "pack");
     original.description = "keep".into();
     write_cfg(&root, &original);
-    assert!(write_display_name(&root, "Renamed"));
+    let saved = persist_display_name(&LoaderLifecycle::new(), &located_at(&root), "Renamed")
+      .await
+      .unwrap();
+    assert_eq!(saved.display_name, "Renamed");
     let stored = read_cfg(&root);
     assert_eq!(stored.display_name, "Renamed");
     assert_eq!(stored.name, "pack");
     assert_eq!(stored.description, "keep");
     assert_eq!(stored.id, original.id);
+    fs::remove_dir_all(root).unwrap();
+  }
+
+  /// The read, change and save of a loader lifecycle transaction, with a pause
+  /// between the read and the save. Same steps as `edit_config`, which has no
+  /// hook for the pause.
+  async fn lifecycle_edit_paused(
+    lifecycle: &LoaderLifecycle,
+    root: &Path,
+    read: tokio::sync::oneshot::Sender<()>,
+    go: tokio::sync::oneshot::Receiver<()>,
+  ) {
+    lifecycle
+      .run(async {
+        let mut cfg = Instance {
+          version_path: root.to_path_buf(),
+          ..Default::default()
+        }
+        .load_json_cfg()
+        .await
+        .unwrap();
+        // The fixture writes an empty `versionPath`, so the loaded value must
+        // get its path back before saving.
+        cfg.version_path = root.to_path_buf();
+        read.send(()).unwrap();
+        go.await.unwrap();
+        cfg.modpack_version = Some("1.0".into());
+        cfg.save_json_cfg().await.unwrap();
+      })
+      .await
+  }
+
+  /// Regression: a rename used to skip LOADER_LIFECYCLE, so it could land between
+  /// a lifecycle read and save, and the save wrote the old display name back.
+  /// Expected: the rename queues behind the lifecycle transaction and survives.
+  #[tokio::test]
+  async fn a_rename_survives_a_lifecycle_save_that_started_before_it() {
+    use tokio::sync::oneshot;
+
+    let root = temp_root("rename-vs-lifecycle");
+    write_cfg(&root, &instance(&new_instance_id(), "games", "pack"));
+    let lifecycle = LoaderLifecycle::new();
+    let (read_tx, read_rx) = oneshot::channel();
+    let (go_tx, go_rx) = oneshot::channel();
+    let store = lifecycle_edit_paused(&lifecycle, &root, read_tx, go_rx);
+    let located = located_at(&root);
+    let rename = persist_display_name(&lifecycle, &located, "Renamed");
+    let release = async {
+      read_rx.await.unwrap();
+      go_tx.send(()).unwrap();
+    };
+    // `store` is polled first, so it takes the lock before `rename` queues.
+    let ((), renamed, ()) = tokio::join!(store, rename, release);
+    assert_eq!(renamed.unwrap().display_name, "Renamed");
+    let saved = read_cfg(&root);
+    assert_eq!(saved.display_name, "Renamed");
+    assert_eq!(saved.modpack_version.as_deref(), Some("1.0"));
     fs::remove_dir_all(root).unwrap();
   }
 
