@@ -1,6 +1,6 @@
 use crate::error::{USTBLError, USTBLResult};
-use crate::instance::helpers::asset_index::load_asset_index;
 use crate::instance::helpers::asset_index::AssetIndex;
+use crate::instance::helpers::asset_index::{asset_index_file, load_asset_index};
 use crate::instance::helpers::client_json::{
   DownloadsArtifact, FeaturesInfo, IsAllowed, LibrariesValue, McClientInfo,
 };
@@ -434,7 +434,7 @@ pub async fn get_invalid_assets(
 ) -> USTBLResult<Vec<PTaskParam>> {
   let official_assets_download_api = get_download_api(SourceType::Official, ResourceType::Assets)?;
 
-  let asset_index_path = asset_path.join(format!("indexes/{}.json", client_info.asset_index.id));
+  let asset_index_path = asset_index_file(asset_path, &client_info.asset_index.id)?;
   let asset_index = load_asset_index(
     app,
     &asset_index_path,
@@ -450,7 +450,7 @@ pub async fn get_invalid_assets(
     let base_path = asset_path.to_path_buf();
 
     async move {
-      let path_in_repo = format!("{}/{}", &item.hash[..2], item.hash);
+      let path_in_repo = item.object_path()?;
       let dest = base_path.join(format!("objects/{}", path_in_repo));
       let exists = fs::try_exists(&dest).await?;
 
@@ -503,13 +503,14 @@ pub async fn prepare_legacy_assets(
   stream::iter(asset_index.objects.into_iter())
     .map(Ok::<_, USTBLError>)
     .try_for_each_concurrent(None, move |(name, item)| {
-      let origin = objects_dir.join(format!("{}/{}", &item.hash[..2], item.hash));
+      let origin = item.object_path().map(|path| objects_dir.join(path));
       let targets = target_roots
         .iter()
         .map(|target_root| target_root.join(&name))
         .collect::<Vec<_>>();
 
       async move {
+        let origin = origin?;
         if !fs::try_exists(&origin).await? {
           return Ok::<(), USTBLError>(());
         }
