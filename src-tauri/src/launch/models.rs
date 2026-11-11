@@ -25,6 +25,14 @@ pub enum LaunchError {
 
 impl std::error::Error for LaunchError {}
 
+/// Result of launch step 1: the id every later step and the cancel command must carry.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LaunchSelection {
+  pub launching_id: u64,
+  pub java: JavaInfo,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, SmartDefault)]
 #[serde(rename_all = "camelCase", default)]
 pub struct LaunchingState {

@@ -2,7 +2,7 @@ use crate::account::helpers::misc::get_selected_player_info;
 use crate::account::helpers::offline::yggdrasil_server::YggdrasilServer;
 use crate::account::helpers::{authlib_injector, microsoft};
 use crate::account::models::PlayerType;
-use crate::error::USTBLResult;
+use crate::error::{USTBLError, USTBLResult};
 use crate::instance::helpers::client_json::{replace_native_libraries, McClientInfo};
 use crate::instance::helpers::identity::find_instance;
 use crate::instance::helpers::misc::{get_instance_game_config, get_instance_subdir_paths};
@@ -21,9 +21,12 @@ use crate::launch::helpers::jre_selector::{
 use crate::launch::helpers::log_parser::parse_crash_report_path_from_log;
 use crate::launch::helpers::misc::get_separator;
 use crate::launch::helpers::process_monitor::{
-  kill_process, monitor_process, set_process_priority,
+  create_game_log, game_log_path, kill_process, monitor_process, set_process_priority,
 };
-use crate::launch::models::{LaunchError, LaunchingState};
+use crate::launch::helpers::session::{
+  cancel_session, next_launching_id, register_game_process, remove_session, session_mut,
+};
+use crate::launch::models::{LaunchError, LaunchSelection, LaunchingState};
 use crate::launcher_config::helpers::java::refresh_and_update_javas;
 use crate::launcher_config::models::{
   FileValidatePolicy, JavaInfo, LauncherConfig, LauncherVisiablity,
@@ -44,7 +47,6 @@ use std::path::PathBuf;
 use std::pin::Pin;
 use std::process::{Command, Stdio};
 use std::sync::{mpsc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager, State};
 
@@ -72,7 +74,7 @@ pub async fn select_suitable_jre(
   instances_state: State<'_, Mutex<HashMap<String, Instance>>>,
   javas_state: State<'_, Mutex<Vec<JavaInfo>>>,
   launching_queue_state: State<'_, Mutex<Vec<LaunchingState>>>,
-) -> USTBLResult<JavaInfo> {
+) -> USTBLResult<LaunchSelection> {
   // A desktop shortcut made by an older version carries the old `<game dir>:<folder>`
   // id, so a miss is retried in that form.
   let instance = {
@@ -125,9 +127,9 @@ pub async fn select_suitable_jre(
     .await?
   };
 
-  let timestamp = SystemTime::now().duration_since(UNIX_EPOCH)?.as_secs();
   // Return the selected runtime so the launch UI can show which Java was picked.
   let selected_java_for_result = selected_java.clone();
+  let launching_id = next_launching_id();
   let mut launching = launching_queue_state.lock()?;
   // Hold both registries through queue insertion, including registered update
   // jobs still preparing their plan before they acquire the disk UpdateGuard.
@@ -137,7 +139,7 @@ pub async fn select_suitable_jre(
       .state::<Pin<Box<TaskMonitor>>>()
       .while_no_modpack_update(&instance_id, || {
         launching.push(LaunchingState {
-          id: timestamp,
+          id: launching_id,
           game_config,
           client_info,
           selected_java,
@@ -147,21 +149,43 @@ pub async fn select_suitable_jre(
       })
   })??;
 
-  Ok(selected_java_for_result)
+  Ok(LaunchSelection {
+    launching_id,
+    java: selected_java_for_result,
+  })
 }
 
 // Step 2: extract native libraries, validate game and dependency files, and prepare legacy game assets (if needed).
 #[tauri::command]
 pub async fn validate_game_files(
   app: AppHandle,
+  launching_id: u64,
   launcher_config_state: State<'_, Mutex<LauncherConfig>>,
   launching_queue_state: State<'_, Mutex<Vec<LaunchingState>>>,
 ) -> USTBLResult<()> {
+  // The launch UI cannot continue after a failed step 2, so the session leaves the queue.
+  let result = validate_game_files_for(
+    &app,
+    launching_id,
+    &launcher_config_state,
+    &launching_queue_state,
+  )
+  .await;
+  if result.is_err() {
+    remove_session(&launching_queue_state, launching_id);
+  }
+  result
+}
+
+async fn validate_game_files_for(
+  app: &AppHandle,
+  launching_id: u64,
+  launcher_config_state: &Mutex<LauncherConfig>,
+  launching_queue_state: &Mutex<Vec<LaunchingState>>,
+) -> USTBLResult<()> {
   let (instance, mut client_info, workaround) = {
     let mut launching_queue = launching_queue_state.lock()?;
-    let launching = launching_queue
-      .last_mut()
-      .ok_or(LaunchError::LaunchingStateNotFound)?;
+    let launching = session_mut(&mut launching_queue, launching_id)?;
     launching.current_step = 2;
     (
       launching.selected_instance.clone(),
@@ -174,22 +198,20 @@ pub async fn validate_game_files(
     return Err(LaunchError::ModLoaderNotInstalled.into());
   }
 
-  replace_native_libraries(&app, &mut client_info, &instance)
+  replace_native_libraries(app, &mut client_info, &instance)
     .await
     .map_err(|_| InstanceError::ClientJsonParseError)?;
 
   {
     let mut launching_queue = launching_queue_state.lock()?;
-    let launching = launching_queue
-      .last_mut()
-      .ok_or(LaunchError::LaunchingStateNotFound)?;
+    let launching = session_mut(&mut launching_queue, launching_id)?;
 
     launching.client_info = client_info.clone();
   }
 
   // extract native libraries
   let dirs = get_instance_subdir_paths(
-    &app,
+    app,
     &instance,
     &[
       &InstanceSubdirType::Root,
@@ -213,12 +235,12 @@ pub async fn validate_game_files(
     FileValidatePolicy::Disable => Vec::new(), // skip
     FileValidatePolicy::Normal => [
       get_invalid_library_files(&priority_list, libraries_dir, &client_info, false).await?,
-      get_invalid_assets(&app, &client_info, &priority_list, assets_dir, false).await?,
+      get_invalid_assets(app, &client_info, &priority_list, assets_dir, false).await?,
     ]
     .concat(),
     FileValidatePolicy::Full => [
       get_invalid_library_files(&priority_list, libraries_dir, &client_info, true).await?,
-      get_invalid_assets(&app, &client_info, &priority_list, assets_dir, true).await?,
+      get_invalid_assets(app, &client_info, &priority_list, assets_dir, true).await?,
     ]
     .concat(),
   };
@@ -237,7 +259,7 @@ pub async fn validate_game_files(
     Ok(())
   } else {
     schedule_progressive_task_group(
-      app,
+      app.clone(),
       format!("patch-files?{}", client_info.id),
       incomplete_files,
       true,
@@ -252,6 +274,7 @@ pub async fn validate_game_files(
 #[tauri::command]
 pub async fn validate_selected_player(
   app: AppHandle,
+  launching_id: u64,
   launching_queue_state: State<'_, Mutex<Vec<LaunchingState>>>,
   local_ygg_server_state: State<'_, Mutex<YggdrasilServer>>,
 ) -> USTBLResult<bool> {
@@ -299,9 +322,7 @@ pub async fn validate_selected_player(
 
   {
     let mut launching_queue = launching_queue_state.lock()?;
-    let launching = launching_queue
-      .last_mut()
-      .ok_or(LaunchError::LaunchingStateNotFound)?;
+    let launching = session_mut(&mut launching_queue, launching_id)?;
     launching.current_step = 3;
     launching.selected_player = Some(player.clone());
     launching.auth_server_meta = metadata;
@@ -317,116 +338,35 @@ pub async fn validate_selected_player(
 #[tauri::command]
 pub async fn launch_game(
   app: AppHandle,
+  launching_id: u64,
   launching_queue_state: State<'_, Mutex<Vec<LaunchingState>>>,
   quick_play_singleplayer: Option<String>,
   quick_play_multiplayer: Option<String>,
 ) -> USTBLResult<()> {
-  let (id, selected_java, game_config, instance) = {
+  let launching = {
     let mut launching_queue = launching_queue_state.lock()?;
-    let launching = launching_queue
-      .last_mut()
-      .ok_or(LaunchError::LaunchingStateNotFound)?;
+    let launching = session_mut(&mut launching_queue, launching_id)?;
     launching.current_step = 4;
-    (
-      launching.id,
-      launching.selected_java.clone(),
-      launching.game_config.clone(),
-      launching.selected_instance.clone(),
-    )
+    launching.clone()
   };
+  let game_config = launching.game_config.clone();
 
-  let instance_id = instance.id.clone();
-  let work_dir = get_instance_subdir_paths(&app, &instance, &[&InstanceSubdirType::Root])
-    .ok_or(InstanceError::InstanceNotFoundByID)?
-    .first()
-    .ok_or(InstanceError::InstanceNotFoundByID)?
-    .clone();
-
-  // generate launch command
-  let LaunchCommand {
-    class_paths,
-    args: cmd_args,
-  } = generate_launch_command(&app, quick_play_singleplayer, quick_play_multiplayer).await?;
-
-  let wrapper = game_config
-    .advanced
-    .custom_commands
-    .wrapper_launcher
-    .clone();
-
-  let mut cmd_base = if let Some(mut c) = split_command_line(&wrapper)? {
-    c.arg(&selected_java.exec_path);
-    c
-  } else {
-    Command::new(&selected_java.exec_path)
-  };
-
-  let full_cmd = export_full_launch_command(&class_paths, &cmd_args, &selected_java.exec_path);
-  println!("[Launch Command] {}", full_cmd);
-
-  let precall_cmd = game_config.advanced.custom_commands.precall_command.clone();
-  if !precall_cmd.trim().is_empty() {
-    let _ = execute_command_line(&precall_cmd);
-  }
-
-  // execute launch command
-  #[cfg(target_os = "windows")]
-  cmd_base.creation_flags(0x08000000);
-
-  let child = cmd_base
-    .current_dir(&work_dir)
-    .env("CLASSPATH", class_paths.join(get_separator()))
-    .args(cmd_args)
-    .stdout(Stdio::piped())
-    .stderr(Stdio::piped())
-    .spawn()?;
-
-  let pid = child.id();
-
-  // set process priority (if error, keep silent)
-  let _ = set_process_priority(pid, &game_config.performance.process_priority);
-
-  {
-    let mut launching_queue = launching_queue_state.lock()?;
-    let launching = launching_queue
-      .last_mut()
-      .ok_or(LaunchError::LaunchingStateNotFound)?;
-    launching.pid = pid;
-    launching.full_command = full_cmd;
-  }
-
-  // wait for the game window, create log window if needed
-  let (tx, rx) = mpsc::channel();
-  crate::account::helpers::vustb_presence::track_game_started(
-    id,
-    instance.shown_name().to_string(),
-  );
-  let presence_app = app.clone();
-  tauri::async_runtime::spawn(async move {
-    let _ = crate::account::helpers::vustb_presence::sync(&presence_app).await;
-  });
-  let monitor_result = monitor_process(
-    app.clone(),
-    id,
-    child,
-    instance_id,
-    game_config.display_game_log,
-    &game_config.game_window.custom_title,
-    game_config.launcher_visibility.clone(),
-    tx,
-    Some(
-      game_config
-        .advanced
-        .custom_commands
-        .post_exit_command
-        .clone(),
-    ),
+  // A session that fails before the process is handed to the monitor leaves the queue.
+  let rx = match start_game_process(
+    &app,
+    &launching_queue_state,
+    launching,
+    quick_play_singleplayer,
+    quick_play_multiplayer,
   )
-  .await;
-  if let Err(error) = monitor_result {
-    crate::account::helpers::vustb_presence::track_game_stopped(id);
-    return Err(error);
-  }
+  .await
+  {
+    Ok(rx) => rx,
+    Err(error) => {
+      remove_session(&launching_queue_state, launching_id);
+      return Err(error);
+    }
+  };
 
   // Wait until the game signals that it has started (see `READY_FLAG`).
   //
@@ -434,7 +374,7 @@ pub async fn launch_game(
   // the known readiness markers on stdout. Modded loaders are free to change their
   // console format, and if none of the markers ever appear the "waiting for game to
   // launch" modal stays on screen with no way out. Wait with a bounded timeout and
-  // treat a timeout as "started anyway" — the process is alive at this point, so
+  // treat a timeout as "started anyway" - the process is alive at this point, so
   // dismissing the modal is the correct behaviour.
   const GAME_READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
   let ready_rx = tokio::task::spawn_blocking(move || rx.recv_timeout(GAME_READY_TIMEOUT)).await;
@@ -464,21 +404,136 @@ pub async fn launch_game(
   Ok(())
 }
 
+// Spawns the game and hands it to the process monitor. Returns the readiness receiver.
+async fn start_game_process(
+  app: &AppHandle,
+  launching_queue_state: &Mutex<Vec<LaunchingState>>,
+  launching: LaunchingState,
+  quick_play_singleplayer: Option<String>,
+  quick_play_multiplayer: Option<String>,
+) -> USTBLResult<mpsc::Receiver<()>> {
+  let id = launching.id;
+  let selected_java = launching.selected_java.clone();
+  let game_config = launching.game_config.clone();
+  let instance = launching.selected_instance.clone();
+  let instance_id = instance.id.clone();
+  let work_dir = get_instance_subdir_paths(app, &instance, &[&InstanceSubdirType::Root])
+    .ok_or(InstanceError::InstanceNotFoundByID)?
+    .first()
+    .ok_or(InstanceError::InstanceNotFoundByID)?
+    .clone();
+
+  // The game log must exist before the process does: a failure here must not leave a
+  // running game that nothing is reading the output of.
+  let log_file = create_game_log(app, id)?;
+
+  // generate launch command
+  let LaunchCommand {
+    class_paths,
+    args: cmd_args,
+  } = generate_launch_command(
+    app,
+    &launching,
+    quick_play_singleplayer,
+    quick_play_multiplayer,
+  )
+  .await?;
+
+  let wrapper = game_config
+    .advanced
+    .custom_commands
+    .wrapper_launcher
+    .clone();
+
+  let mut cmd_base = if let Some(mut c) = split_command_line(&wrapper)? {
+    c.arg(&selected_java.exec_path);
+    c
+  } else {
+    Command::new(&selected_java.exec_path)
+  };
+
+  let full_cmd = export_full_launch_command(&class_paths, &cmd_args, &selected_java.exec_path);
+  println!("[Launch Command] {}", full_cmd);
+
+  let precall_cmd = game_config.advanced.custom_commands.precall_command.clone();
+  if !precall_cmd.trim().is_empty() {
+    let _ = execute_command_line(&precall_cmd);
+  }
+
+  // execute launch command
+  #[cfg(target_os = "windows")]
+  cmd_base.creation_flags(0x08000000);
+
+  let mut child = cmd_base
+    .current_dir(&work_dir)
+    .env("CLASSPATH", class_paths.join(get_separator()))
+    .args(cmd_args)
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped())
+    .spawn()?;
+
+  let pid = child.id();
+
+  // set process priority (if error, keep silent)
+  let _ = set_process_priority(pid, &game_config.performance.process_priority);
+
+  // The session may have been cancelled while the process was starting; then nobody is
+  // waiting for this game, so stop it instead of leaving it running unmonitored.
+  let registered = match launching_queue_state.lock() {
+    Ok(mut launching_queue) => {
+      register_game_process(&mut launching_queue, id, pid, full_cmd).map_err(USTBLError::from)
+    }
+    Err(error) => Err(USTBLError::from(error)),
+  };
+  if let Err(error) = registered {
+    let _ = tokio::task::spawn_blocking(move || {
+      let _ = child.kill();
+      let _ = child.wait();
+    })
+    .await;
+    return Err(error);
+  }
+
+  // wait for the game window, create log window if needed
+  let (tx, rx) = mpsc::channel();
+  crate::account::helpers::vustb_presence::track_game_started(
+    id,
+    instance.shown_name().to_string(),
+  );
+  let presence_app = app.clone();
+  tauri::async_runtime::spawn(async move {
+    let _ = crate::account::helpers::vustb_presence::sync(&presence_app).await;
+  });
+  monitor_process(
+    app.clone(),
+    id,
+    child,
+    log_file,
+    instance_id,
+    game_config.display_game_log,
+    &game_config.game_window.custom_title,
+    game_config.launcher_visibility.clone(),
+    tx,
+    Some(
+      game_config
+        .advanced
+        .custom_commands
+        .post_exit_command
+        .clone(),
+    ),
+  )
+  .await;
+
+  Ok(rx)
+}
+
 #[tauri::command]
 pub fn cancel_launch_process(
+  launching_id: u64,
   launching_queue_state: State<'_, Mutex<Vec<LaunchingState>>>,
 ) -> USTBLResult<()> {
   let mut launching_queue = launching_queue_state.lock()?;
-
-  // kill process if pid exists
-  if let Some(launching) = launching_queue.last_mut() {
-    if launching.pid != 0 {
-      launching.current_step = 0; // mark as manually cancelled to avoid game error window popping up
-      kill_process(launching.pid)?;
-    }
-  }
-
-  Ok(())
+  cancel_session(&mut launching_queue, launching_id, kill_process)
 }
 
 #[tauri::command]
@@ -490,10 +545,7 @@ pub async fn open_game_log_window(app: AppHandle, launching_id: u64) -> USTBLRes
 
 #[tauri::command]
 pub fn retrieve_game_log(app: AppHandle, launching_id: u64) -> USTBLResult<Vec<String>> {
-  let log_file_dir = app.path().resolve::<PathBuf>(
-    format!("game/game_log_{launching_id}.log").into(),
-    BaseDirectory::AppLog,
-  )?;
+  let log_file_dir = game_log_path(&app, launching_id)?;
   Ok(
     BufReader::new(std::fs::OpenOptions::new().read(true).open(log_file_dir)?)
       .lines()
@@ -523,10 +575,7 @@ pub fn export_game_crash_info(
   save_path: String,
 ) -> USTBLResult<String> {
   // game log
-  let game_log_path = app.path().resolve::<PathBuf>(
-    format!("game/game_log_{launching_id}.log").into(),
-    BaseDirectory::AppLog,
-  )?;
+  let game_log_path = game_log_path(&app, launching_id)?;
 
   // crash report
   let crash_report_path =
@@ -621,5 +670,109 @@ mod tests {
       "INSTANCE_NOT_FOUND_BY_ID"
     );
     fs::remove_dir_all(root).unwrap();
+  }
+
+  fn running_game() -> std::process::Child {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+      let mut command = Command::new("cmd");
+      command.args(["/C", "ping -n 30 127.0.0.1 >NUL"]);
+      command.creation_flags(0x08000000);
+      command
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut command = {
+      let mut command = Command::new("sleep");
+      command.arg("30");
+      command
+    };
+    command.stdout(Stdio::null()).stderr(Stdio::null());
+    command.spawn().unwrap()
+  }
+
+  fn launching_queue_app(queue: Vec<LaunchingState>) -> tauri::App<tauri::test::MockRuntime> {
+    let app = tauri::test::mock_app();
+    app.manage(Mutex::new(queue));
+    app
+  }
+
+  // Step 1 failed (no id yet), the user pressed cancel while game A was running. The old
+  // `cancel_launch_process` took the queue tail and killed game A.
+  #[test]
+  fn cancelling_a_launch_that_never_got_an_id_leaves_the_running_game_alone() {
+    let mut game_a = running_game();
+    let app = launching_queue_app(vec![LaunchingState {
+      id: 1,
+      current_step: 4,
+      pid: game_a.id(),
+      ..LaunchingState::default()
+    }]);
+
+    // An id that was never issued must be a no-op.
+    cancel_launch_process(2, app.state()).unwrap();
+    std::thread::sleep(std::time::Duration::from_millis(500));
+    assert!(
+      game_a.try_wait().unwrap().is_none(),
+      "cancelling an unknown launch killed another running game"
+    );
+    assert_eq!(
+      app.state::<Mutex<Vec<LaunchingState>>>().lock().unwrap()[0].current_step,
+      4
+    );
+
+    // Cancelling game A by its own id still works and only marks that session.
+    cancel_launch_process(1, app.state()).unwrap();
+    assert!(!game_a.wait().unwrap().success());
+    assert_eq!(
+      app.state::<Mutex<Vec<LaunchingState>>>().lock().unwrap()[0].current_step,
+      0
+    );
+  }
+
+  #[test]
+  fn two_sessions_of_the_same_instance_are_cancelled_independently() {
+    let mut game_a = running_game();
+    let mut game_b = running_game();
+    let app = launching_queue_app(vec![
+      LaunchingState {
+        id: 10,
+        current_step: 4,
+        pid: game_a.id(),
+        ..LaunchingState::default()
+      },
+      LaunchingState {
+        id: 11,
+        current_step: 4,
+        pid: game_b.id(),
+        ..LaunchingState::default()
+      },
+    ]);
+
+    // The older session is cancelled although it is not the queue tail.
+    cancel_launch_process(10, app.state()).unwrap();
+    assert!(!game_a.wait().unwrap().success());
+    std::thread::sleep(std::time::Duration::from_millis(300));
+    assert!(game_b.try_wait().unwrap().is_none());
+
+    cancel_launch_process(11, app.state()).unwrap();
+    assert!(!game_b.wait().unwrap().success());
+  }
+
+  #[test]
+  fn a_cancelled_step_one_session_leaves_the_queue_and_later_steps_fail_cleanly() {
+    let app = launching_queue_app(vec![LaunchingState {
+      id: 5,
+      ..LaunchingState::default()
+    }]);
+    cancel_launch_process(5, app.state()).unwrap();
+    assert!(app
+      .state::<Mutex<Vec<LaunchingState>>>()
+      .lock()
+      .unwrap()
+      .is_empty());
+    assert_eq!(
+      retrieve_game_launching_state(app.state(), 5).unwrap_err().0,
+      "LAUNCHING_STATE_NOT_FOUND"
+    );
   }
 }

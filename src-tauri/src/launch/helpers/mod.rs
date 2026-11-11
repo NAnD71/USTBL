@@ -5,3 +5,4 @@ pub mod log_parser;
 pub mod misc;
 pub mod playtime_sync;
 pub mod process_monitor;
+pub mod session;

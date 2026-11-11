@@ -1,8 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
-import { LaunchingState } from "@/models/launch";
+import { LaunchSelection, LaunchingState } from "@/models/launch";
 import { InvokeResponse } from "@/models/response";
-import { JavaInfo } from "@/models/system-info";
 import { responseHandler } from "@/utils/response";
 
 /**
@@ -11,60 +10,73 @@ import { responseHandler } from "@/utils/response";
 export class LaunchService {
   /**
    * Launching Step 1: select suitable Java runtime environment for the specified instance.
-   * At this step, pass the ID of the instance to be launched (which may not be the same as the selected instance ID), and no further input is required afterwards.
+   * At this step, pass the ID of the instance to be launched (which may not be the same as the selected instance ID).
+   * The returned launching id identifies this launch in every later step and in cancel.
    * @param {string} instanceId - The ID of the instance.
-   * @returns {Promise<InvokeResponse<JavaInfo>>} The selected Java runtime.
+   * @returns {Promise<InvokeResponse<LaunchSelection>>} The launching id and the selected Java runtime.
    */
   @responseHandler("launch")
   static async selectSuitableJRE(
     instanceId: string
-  ): Promise<InvokeResponse<JavaInfo>> {
+  ): Promise<InvokeResponse<LaunchSelection>> {
     return await invoke("select_suitable_jre", { instanceId });
   }
 
   /**
    * Launching Step 2: extract native libraries, validate the specified instance's game files.
+   * @param {number} launchingId - The launching id returned by step 1.
    * @returns {Promise<InvokeResponse<void>>}
    */
   @responseHandler("launch")
-  static async validateGameFiles(): Promise<InvokeResponse<void>> {
-    return await invoke("validate_game_files");
+  static async validateGameFiles(
+    launchingId: number
+  ): Promise<InvokeResponse<void>> {
+    return await invoke("validate_game_files", { launchingId });
   }
 
   /**
    * Launching Step 3: validate the selected player, prepare prefetched server meta for authlib-injector.
    * The selected player ID is retrieved by the backend itself from the config state.
+   * @param {number} launchingId - The launching id returned by step 1.
    * @returns {Promise<InvokeResponse<boolean>>} false if the access token is expired.
    */
   @responseHandler("launch")
-  static async validateSelectedPlayer(): Promise<InvokeResponse<boolean>> {
-    return await invoke("validate_selected_player");
+  static async validateSelectedPlayer(
+    launchingId: number
+  ): Promise<InvokeResponse<boolean>> {
+    return await invoke("validate_selected_player", { launchingId });
   }
 
   /**
    * Launching Step 4: generate command args, launch the game instance.
+   * @param {number} launchingId - The launching id returned by step 1.
    * @param {string} [quickPlaySingleplayer] - Optional name of the singleplayer world to auto-enter.
    * @param {string} [quickPlayMultiplayer] - Optional address of multiplayer server to auto-join.
    * @returns {Promise<InvokeResponse<void>>}
    */
   @responseHandler("launch")
   static async launchGame(
+    launchingId: number,
     quickPlaySingleplayer?: string,
     quickPlayMultiplayer?: string
   ): Promise<InvokeResponse<void>> {
     return await invoke("launch_game", {
+      launchingId,
       quickPlaySingleplayer,
       quickPlayMultiplayer,
     });
   }
 
   /**
-   * CANCEL the launching process.
+   * CANCEL one launching process. An unknown id (for example a launch whose step 1 failed) does nothing.
+   * @param {number} launchingId - The launching id returned by step 1.
    * @returns {Promise<InvokeResponse<void>>}
    */
   @responseHandler("launch")
-  static async cancelLaunchProcess(): Promise<InvokeResponse<void>> {
-    return await invoke("cancel_launch_process");
+  static async cancelLaunchProcess(
+    launchingId: number
+  ): Promise<InvokeResponse<void>> {
+    return await invoke("cancel_launch_process", { launchingId });
   }
 
   /**

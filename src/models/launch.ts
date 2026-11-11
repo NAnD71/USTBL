@@ -3,6 +3,11 @@ import { GameConfig } from "@/models/config";
 import { InstanceSummary } from "@/models/instance/misc";
 import { JavaInfo } from "@/models/system-info";
 
+export interface LaunchSelection {
+  launchingId: number;
+  java: JavaInfo;
+}
+
 export interface LaunchingState {
   id: number;
   currentStep: number;

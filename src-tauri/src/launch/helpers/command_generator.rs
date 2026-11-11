@@ -110,17 +110,14 @@ pub fn max_memory_mb(
 
 pub async fn generate_launch_command(
   app: &AppHandle,
+  launching: &LaunchingState,
   quick_play_singleplayer: Option<String>,
   quick_play_multiplayer: Option<String>,
 ) -> USTBLResult<LaunchCommand> {
   let launcher_config = { app.state::<Mutex<LauncherConfig>>().lock()?.clone() };
-  let launching_queue = { app.state::<Mutex<Vec<LaunchingState>>>().lock()?.clone() };
 
   let LauncherConfig { basic_info, .. } = launcher_config;
-  let launching = launching_queue
-    .last()
-    .ok_or(LaunchError::LaunchingStateNotFound)?
-    .clone();
+  let launching = launching.clone();
   let LaunchingState {
     selected_java,
     selected_instance,

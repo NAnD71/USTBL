@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::fs::File;
 use std::io::prelude::*;
 use std::io::{BufRead, BufReader, Write};
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
@@ -124,33 +124,78 @@ async fn record_play_time_delta(
   Ok(play_time)
 }
 
+/// Path of the game log of one launching session.
+pub fn game_log_path(app: &AppHandle, id: u64) -> USTBLResult<PathBuf> {
+  Ok(app.path().resolve::<PathBuf>(
+    format!("game/game_log_{id}.log").into(),
+    BaseDirectory::AppLog,
+  )?)
+}
+
+/// Creates the (new) game log file. Called before the game process is spawned.
+pub fn create_game_log(app: &AppHandle, id: u64) -> USTBLResult<File> {
+  Ok(create_log_file(&game_log_path(app, id)?)?)
+}
+
+fn create_log_file(path: &Path) -> std::io::Result<File> {
+  if let Some(parent_dir) = path.parent() {
+    fs::create_dir_all(parent_dir)?;
+  }
+  std::fs::OpenOptions::new()
+    .create_new(true)
+    .write(true)
+    .read(true)
+    .open(path)
+}
+
+/// Waits for the game process on a blocking thread, then for its output readers.
+/// Returns whether the game exited normally after reporting readiness.
+async fn wait_for_game_exit(
+  mut child: Child,
+  readers: Vec<thread::JoinHandle<()>>,
+  log_file: Arc<Mutex<File>>,
+  game_ready_flag: Arc<AtomicBool>,
+) -> bool {
+  tokio::task::spawn_blocking(move || match child.wait() {
+    Ok(status) => {
+      for reader in readers {
+        let _ = reader.join();
+      }
+      if !game_ready_flag.load(Ordering::SeqCst) {
+        false
+      } else {
+        if let Ok(mut file) = log_file.lock() {
+          let _ = file.flush();
+        }
+        status.success()
+      }
+    }
+    Err(e) => {
+      if let Ok(mut file) = log_file.lock() {
+        let _ = writeln!(file, "[FATAL] Game process was killed Reason: {e}.");
+      }
+      false
+    }
+  })
+  .await
+  .unwrap_or(false)
+}
+
 pub async fn monitor_process(
   app: AppHandle,
   id: u64,
   mut child: Child,
+  log_file: File,
   instance_id: String,
   display_log_window: bool,
   custom_title: &str,
   launcher_visibility: LauncherVisiablity,
   ready_tx: Sender<()>,
   post_exit_command: Option<String>,
-) -> USTBLResult<()> {
+) {
   // create unique log window
   let label = format!("game_log_{id}");
-  let log_file_path = app
-    .path()
-    .resolve::<PathBuf>(format!("game/{label}.log").into(), BaseDirectory::AppLog)?;
-  if let Some(parent_dir) = log_file_path.parent() {
-    fs::create_dir_all(parent_dir)?;
-  }
-
-  let log_file = Arc::new(Mutex::new(
-    std::fs::OpenOptions::new()
-      .create_new(true)
-      .write(true)
-      .read(true)
-      .open(&log_file_path)?,
-  ));
+  let log_file = Arc::new(Mutex::new(log_file));
 
   let log_window = if display_log_window {
     create_webview_window(&app, &label, "game_log", None)
@@ -269,33 +314,8 @@ pub async fn monitor_process(
   let stop_polling_flag = stop_polling_flag.clone();
 
   tokio::spawn(async move {
-    let exit_ok = match child.wait() {
-      Ok(status) => {
-        if let Some(h) = stdout {
-          let _ = h.join();
-        }
-
-        if let Some(h) = stderr {
-          let _ = h.join();
-        }
-
-        if !game_ready_flag.load(Ordering::SeqCst) {
-          false
-        } else {
-          log_file.lock().unwrap().flush().unwrap();
-          status.success()
-        }
-      }
-
-      Err(e) => {
-        writeln!(
-          log_file.lock().unwrap(),
-          "[FATAL] Game process was killed Reason: {e}."
-        )
-        .unwrap();
-        false
-      }
-    };
+    let readers = stdout.into_iter().chain(stderr).collect();
+    let exit_ok = wait_for_game_exit(child, readers, log_file.clone(), game_ready_flag).await;
 
     stop_polling_flag.store(true, Ordering::SeqCst);
     playtime_stop.notify_one();
@@ -362,13 +382,105 @@ pub async fn monitor_process(
       let _ = execute_command_line(cmdline);
     }
   });
-
-  Ok(())
 }
 
 #[cfg(test)]
 mod tests {
-  use super::play_time_checkpoint;
+  use super::{play_time_checkpoint, wait_for_game_exit};
+  use std::fs::File;
+  use std::process::{Child, Command, Stdio};
+  use std::sync::atomic::{AtomicBool, Ordering};
+  use std::sync::{Arc, Mutex};
+  use std::time::Duration;
+
+  fn harmless_sleeping_child() -> Child {
+    #[cfg(target_os = "windows")]
+    let mut command = {
+      let mut command = Command::new("cmd");
+      command.args(["/C", "ping -n 3 127.0.0.1 >NUL"]);
+      command
+    };
+    #[cfg(not(target_os = "windows"))]
+    let mut command = {
+      let mut command = Command::new("sleep");
+      command.arg("2");
+      command
+    };
+    command
+      .stdout(Stdio::null())
+      .stderr(Stdio::null())
+      .spawn()
+      .unwrap()
+  }
+
+  fn scratch_log() -> Arc<Mutex<File>> {
+    let path = std::env::temp_dir().join(format!("ustbl-monitor-{}.log", uuid::Uuid::new_v4()));
+    Arc::new(Mutex::new(File::create(path).unwrap()))
+  }
+
+  // `child.wait()` used to run directly in a tokio task, pinning a runtime worker until the
+  // game exited. With a single worker, a task spawned meanwhile never ran.
+  #[test]
+  fn waiting_for_the_game_does_not_block_other_async_tasks() {
+    let runtime = tokio::runtime::Builder::new_multi_thread()
+      .worker_threads(1)
+      .enable_time()
+      .build()
+      .unwrap();
+    let ran = Arc::new(AtomicBool::new(false));
+
+    runtime.block_on(async {
+      let waiter = tokio::spawn(wait_for_game_exit(
+        harmless_sleeping_child(),
+        Vec::new(),
+        scratch_log(),
+        Arc::new(AtomicBool::new(true)),
+      ));
+      tokio::time::sleep(Duration::from_millis(200)).await;
+      let probe = ran.clone();
+      tokio::spawn(async move { probe.store(true, Ordering::SeqCst) });
+      tokio::time::sleep(Duration::from_millis(500)).await;
+      assert!(
+        ran.load(Ordering::SeqCst),
+        "a task spawned while the game runs must not wait for the game to exit"
+      );
+      assert!(waiter.await.unwrap(), "a clean exit after readiness is ok");
+    });
+  }
+
+  #[test]
+  fn game_log_is_created_new_and_never_reuses_an_existing_file() {
+    let root = std::env::temp_dir().join(format!("ustbl-game-log-{}", uuid::Uuid::new_v4()));
+    let path = root.join("game").join("game_log_1.log");
+    super::create_log_file(&path).unwrap();
+    assert_eq!(
+      super::create_log_file(&path).unwrap_err().kind(),
+      std::io::ErrorKind::AlreadyExists
+    );
+    std::fs::remove_dir_all(root).unwrap();
+  }
+
+  #[test]
+  fn an_unwritable_log_location_is_an_error_the_launch_can_stop_on() {
+    let root = std::env::temp_dir().join(format!("ustbl-game-log-{}", uuid::Uuid::new_v4()));
+    std::fs::create_dir_all(&root).unwrap();
+    // A file where the `game` directory should be.
+    std::fs::write(root.join("game"), b"x").unwrap();
+    assert!(super::create_log_file(&root.join("game").join("game_log_1.log")).is_err());
+    std::fs::remove_dir_all(root).unwrap();
+  }
+
+  #[test]
+  fn a_game_that_never_reported_readiness_is_a_failed_launch() {
+    let runtime = tokio::runtime::Runtime::new().unwrap();
+    let exit_ok = runtime.block_on(wait_for_game_exit(
+      harmless_sleeping_child(),
+      Vec::new(),
+      scratch_log(),
+      Arc::new(AtomicBool::new(false)),
+    ));
+    assert!(!exit_ok);
+  }
 
   #[test]
   fn running_play_time_is_persisted_at_ten_minute_boundaries() {

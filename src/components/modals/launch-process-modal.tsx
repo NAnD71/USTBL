@@ -34,6 +34,7 @@ import { useToast } from "@/contexts/toast";
 import { PlayerType } from "@/enums/account";
 import { LaunchServiceError } from "@/enums/service-error";
 import { InstanceSummary } from "@/models/instance/misc";
+import { LaunchSelection } from "@/models/launch";
 import { ResponseError } from "@/models/response";
 import { JavaInfo } from "@/models/system-info";
 import { AccountService } from "@/services/account";
@@ -69,6 +70,10 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
   const [activeStep, setActiveStep] = useState<number>(0);
   const [selectedJava, setSelectedJava] = useState<JavaInfo>();
   const previousStep = useRef<number>(-1);
+  // Issued by step 1; every later step and the cancel command act on this launch only.
+  const launchingIdRef = useRef<number | null>(null);
+  // Set when the modal is closed before step 1 has returned an id.
+  const cancelledEarlyRef = useRef<boolean>(false);
 
   useEffect(() => {
     // A desktop shortcut made by an older version still carries the old id.
@@ -76,7 +81,12 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
   }, [getInstanceList, instanceId]);
 
   const handleCloseModalWithCancel = useCallback(() => {
-    LaunchService.cancelLaunchProcess();
+    if (launchingIdRef.current === null) {
+      // Nothing to cancel yet; if step 1 is still running, cancel once it returns.
+      cancelledEarlyRef.current = true;
+    } else {
+      LaunchService.cancelLaunchProcess(launchingIdRef.current);
+    }
     setErrorPaused(false);
     props.onClose();
   }, [props]);
@@ -92,8 +102,14 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
       {
         label: "selectSuitableJRE",
         function: () => LaunchService.selectSuitableJRE(instanceId),
-        isOK: (data: JavaInfo) => {
-          setSelectedJava(data);
+        isOK: (data: LaunchSelection) => {
+          launchingIdRef.current = data.launchingId;
+          if (cancelledEarlyRef.current) {
+            // The modal was closed while step 1 was running.
+            LaunchService.cancelLaunchProcess(data.launchingId);
+            return false;
+          }
+          setSelectedJava(data.java);
           return true;
         },
         onResCallback: (data: any) => {},
@@ -118,7 +134,8 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
       },
       {
         label: "validateGameFiles",
-        function: () => LaunchService.validateGameFiles(),
+        function: () =>
+          LaunchService.validateGameFiles(launchingIdRef.current as number),
         isOK: (data: any) => true,
         onResCallback: (data: any) => {}, // TODO
         onErrCallback: (error: ResponseError) => {
@@ -137,7 +154,9 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
         label: "validateSelectedPlayer",
         function: async () => {
           if (selectedPlayer && isVustbPlayer(selectedPlayer)) {
-            const validation = await LaunchService.validateSelectedPlayer();
+            const validation = await LaunchService.validateSelectedPlayer(
+              launchingIdRef.current as number
+            );
             if (validation.status !== "success" || validation.data) {
               return validation;
             }
@@ -145,7 +164,9 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
               selectedPlayer.id
             );
             if (refreshed.status !== "success") return refreshed;
-            return LaunchService.validateSelectedPlayer();
+            return LaunchService.validateSelectedPlayer(
+              launchingIdRef.current as number
+            );
           }
           if (
             selectedPlayer?.playerType === PlayerType.ThirdParty &&
@@ -158,12 +179,16 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
               return refreshResponse;
             }
           }
-          return LaunchService.validateSelectedPlayer();
+          return LaunchService.validateSelectedPlayer(
+            launchingIdRef.current as number
+          );
         },
         isOK: (data: boolean) => data,
         onResCallback: (data: boolean) => {
           const reValidate = () =>
-            LaunchService.validateSelectedPlayer().then((response) => {
+            LaunchService.validateSelectedPlayer(
+              launchingIdRef.current as number
+            ).then((response) => {
               if (response.status === "success" && response.data) {
                 setActiveStep(activeStep + 1);
               } else {
@@ -213,7 +238,9 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
             openSharedModal("relogin", {
               player: selectedPlayer,
               onSuccess: () => {
-                LaunchService.validateSelectedPlayer().then((response) => {
+                LaunchService.validateSelectedPlayer(
+                  launchingIdRef.current as number
+                ).then((response) => {
                   if (response.status === "success" && response.data) {
                     setErrorPaused(false);
                     setActiveStep(activeStep + 1);
@@ -234,7 +261,11 @@ const LaunchProcessModal: React.FC<LaunchProcessModal> = ({
       {
         label: "launchGame",
         function: () =>
-          LaunchService.launchGame(quickPlaySingleplayer, quickPlayMultiplayer),
+          LaunchService.launchGame(
+            launchingIdRef.current as number,
+            quickPlaySingleplayer,
+            quickPlayMultiplayer
+          ),
         isOK: (data: any) => true,
         onResCallback: (data: any) => {},
         onErrCallback: (error: ResponseError) => {},
