@@ -157,6 +157,16 @@ pub(crate) fn is_launcher_metadata_path(relative: &str, instance_name: &str) -> 
     || relative.eq_ignore_ascii_case(&format!("{instance_name}.jar"))
 }
 
+/// Whether a relative path (using `/`) lies in the launcher's own update state
+/// directory. A pack must never ship files there: the journal and staging area
+/// of an update in progress live in it.
+pub(crate) fn is_update_state_path(relative: &str) -> bool {
+  relative
+    .split('/')
+    .next()
+    .is_some_and(|first| first.eq_ignore_ascii_case(".ustbl-update"))
+}
+
 impl ModpackMetaInfo {
   pub async fn from_archive(app: &AppHandle, file: &File) -> USTBLResult<Self> {
     for parser in get_parsers() {
@@ -198,7 +208,7 @@ pub fn list_override_entries(
         ));
       }
       // An override must not replace launcher-owned metadata at the instance root.
-      if is_launcher_metadata_path(&relative, instance_name) {
+      if is_launcher_metadata_path(&relative, instance_name) || is_update_state_path(&relative) {
         continue;
       }
       if !entry.is_file() {
@@ -300,6 +310,37 @@ mod tests {
       vec![
         "config/example.cfg".to_string(),
         "config/install_profile.json".to_string()
+      ]
+    );
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[test]
+  fn the_update_state_directory_is_never_listed_from_a_pack() {
+    let (root, instance_path, extracted) = extract(&[
+      ("overrides/.ustbl-update/journal.json", "{}"),
+      ("overrides/.USTBL-Update/staging/mods/a.jar", "planted"),
+      (
+        "client-overrides/.Ustbl-Update/last-backup/journal.json",
+        "{}",
+      ),
+      ("overrides/.ustbl-updates/kept.txt", "a different directory"),
+      (
+        "overrides/config/.ustbl-update/nested.txt",
+        "not at the root",
+      ),
+      ("overrides/mods/a.jar", "kept"),
+      ("overrides/config/ftbquests/quests.snbt", "kept"),
+    ]);
+
+    assert!(!instance_path.join(".ustbl-update").exists());
+    assert_eq!(
+      extracted,
+      vec![
+        ".ustbl-updates/kept.txt".to_string(),
+        "config/.ustbl-update/nested.txt".to_string(),
+        "config/ftbquests/quests.snbt".to_string(),
+        "mods/a.jar".to_string()
       ]
     );
     let _ = fs::remove_dir_all(root);

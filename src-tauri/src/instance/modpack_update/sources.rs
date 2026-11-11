@@ -3161,10 +3161,18 @@ mod tests {
         ("modrinth.index.json", index.as_bytes()),
         (entry.as_str(), br#"{"state":"committing"}"#),
       ]);
-      let checked = offline_remote(&archive, &root, Vec::new())
-        .await
-        .and_then(|remote| remote.validate("inst"));
-      assert!(checked.is_err(), "{planted} was accepted");
+      // The listing drops the entry itself, so the remote never holds it;
+      // `validate` stays as the second line of defence below.
+      let remote = offline_remote(&archive, &root, Vec::new()).await.unwrap();
+      assert!(
+        !remote
+          .files
+          .iter()
+          .any(|file| file.path.to_lowercase().starts_with(".ustbl-update")),
+        "{planted} was listed: {:?}",
+        remote.files
+      );
+      remote.validate("inst").unwrap();
       let _ = fs::remove_file(archive);
     }
 

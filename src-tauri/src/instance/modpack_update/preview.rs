@@ -28,7 +28,7 @@ use super::remote::{FileSource, RemoteFile, RemoteModpack};
 use super::sources::{assemble_remote, ArchiveFacts, LatestVersion};
 use crate::error::{USTBLError, USTBLResult};
 use crate::instance::helpers::modpack::baseline::ModpackBaseline;
-use crate::instance::helpers::modpack::misc::is_launcher_metadata_path;
+use crate::instance::helpers::modpack::misc::{is_launcher_metadata_path, is_update_state_path};
 use crate::instance::helpers::modpack::multimc::profile::safe_relative;
 use crate::instance::helpers::modpack::{base_store, text};
 use crate::instance::models::misc::InstanceError;
@@ -66,7 +66,7 @@ pub fn override_entries(
       if entry.is_symlink() {
         return Err(USTBLError("Modpack symlinks are not supported".into()));
       }
-      if is_launcher_metadata_path(&relative, instance_name) {
+      if is_launcher_metadata_path(&relative, instance_name) || is_update_state_path(&relative) {
         continue;
       }
       found.insert(relative, entry.clone());
@@ -954,6 +954,9 @@ mod tests {
       "overrides/config/a.toml",
       "overrides/ustblcfg.json",
       "overrides/install_profile.json",
+      "overrides/.ustbl-update/journal.json",
+      "client-overrides/.USTBL-Update/staging/x",
+      "overrides/config/.ustbl-update/nested.txt",
       "client-overrides/config/a.toml",
       "client-overrides/mods/c.jar",
       "server-overrides/config/s.toml",
@@ -974,6 +977,10 @@ mod tests {
     let mine = override_entries(&listing, &layers, "pack").unwrap();
     let theirs = list_override_entries(&File::open(&path).unwrap(), &layers, "pack").unwrap();
     assert!(!mine.contains_key("install_profile.json"));
+    assert!(!mine
+      .keys()
+      .any(|path| path.to_lowercase().starts_with(".ustbl-update")));
+    assert!(mine.contains_key("config/.ustbl-update/nested.txt"));
     assert_eq!(
       mine
         .iter()
