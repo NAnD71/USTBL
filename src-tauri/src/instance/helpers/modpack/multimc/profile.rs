@@ -590,6 +590,8 @@ impl ResolvedMultiMc {
       .and_then(|d| d.artifact)
       .ok_or_else(|| invalid("missing mainJar artifact"))?;
     if main.url.is_empty() {
+      // `normalize_library` checked the declared path; this is the copy source.
+      safe_relative(&main.path)?;
       let main_jar = instance.join(format!("{}.jar", self.client.id));
       fs::create_dir_all(instance).at(instance)?;
       fs::copy(libraries.join(&main.path), &main_jar).at_in(&main_jar, instance)?;
@@ -833,11 +835,17 @@ fn normalize_library(
     let Some(native) = crate::launch::helpers::misc::get_natives_string(natives) else {
       return Ok(None);
     };
-    let artifact = downloads
-      .classifiers
-      .get_or_insert_with(Default::default)
-      .entry(native.clone())
-      .or_default();
+    // The pack's own `downloads.artifact` of a native library is read later as a
+    // download-only or main jar (`mavenFiles`, `mainJar`), so it gets the same
+    // path and URL checks as the selected classifier.
+    if let Some(artifact) = downloads.artifact.as_mut() {
+      normalize_artifact(artifact, &rel, repository)?;
+    }
+    // Only the classifier of this platform is ever read; keeping the others
+    // would carry unchecked paths into the client JSON.
+    let classifiers = downloads.classifiers.get_or_insert_with(Default::default);
+    classifiers.retain(|name, _| *name == native);
+    let artifact = classifiers.entry(native.clone()).or_default();
     normalize_artifact(
       artifact,
       &convert_library_name_to_path(&lib.name, Some(native))?,

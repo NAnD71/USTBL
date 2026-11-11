@@ -362,6 +362,172 @@ fn declared_download_path_and_absolute_url_are_preserved() {
   assert_eq!(artifact.url, "https://example.invalid/custom.jar");
 }
 
+fn native_library(artifact: Value, classifiers: Value) -> Value {
+  serde_json::json!({
+    "name": "test:platform:1",
+    "natives": { (host_os()): "natives-test" },
+    "extract": { "exclude": ["META-INF/"] },
+    "downloads": { "artifact": artifact, "classifiers": classifiers }
+  })
+}
+
+#[test]
+fn a_real_native_library_keeps_its_declared_artifact_and_selected_classifier() {
+  let temp = Temp::new();
+  let file = archive(&temp, ".minecraft");
+  let mut zip = ZipFiles::new(&file, "pack/").unwrap();
+  // Shaped like the LWJGL platform libraries of a GTNH-style 1.7.10 pack.
+  let raw = native_library(
+    serde_json::json!({"path":"test/platform/1/platform-1.jar","url":"https://libraries.example/platform-1.jar","sha1":"aa","size":3}),
+    serde_json::json!({
+      "natives-test": {"path":"test/platform/1/platform-1-natives-test.jar","url":"https://libraries.example/n.jar","sha1":"bb","size":4},
+      "natives-elsewhere": {"path":"test/platform/1/platform-1-natives-elsewhere.jar","url":"https://libraries.example/e.jar"}
+    }),
+  );
+  let lib = normalize_library(&raw, &mut zip, &temp.0, &mut Vec::new())
+    .unwrap()
+    .unwrap();
+  let downloads = lib.downloads.unwrap();
+  assert_eq!(
+    downloads.artifact.unwrap().path,
+    "test/platform/1/platform-1.jar"
+  );
+  let classifiers = downloads.classifiers.unwrap();
+  assert_eq!(classifiers.keys().collect::<Vec<_>>(), ["natives-test"]);
+  assert_eq!(
+    classifiers["natives-test"].path,
+    "test/platform/1/platform-1-natives-test.jar"
+  );
+  assert_eq!(classifiers["natives-test"].sha1, "bb");
+}
+
+#[test]
+fn a_native_library_artifact_cannot_leave_the_libraries_directory() {
+  let temp = Temp::new();
+  let file = archive(&temp, ".minecraft");
+  let mut zip = ZipFiles::new(&file, "pack/").unwrap();
+  let selected = serde_json::json!({"natives-test": {"path":"test/platform/1/platform-1-natives-test.jar","url":"https://libraries.example/n.jar"}});
+  for path in [
+    "../../../evil.jar",
+    "/evil.jar",
+    "C:/evil.jar",
+    "C:evil.jar",
+    "a\\..\\evil.jar",
+    "dir/../../evil.jar",
+  ] {
+    let raw = native_library(
+      serde_json::json!({"path":path,"url":"https://libraries.example/x.jar"}),
+      selected.clone(),
+    );
+    assert!(
+      normalize_library(&raw, &mut zip, &temp.0, &mut Vec::new()).is_err(),
+      "artifact path {path:?} was accepted"
+    );
+  }
+  // A bad URL on the artifact is refused like the classifier's.
+  let raw = native_library(
+    serde_json::json!({"path":"a/b.jar","url":"file:///etc/passwd"}),
+    selected,
+  );
+  assert!(normalize_library(&raw, &mut zip, &temp.0, &mut Vec::new()).is_err());
+}
+
+#[test]
+fn unselected_native_classifiers_with_unsafe_paths_are_dropped() {
+  let temp = Temp::new();
+  let file = archive(&temp, ".minecraft");
+  let mut zip = ZipFiles::new(&file, "pack/").unwrap();
+  let raw = native_library(
+    serde_json::json!({"path":"test/platform/1/platform-1.jar"}),
+    serde_json::json!({
+      "natives-test": {"path":"test/platform/1/platform-1-natives-test.jar","url":"https://libraries.example/n.jar"},
+      "natives-elsewhere": {"path":"../../../evil.jar","url":"https://libraries.example/e.jar"}
+    }),
+  );
+  let lib = normalize_library(&raw, &mut zip, &temp.0, &mut Vec::new())
+    .unwrap()
+    .unwrap();
+  let classifiers = lib.downloads.unwrap().classifiers.unwrap();
+  assert_eq!(classifiers.keys().collect::<Vec<_>>(), ["natives-test"]);
+}
+
+/// A pack whose only component is Minecraft with the given main jar and
+/// download-only files; nothing else about it matters.
+fn pack_with(temp: &Temp, main_jar: Value, maven_files: Value) -> File {
+  let path = temp.0.join("custom.zip");
+  let mut zip = zip::ZipWriter::new(File::create(&path).unwrap());
+  let entries = vec![
+    ("pack/mmc-pack.json", serde_json::json!({"formatVersion":1,"components":[{"uid":"net.minecraft","version":"1.7.10"}]}).to_string()),
+    ("pack/instance.cfg", "name=Custom".to_string()),
+    ("pack/patches/net.minecraft.json", serde_json::json!({"uid":"net.minecraft","version":"1.7.10","mainClass":"original.Main","mainJar":main_jar,"mavenFiles":maven_files,"assetIndex":{"id":"test","url":"https://example.invalid/assets.json"},"minecraftArguments":"--username ${auth_player_name}"}).to_string()),
+  ];
+  for (name, text) in entries {
+    zip.start_file(name, SimpleFileOptions::default()).unwrap();
+    zip.write_all(text.as_bytes()).unwrap();
+  }
+  zip.finish().unwrap();
+  File::open(path).unwrap()
+}
+
+async fn materialize_custom(
+  temp: &Temp,
+  main_jar: Value,
+  maven_files: Value,
+) -> USTBLResult<ResolvedMultiMc> {
+  let file = pack_with(temp, main_jar, maven_files);
+  let client = reqwest::Client::builder().no_proxy().build().unwrap();
+  let mut resolved = ResolvedMultiMc::from_archive(&client, &file)
+    .await?
+    .unwrap();
+  resolved.client.id = "imported".into();
+  resolved.materialize(&file, &temp.0.join("libraries"), &temp.0.join("imported"))?;
+  Ok(resolved)
+}
+
+#[tokio::test]
+async fn a_native_main_jar_cannot_copy_a_file_from_outside_the_libraries_directory() {
+  let temp = Temp::new();
+  fs::create_dir_all(temp.0.join("libraries")).unwrap();
+  // `libraries/../secret.jar` is `<temp>/secret.jar`: the file the old code copied.
+  fs::write(temp.0.join("secret.jar"), "local secret").unwrap();
+  let main_jar = serde_json::json!({
+    "name": "test:client:1",
+    "natives": { (host_os()): "natives-test" },
+    "downloads": { "artifact": { "path": "../secret.jar" } }
+  });
+  let result = materialize_custom(&temp, main_jar, serde_json::json!([])).await;
+  assert!(result.is_err());
+  assert!(!temp.0.join("imported/imported.jar").exists());
+}
+
+#[tokio::test]
+async fn a_native_download_only_file_cannot_name_a_path_outside_the_libraries_directory() {
+  let temp = Temp::new();
+  let main_jar =
+    serde_json::json!({"name":"test:client:1","url":"https://example.invalid/client.jar"});
+  let evil = native_library(
+    serde_json::json!({"path":"../../../evil.jar","url":"https://example.invalid/evil.jar"}),
+    serde_json::json!({"natives-test": {"url":"https://example.invalid/n.jar"}}),
+  );
+  assert!(
+    materialize_custom(&temp, main_jar.clone(), serde_json::json!([evil]))
+      .await
+      .is_err()
+  );
+  // The same file with an ordinary path still imports, and keeps that path.
+  let fine = native_library(
+    serde_json::json!({"path":"test/platform/1/platform-1.jar","url":"https://example.invalid/p.jar"}),
+    serde_json::json!({"natives-test": {"url":"https://example.invalid/n.jar"}}),
+  );
+  let temp = Temp::new();
+  let resolved = materialize_custom(&temp, main_jar, serde_json::json!([fine]))
+    .await
+    .unwrap();
+  let maven = resolved.client.component_profile.unwrap().maven_files;
+  assert_eq!(maven.len(), 1);
+  assert_eq!(maven[0].path, "test/platform/1/platform-1.jar");
+}
+
 #[test]
 fn forge_wrapper_uses_download_only_installer_and_primary_jar() {
   let mut info = McClientInfo {
