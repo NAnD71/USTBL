@@ -48,7 +48,7 @@ const MAX_ROUNDS: usize = 8;
 
 /// The files of the archive's override directories, by instance path. The
 /// listing's counterpart of `list_override_entries`: later layers replace
-/// earlier ones, launcher metadata is skipped, and symlinks are an error.
+/// earlier ones, launcher metadata is skipped, and symlinks and files in the\r\n/// update state directory are an error.
 pub fn override_entries(
   listing: &ZipListing,
   overrides_paths: &[String],
@@ -66,7 +66,10 @@ pub fn override_entries(
       if entry.is_symlink() {
         return Err(USTBLError("Modpack symlinks are not supported".into()));
       }
-      if is_launcher_metadata_path(&relative, instance_name) || is_update_state_path(&relative) {
+      if is_update_state_path(&relative) {
+        return Err(InstanceError::ModpackUpdateRemoteInvalid.into());
+      }
+      if is_launcher_metadata_path(&relative, instance_name) {
         continue;
       }
       found.insert(relative, entry.clone());
@@ -954,8 +957,6 @@ mod tests {
       "overrides/config/a.toml",
       "overrides/ustblcfg.json",
       "overrides/install_profile.json",
-      "overrides/.ustbl-update/journal.json",
-      "client-overrides/.USTBL-Update/staging/x",
       "overrides/config/.ustbl-update/nested.txt",
       "client-overrides/config/a.toml",
       "client-overrides/mods/c.jar",
@@ -977,9 +978,6 @@ mod tests {
     let mine = override_entries(&listing, &layers, "pack").unwrap();
     let theirs = list_override_entries(&File::open(&path).unwrap(), &layers, "pack").unwrap();
     assert!(!mine.contains_key("install_profile.json"));
-    assert!(!mine
-      .keys()
-      .any(|path| path.to_lowercase().starts_with(".ustbl-update")));
     assert!(mine.contains_key("config/.ustbl-update/nested.txt"));
     assert_eq!(
       mine
@@ -1005,6 +1003,17 @@ mod tests {
     };
     assert!(run(vec![TestEntry::new("overrides/link", b"t").mode(0o120777)]).is_err());
     assert!(run(vec![TestEntry::new("overrides/../evil", b"t")]).is_err());
+    assert!(run(vec![TestEntry::new(
+      "overrides/.ustbl-update/journal.json",
+      b"t"
+    )])
+    .is_err());
+    assert!(run(vec![TestEntry::new("overrides/.USTBL-Update/x", b"t")]).is_err());
+    assert!(run(vec![TestEntry::new(
+      "overrides/config/.ustbl-update/x",
+      b"t"
+    )])
+    .is_ok());
     assert!(run(vec![TestEntry::new("overrides/ok", b"t")]).is_ok());
   }
 }

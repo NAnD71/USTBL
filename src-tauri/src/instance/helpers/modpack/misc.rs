@@ -207,8 +207,12 @@ pub fn list_override_entries(
           "Modpack symlinks are not supported".into(),
         ));
       }
+      // A pack that ships files into the update state directory is rejected, not trimmed.
+      if is_update_state_path(&relative) {
+        return Err(InstanceError::ModpackUpdateRemoteInvalid.into());
+      }
       // An override must not replace launcher-owned metadata at the instance root.
-      if is_launcher_metadata_path(&relative, instance_name) || is_update_state_path(&relative) {
+      if is_launcher_metadata_path(&relative, instance_name) {
         continue;
       }
       if !entry.is_file() {
@@ -316,36 +320,55 @@ mod tests {
   }
 
   #[test]
-  fn the_update_state_directory_is_never_listed_from_a_pack() {
-    let (root, instance_path, extracted) = extract(&[
-      ("overrides/.ustbl-update/journal.json", "{}"),
-      ("overrides/.USTBL-Update/staging/mods/a.jar", "planted"),
-      (
-        "client-overrides/.Ustbl-Update/last-backup/journal.json",
-        "{}",
-      ),
+  fn a_pack_shipping_into_the_update_state_directory_is_rejected() {
+    let list = |entries: &[(&str, &str)]| {
+      let root = std::env::temp_dir().join(format!("ustbl-modpack-test-{}", uuid::Uuid::new_v4()));
+      fs::create_dir_all(&root).unwrap();
+      let path = root.join("pack.mrpack");
+      let mut archive = zip::ZipWriter::new(File::create(&path).unwrap());
+      for (name, content) in std::iter::once(&("modrinth.index.json", MRPACK_INDEX)).chain(entries)
+      {
+        archive
+          .start_file(*name, SimpleFileOptions::default())
+          .unwrap();
+        archive.write_all(content.as_bytes()).unwrap();
+      }
+      archive.finish().unwrap();
+      let layers = ["overrides".to_string(), "client-overrides".to_string()];
+      let listed = list_override_entries(&File::open(&path).unwrap(), &layers, "pack");
+      let _ = fs::remove_dir_all(root);
+      listed
+    };
+
+    for planted in [
+      "overrides/.ustbl-update/journal.json",
+      "overrides/.USTBL-Update/staging/mods/a.jar",
+      "client-overrides/.Ustbl-Update/last-backup/journal.json",
+    ] {
+      assert!(
+        list(&[("overrides/mods/a.jar", "kept"), (planted, "{}")]).is_err(),
+        "{planted} was accepted"
+      );
+    }
+
+    let listed = list(&[
       ("overrides/.ustbl-updates/kept.txt", "a different directory"),
       (
         "overrides/config/.ustbl-update/nested.txt",
         "not at the root",
       ),
       ("overrides/mods/a.jar", "kept"),
-      ("overrides/config/ftbquests/quests.snbt", "kept"),
-    ]);
-
-    assert!(!instance_path.join(".ustbl-update").exists());
+    ])
+    .unwrap();
     assert_eq!(
-      extracted,
+      listed.keys().cloned().collect::<Vec<_>>(),
       vec![
         ".ustbl-updates/kept.txt".to_string(),
         "config/.ustbl-update/nested.txt".to_string(),
-        "config/ftbquests/quests.snbt".to_string(),
         "mods/a.jar".to_string()
       ]
     );
-    let _ = fs::remove_dir_all(root);
   }
-
   #[test]
   fn client_overrides_layer_over_overrides_and_server_overrides_are_ignored() {
     let (root, instance_path, extracted) = extract(&[
