@@ -425,16 +425,19 @@ export class InstanceService {
 
   /**
    * TOGGLE the mod status by changing the file extension.
+   * @param {string} instanceId - The instance that owns the mod.
    * @param {string} filePath - The path of the file to toggle mod for.
    * @param {boolean} enable - Whether to enable or disable the mod (true to enable, false to disable).
    * @returns {Promise<InvokeResponse<void>>}
    */
   @responseHandler("instance")
   static async toggleModByExtension(
+    instanceId: string,
     filePath: string,
     enable: boolean
   ): Promise<InvokeResponse<void>> {
     return await invoke("toggle_mod_by_extension", {
+      instanceId,
       filePath,
       enable,
     });

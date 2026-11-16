@@ -145,6 +145,17 @@ export class ConfigService {
   }
 
   /**
+   * CHECK whether a configured game directory currently exists.
+   * @param {string} dir The configured game directory.
+   */
+  @responseHandler("config")
+  static async gameDirectoryExists(
+    dir: string
+  ): Promise<InvokeResponse<boolean>> {
+    return await invoke("game_directory_exists", { dir });
+  }
+
+  /**
    * CHECK whether the game directory is valid.
    * @param {string} dir The game directory to check.
    * @returns {Promise<InvokeResponse<string>>} The sub directory if a sub game directory is valid.

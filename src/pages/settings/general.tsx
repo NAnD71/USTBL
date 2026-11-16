@@ -1,6 +1,5 @@
 import { Button, HStack, Switch, useDisclosure } from "@chakra-ui/react";
 import { appLogDir } from "@tauri-apps/api/path";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuLanguages } from "react-icons/lu";
@@ -19,6 +18,7 @@ import { useRoutingHistory } from "@/contexts/routing-history";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { useToast } from "@/contexts/toast";
 import { ConfigService } from "@/services/config";
+import { UtilsService } from "@/services/utils";
 
 const GeneralSettingsPage = () => {
   const { t } = useTranslation();
@@ -314,7 +314,7 @@ const GeneralSettingsPage = () => {
               size="xs"
               onClick={async () => {
                 const _appLogDir = await appLogDir();
-                openPath(_appLogDir + "/launcher");
+                void UtilsService.openDirectory(_appLogDir + "/launcher");
               }}
             >
               {t("General.open")}

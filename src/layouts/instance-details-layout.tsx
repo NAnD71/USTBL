@@ -1,5 +1,4 @@
 import { Button, HStack, Icon, Text, VStack } from "@chakra-ui/react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -37,6 +36,7 @@ import { useDiscardCampusInstall } from "@/hooks/discard-campus-install";
 import { VustbAccount, isVustbManager } from "@/models/vustb";
 import { AccountService } from "@/services/account";
 import { InstanceService } from "@/services/instance";
+import { UtilsService } from "@/services/utils";
 import { canDiscardRunningInstall } from "@/utils/campus-install-task";
 import { isInstallingInstance } from "@/utils/installing-instance";
 
@@ -108,7 +108,7 @@ const InstanceDetailsLayoutContent: React.FC<{ children: React.ReactNode }> = ({
       icon: "openFolder",
       danger: false,
       onClick: () => {
-        openPath(summary?.versionPath || "");
+        void UtilsService.openDirectory(summary?.versionPath || "");
       },
     },
     {

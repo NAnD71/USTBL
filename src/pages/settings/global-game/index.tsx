@@ -6,8 +6,6 @@ import {
   VStack,
   useDisclosure,
 } from "@chakra-ui/react";
-import { exists } from "@tauri-apps/plugin-fs";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuFolder, LuFolderX } from "react-icons/lu";
@@ -24,6 +22,8 @@ import { useGlobalData } from "@/contexts/global-data";
 import { useRoutingHistory } from "@/contexts/routing-history";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { GameDirectory } from "@/models/config";
+import { ConfigService } from "@/services/config";
+import { UtilsService } from "@/services/utils";
 import {
   getGameDirName,
   isSpecialGameDir,
@@ -113,8 +113,11 @@ const GlobalGameSettingsPage = () => {
           continue;
         }
         try {
-          const dirExistence = await exists(directory.dir);
-          existence[directory.dir] = dirExistence;
+          const response = await ConfigService.gameDirectoryExists(
+            directory.dir
+          );
+          existence[directory.dir] =
+            response.status === "success" && response.data === true;
         } catch (error) {
           existence[directory.dir] = false;
         }
@@ -145,7 +148,7 @@ const GlobalGameSettingsPage = () => {
       icon: "openFolder",
       danger: false,
       onClick: () => {
-        openPath(directory.dir);
+        void UtilsService.openDirectory(directory.dir);
       },
       disabled: !directoryExistence[directory.dir],
     },

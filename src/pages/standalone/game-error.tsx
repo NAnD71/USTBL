@@ -17,7 +17,7 @@ import {
 } from "@chakra-ui/react";
 import { getCurrentWebviewWindow } from "@tauri-apps/api/webviewWindow";
 import { save } from "@tauri-apps/plugin-dialog";
-import { openPath, revealItemInDir } from "@tauri-apps/plugin-opener";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCircleAlert, LuFolderOpen } from "react-icons/lu";
@@ -25,6 +25,7 @@ import { useLauncherConfig } from "@/contexts/config";
 import { InstanceSummary } from "@/models/instance/misc";
 import { JavaInfo } from "@/models/system-info";
 import { LaunchService } from "@/services/launch";
+import { UtilsService } from "@/services/utils";
 import { ISOToDatetime } from "@/utils/datetime";
 import { parseModernWindowsVersion } from "@/utils/env";
 import { analyzeCrashReport } from "@/utils/game-error";
@@ -194,7 +195,11 @@ const GameErrorPage: React.FC = () => {
                       variant="ghost"
                       size="sm"
                       h={21}
-                      onClick={() => openPath(instanceInfo.versionPath)}
+                      onClick={() =>
+                        void UtilsService.openDirectory(
+                          instanceInfo.versionPath
+                        )
+                      }
                     />
                   </Tooltip>
                 </HStack>

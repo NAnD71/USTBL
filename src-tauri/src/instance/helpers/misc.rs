@@ -145,6 +145,33 @@ pub fn get_instance_subdir_path_by_id(
   get_instance_subdir_paths(app, instance, &[directory_type]).and_then(|mut paths| paths.pop())
 }
 
+pub fn is_instance_subdir_direct_child(
+  app: &AppHandle,
+  instance_id: &String,
+  directory_type: &InstanceSubdirType,
+  path: &Path,
+) -> bool {
+  get_instance_subdir_path_by_id(app, instance_id, directory_type)
+    .is_some_and(|root| crate::utils::fs::direct_child_within(&root, path))
+}
+
+pub fn is_any_instance_subdir_direct_child(
+  app: &AppHandle,
+  directory_type: &InstanceSubdirType,
+  path: &Path,
+) -> bool {
+  let ids = {
+    let binding = app.state::<Mutex<HashMap<String, Instance>>>();
+    let Ok(state) = binding.lock() else {
+      return false;
+    };
+    state.keys().cloned().collect::<Vec<_>>()
+  };
+  ids
+    .iter()
+    .any(|instance_id| is_instance_subdir_direct_child(app, instance_id, directory_type, path))
+}
+
 pub fn unify_instance_name(src_version_path: &PathBuf, tgt_name: &String) -> USTBLResult<PathBuf> {
   if !sanitize_filename::is_sanitized(tgt_name) {
     return Err(InstanceError::InvalidNameError.into());

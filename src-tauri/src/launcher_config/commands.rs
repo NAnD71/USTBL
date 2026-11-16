@@ -15,7 +15,7 @@ use crate::storage::Storage;
 use crate::tasks::{
   commands::schedule_progressive_task_group, monitor::TaskMonitor, streams::desc::PDesc, PTaskParam,
 };
-use crate::utils::fs::{generate_unique_filename, get_subdirectories};
+use crate::utils::fs::{generate_unique_filename, get_subdirectories, is_plain_file_name};
 use crate::utils::string::{camel_to_snake_case, snake_to_camel_case};
 use serde_json::{json, Value};
 use std::fs;
@@ -39,6 +39,8 @@ const SYNC_LOCAL_FIELDS: &[&str] = &[
   "download.proxy",
   "download.cache.directory",
 ];
+
+const BACKGROUND_EXTENSIONS: [&str; 5] = ["jpg", "jpeg", "png", "gif", "webp"];
 
 fn remove_sync_field(value: &mut Value, path: &str) {
   let mut components = path.split('.').peekable();
@@ -190,6 +192,16 @@ pub fn reveal_launcher_config() -> USTBLResult<()> {
   reveal_item_in_dir(file_path).map_err(USTBLError::from)
 }
 
+fn is_background_file_name(file_name: &str) -> bool {
+  let path = Path::new(file_name);
+  is_plain_file_name(path)
+    && path
+      .extension()
+      .and_then(|extension| extension.to_str())
+      .map(|extension| extension.to_ascii_lowercase())
+      .is_some_and(|extension| BACKGROUND_EXTENSIONS.contains(&extension.as_str()))
+}
+
 #[tauri::command]
 pub fn retrieve_custom_background_list(app: AppHandle) -> USTBLResult<Vec<String>> {
   let custom_bg_dir = app
@@ -200,18 +212,12 @@ pub fn retrieve_custom_background_list(app: AppHandle) -> USTBLResult<Vec<String
     return Ok(Vec::new());
   }
 
-  let valid_extensions = ["jpg", "jpeg", "png", "gif", "webp"];
-
   let file_names: Vec<String> = fs::read_dir(custom_bg_dir)?
     .filter_map(|entry| entry.ok())
     .filter_map(|entry| {
       let file_name = entry.file_name().into_string().ok()?;
-      let extension = Path::new(&file_name)
-        .extension()
-        .and_then(|ext| ext.to_str())
-        .map(|ext| ext.to_lowercase());
 
-      if extension.is_some() && valid_extensions.contains(&extension.unwrap().as_str()) {
+      if is_background_file_name(&file_name) {
         Some(file_name)
       } else {
         None
@@ -247,6 +253,9 @@ pub fn add_custom_background(app: AppHandle, source_src: String) -> USTBLResult<
 
 #[tauri::command]
 pub fn delete_custom_background(app: AppHandle, file_name: String) -> USTBLResult<()> {
+  if !is_background_file_name(&file_name) {
+    return Err(LauncherConfigError::FileDeletionFailed.into());
+  }
   let custom_bg_dir = app
     .path()
     .resolve::<PathBuf>("UserContent/Backgrounds".into(), BaseDirectory::AppData)?;
@@ -292,6 +301,21 @@ pub async fn download_mojang_java(app: AppHandle, version: String) -> USTBLResul
   .await?;
 
   Ok(())
+}
+
+#[tauri::command]
+pub fn game_directory_exists(app: AppHandle, dir: String) -> USTBLResult<bool> {
+  let directory = PathBuf::from(dir);
+  let binding = app.state::<Mutex<LauncherConfig>>();
+  let state = binding.lock()?;
+  if !state
+    .local_game_directories
+    .iter()
+    .any(|known| known.dir == directory)
+  {
+    return Err(LauncherConfigError::GameDirNotExist.into());
+  }
+  directory.try_exists().map_err(Into::into)
 }
 
 #[tauri::command]
@@ -497,6 +521,21 @@ pub async fn install_launcher_update(
   {
     let _ = update;
     Ok(()) // No supported
+  }
+}
+
+#[cfg(test)]
+mod background_path_tests {
+  use super::*;
+
+  #[test]
+  fn background_deletion_accepts_only_plain_image_file_names() {
+    for name in ["image.png", "photo.JPG", "animated.webp"] {
+      assert!(is_background_file_name(name), "{name}");
+    }
+    for name in ["../secret.txt", "folder/image.png", "image.exe", "image"] {
+      assert!(!is_background_file_name(name), "{name}");
+    }
   }
 }
 

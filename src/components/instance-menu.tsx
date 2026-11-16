@@ -8,7 +8,6 @@ import {
   Portal,
   Text,
 } from "@chakra-ui/react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useRouter } from "next/router";
 import React from "react";
 import { useTranslation } from "react-i18next";
@@ -21,6 +20,7 @@ import {
 import { CommonIconButton } from "@/components/common/common-icon-button";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { InstanceSummary } from "@/models/instance/misc";
+import { UtilsService } from "@/services/utils";
 
 interface InstanceMenuProps {
   instance: InstanceSummary;
@@ -40,7 +40,7 @@ export const InstanceMenu: React.FC<InstanceMenuProps> = ({
       icon: LuFolderOpen,
       label: t("General.openFolder"),
       onClick: () => {
-        openPath(instance.versionPath);
+        void UtilsService.openDirectory(instance.versionPath);
       },
     },
     {

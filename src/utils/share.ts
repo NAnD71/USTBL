@@ -1,5 +1,5 @@
-import { readFile } from "@tauri-apps/plugin-fs";
 import { t } from "i18next";
+import { UtilsService } from "@/services/utils";
 
 interface ToastOptions {
   toast: (options: { title: string; status: "success" | "error" }) => void;
@@ -12,7 +12,11 @@ export async function shareFile(
   { toast }: ToastOptions,
   text?: string
 ) {
-  const bytes = await readFile(path);
+  const response = await UtilsService.readScreenshot(path);
+  if (response.status !== "success") {
+    throw new Error(response.details || response.message);
+  }
+  const bytes = new Uint8Array(response.data || []);
 
   const name = path.split("/").pop() ?? "shared-file";
   const blob = new Blob([bytes], { type: mime });

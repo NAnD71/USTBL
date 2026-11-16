@@ -18,8 +18,9 @@ use crate::instance::helpers::loader_lifecycle::{
 };
 use crate::instance::helpers::misc::{
   check_folder, existing_folder_names, get_instance_game_config, get_instance_subdir_path_by_id,
-  get_instance_subdir_paths, migrate_selected_instance_id, owns_files,
-  refresh_and_update_instances, resolve_isolation, InstanceFolderCheck,
+  get_instance_subdir_paths, is_any_instance_subdir_direct_child, is_instance_subdir_direct_child,
+  migrate_selected_instance_id, owns_files, refresh_and_update_instances, resolve_isolation,
+  InstanceFolderCheck,
 };
 use crate::instance::helpers::modpack::base_store;
 use crate::instance::helpers::modpack::baseline::{hash_file, BaselineLoader, ModpackBaseline};
@@ -67,7 +68,7 @@ use crate::tasks::download::{DownloadParam, DownloadTransferOptions};
 use crate::tasks::PTaskParam;
 use crate::utils::fs::{
   copy_whole_dir, create_url_shortcut, generate_unique_filename, get_files_with_regex,
-  get_subdirectories, RemoveDirGuard,
+  get_subdirectories, path_within, same_existing_path, RemoveDirGuard,
 };
 use crate::utils::image::ImageWrapper;
 use crate::utils::web::fetch_json_with_fallbacks;
@@ -440,6 +441,9 @@ pub fn move_resource_to_instance(
 
   let src_path = Path::new(&src_file_path);
   if !src_path.is_dir() && !src_path.is_file() {
+    return Err(InstanceError::InvalidSourcePath.into());
+  }
+  if !is_any_instance_subdir_direct_child(&app, &tgt_dir_type, src_path) {
     return Err(InstanceError::InvalidSourcePath.into());
   }
 
@@ -885,8 +889,16 @@ lazy_static! {
 }
 
 #[tauri::command]
-pub fn toggle_mod_by_extension(file_path: PathBuf, enable: bool) -> USTBLResult<()> {
+pub fn toggle_mod_by_extension(
+  app: AppHandle,
+  instance_id: String,
+  file_path: PathBuf,
+  enable: bool,
+) -> USTBLResult<()> {
   let _lock = RENAME_LOCK.lock().expect("Failed to acquire lock");
+  if !is_instance_subdir_direct_child(&app, &instance_id, &InstanceSubdirType::Mods, &file_path) {
+    return Err(InstanceError::InvalidSourcePath.into());
+  }
   if !file_path.is_file() {
     return Err(InstanceError::FileNotFoundError.into());
   }
@@ -1055,6 +1067,13 @@ fn apply_creation_isolation(instance: &mut Instance) {
   }
 }
 
+fn is_known_game_directory(config: &LauncherConfig, directory: &GameDirectory) -> bool {
+  config
+    .local_game_directories
+    .iter()
+    .any(|known| known.name == directory.name && same_existing_path(&known.dir, &directory.dir))
+}
+
 #[tauri::command]
 pub async fn create_instance(
   app: AppHandle,
@@ -1074,6 +1093,9 @@ pub async fn create_instance(
   // Get priority list
   let priority_list = {
     let launcher_config = launcher_config_state.lock()?;
+    if !is_known_game_directory(&launcher_config, &directory) {
+      return Err(InstanceError::InvalidSourcePath.into());
+    }
     get_source_priority_list(&launcher_config)
   };
 
@@ -1778,6 +1800,24 @@ pub async fn list_modpack_files(
   tokio::task::spawn_blocking(move || list_files(&instance)).await?
 }
 
+fn validate_export_destination(path: &Path) -> Result<(), InstanceError> {
+  let extension = path
+    .extension()
+    .and_then(|extension| extension.to_str())
+    .map(|extension| extension.to_ascii_lowercase());
+  if !path.is_absolute()
+    || path.file_name().is_none()
+    || !matches!(extension.as_deref(), Some("zip" | "mrpack"))
+  {
+    return Err(InstanceError::FileCreationFailed);
+  }
+  match fs::symlink_metadata(path) {
+    Ok(_) => Err(InstanceError::FileCreationFailed),
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    Err(_) => Err(InstanceError::FileCreationFailed),
+  }
+}
+
 #[tauri::command]
 pub async fn export_modpack(
   app: AppHandle,
@@ -1795,11 +1835,18 @@ pub async fn export_modpack(
       .clone()
   };
   validate_export_options(&instance, &options)?;
+  validate_export_destination(Path::new(&save_path))?;
   let mut selected_files = Vec::new();
   for relative in files {
+    let relative = crate::instance::helpers::modpack::multimc::profile::safe_relative(&relative)
+      .map_err(|_| InstanceError::InvalidSourcePath)?
+      .to_path_buf();
     let full = instance.version_path.join(&relative);
     if tokio::fs::try_exists(&full).await.unwrap_or(false) {
-      selected_files.push((relative, full));
+      if !path_within(&instance.version_path, &full) {
+        return Err(InstanceError::InvalidSourcePath.into());
+      }
+      selected_files.push((relative.to_string_lossy().replace('\\', "/"), full));
     }
   }
   selected_files.retain(|(relative, _)| {
@@ -1862,6 +1909,58 @@ pub async fn export_modpack(
   };
   create_modpack_zip(&save_path, &prefix, overrides, extras, raw_files).await?;
   Ok(())
+}
+
+#[cfg(test)]
+mod ipc_path_tests {
+  use super::*;
+  use crate::storage::test_support::TempDir;
+
+  #[test]
+  fn instance_creation_only_accepts_a_configured_game_directory() {
+    let dir = TempDir::new("create-instance-directory");
+    let other = TempDir::new("create-instance-other");
+    let mut config = LauncherConfig::default();
+    config.local_game_directories = vec![GameDirectory {
+      name: "Games".into(),
+      dir: dir.0.clone(),
+    }];
+
+    assert!(is_known_game_directory(
+      &config,
+      &GameDirectory {
+        name: "Games".into(),
+        dir: dir.0.clone(),
+      }
+    ));
+    assert!(!is_known_game_directory(
+      &config,
+      &GameDirectory {
+        name: "Other".into(),
+        dir: dir.0.clone(),
+      }
+    ));
+    assert!(!is_known_game_directory(
+      &config,
+      &GameDirectory {
+        name: "Games".into(),
+        dir: other.0.clone(),
+      }
+    ));
+  }
+
+  #[test]
+  fn modpack_export_requires_a_new_zip_or_mrpack_destination() {
+    let dir = TempDir::new("modpack-export-destination");
+    assert!(validate_export_destination(&dir.0.join("pack.zip")).is_ok());
+    assert!(validate_export_destination(&dir.0.join("pack.mrpack")).is_ok());
+    assert!(validate_export_destination(&dir.0.join("pack.exe")).is_err());
+    assert!(validate_export_destination(Path::new("pack.zip")).is_err());
+
+    let existing = dir.0.join("existing.zip");
+    fs::write(&existing, b"existing").unwrap();
+    assert!(validate_export_destination(&existing).is_err());
+  }
 }
 
 #[cfg(test)]

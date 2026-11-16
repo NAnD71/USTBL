@@ -26,6 +26,7 @@ use crate::resource::models::{
 use crate::tasks::commands::schedule_progressive_task_group;
 use crate::tasks::download::DownloadParam;
 use crate::tasks::PTaskParam;
+use crate::utils::fs::{direct_child_within, is_plain_file_name};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
@@ -221,6 +222,15 @@ fn discard_mod_download(query: &ModUpdateQuery, mods_dir: &Path) {
   let _ = std::fs::remove_file(temporary);
 }
 
+fn validate_mod_update_query(query: &ModUpdateQuery, mods_dir: &Path) -> Result<(), ResourceError> {
+  if !is_plain_file_name(Path::new(&query.file_name))
+    || !direct_child_within(mods_dir, Path::new(&query.old_file_path))
+  {
+    return Err(ResourceError::FileOperationError);
+  }
+  Ok(())
+}
+
 #[tauri::command]
 pub async fn update_mods(
   app: AppHandle,
@@ -239,6 +249,7 @@ pub async fn update_mods(
 
   let mut download_tasks = Vec::new();
   for query in &queries {
+    validate_mod_update_query(query, &mods_dir)?;
     let file_path = new_mod_download_path(&mods_dir.join(&query.file_name));
     let download_param = DownloadParam {
       src: url::Url::parse(&query.url).map_err(|_| ResourceError::ParseError)?,
@@ -292,7 +303,7 @@ pub async fn fetch_remote_resource_by_id(
 
 #[cfg(test)]
 mod mod_update_tests {
-  use super::{discard_mod_download, finalize_mod_file};
+  use super::{finalize_mod_file, validate_mod_update_query};
   use crate::resource::models::ModUpdateQuery;
   use crate::storage::test_support::TempDir;
   use std::fs;
@@ -341,5 +352,23 @@ mod mod_update_tests {
     fs::create_dir(&target).unwrap();
     assert!(finalize_mod_file(&query(&dir.0, "old.jar"), &dir.0).is_err());
     assert_eq!(fs::read(&old).unwrap(), b"old");
+  }
+
+  #[test]
+  fn mod_updates_reject_new_names_and_old_paths_outside_the_mods_directory() {
+    let dir = TempDir::new("mod-update-bounds");
+    let outside = TempDir::new("mod-update-outside");
+    let old = dir.0.join("old.jar");
+    fs::write(&old, b"old").unwrap();
+    assert!(validate_mod_update_query(&query(&dir.0, "old.jar"), &dir.0).is_ok());
+
+    let mut invalid_name = query(&dir.0, "old.jar");
+    invalid_name.file_name = "../new.jar".into();
+    assert!(validate_mod_update_query(&invalid_name, &dir.0).is_err());
+
+    let outside_file = outside.0.join("outside.jar");
+    fs::write(&outside_file, b"outside").unwrap();
+    let invalid_old = query(&outside.0, "outside.jar");
+    assert!(validate_mod_update_query(&invalid_old, &dir.0).is_err());
   }
 }

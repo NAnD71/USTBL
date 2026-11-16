@@ -12,6 +12,76 @@ use tauri::{AppHandle, Manager};
 use zip::write::{ExtendedFileOptions, FileOptions};
 use zip::{CompressionMethod, ZipWriter};
 
+pub fn is_plain_file_name(path: &Path) -> bool {
+  if path
+    .to_str()
+    .is_none_or(|path| path.contains(['\\', ':', '\0']))
+  {
+    return false;
+  }
+  let mut components = path.components();
+  matches!(components.next(), Some(std::path::Component::Normal(_)))
+    && components.next().is_none()
+    && path.file_name().is_some()
+}
+
+fn same_component(left: &std::path::Component<'_>, right: &std::path::Component<'_>) -> bool {
+  #[cfg(windows)]
+  {
+    left
+      .as_os_str()
+      .to_string_lossy()
+      .eq_ignore_ascii_case(&right.as_os_str().to_string_lossy())
+  }
+  #[cfg(not(windows))]
+  {
+    left == right
+  }
+}
+
+fn canonical_path_eq(left: &Path, right: &Path) -> bool {
+  let left = left.components().collect::<Vec<_>>();
+  let right = right.components().collect::<Vec<_>>();
+  left.len() == right.len()
+    && left
+      .iter()
+      .zip(right.iter())
+      .all(|(left, right)| same_component(left, right))
+}
+
+/// Canonicalizes both paths so links and junctions cannot escape the root.
+pub fn path_within(root: &Path, path: &Path) -> bool {
+  let (Ok(root), Ok(path)) = (fs::canonicalize(root), fs::canonicalize(path)) else {
+    return false;
+  };
+  let root = root.components().collect::<Vec<_>>();
+  let path = path.components().collect::<Vec<_>>();
+  path.len() >= root.len()
+    && root
+      .iter()
+      .zip(path.iter())
+      .all(|(root, path)| same_component(root, path))
+}
+
+pub fn direct_child_within(root: &Path, path: &Path) -> bool {
+  let (Ok(root), Ok(path)) = (fs::canonicalize(root), fs::canonicalize(path)) else {
+    return false;
+  };
+  path
+    .parent()
+    .is_some_and(|parent| canonical_path_eq(&root, parent))
+}
+
+pub fn same_existing_path(left: &Path, right: &Path) -> bool {
+  if left == right {
+    return true;
+  }
+  let (Ok(left), Ok(right)) = (fs::canonicalize(left), fs::canonicalize(right)) else {
+    return false;
+  };
+  canonical_path_eq(&left, &right)
+}
+
 /// Recursively copies the contents of a source directory to a destination directory.
 ///
 /// # Examples
@@ -585,5 +655,61 @@ impl Drop for RemoveDirGuard {
         let _ = fs::remove_dir_all(path);
       }
     }
+  }
+}
+
+#[cfg(test)]
+mod path_bounds_tests {
+  use super::*;
+  use crate::storage::test_support::TempDir;
+
+  #[test]
+  fn only_a_single_normal_component_is_a_plain_file_name() {
+    assert!(is_plain_file_name(Path::new("mod.jar")));
+    for path in ["", ".", "..", "mods/mod.jar", "../mod.jar", r"C:\mod.jar"] {
+      assert!(!is_plain_file_name(Path::new(path)), "{path}");
+    }
+  }
+
+  #[test]
+  fn canonical_bounds_distinguish_children_descendants_and_outside_paths() {
+    let root = TempDir::new("path-bounds-root");
+    let outside = TempDir::new("path-bounds-outside");
+    let child = root.0.join("child.jar");
+    let nested = root.0.join("nested").join("file.jar");
+    let other = outside.0.join("other.jar");
+    fs::create_dir(nested.parent().unwrap()).unwrap();
+    fs::write(&child, b"child").unwrap();
+    fs::write(&nested, b"nested").unwrap();
+    fs::write(&other, b"outside").unwrap();
+
+    assert!(direct_child_within(&root.0, &child));
+    assert!(path_within(&root.0, &nested));
+    assert!(!direct_child_within(&root.0, &nested));
+    assert!(!path_within(&root.0, &other));
+    assert!(same_existing_path(&child, &child));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn a_junction_cannot_make_an_outside_file_a_direct_child() {
+    let root = TempDir::new("path-bounds-link-root");
+    let outside = TempDir::new("path-bounds-link-outside");
+    let link = root.0.join("linked");
+    let status = std::process::Command::new("cmd")
+      .args(["/c", "mklink", "/J"])
+      .arg(&link)
+      .arg(&outside.0)
+      .status()
+      .unwrap();
+    if !status.success() {
+      println!("cannot create a junction for this test");
+      return;
+    }
+    let file = link.join("outside.jar");
+    fs::write(&file, b"outside").unwrap();
+
+    assert!(!direct_child_within(&root.0, &file));
+    assert!(!path_within(&root.0, &file));
   }
 }

@@ -17,24 +17,33 @@ export class UtilsService {
   }
 
   /**
-   * DELETE a file by absolute path.
+   * DELETE a mod file belonging to the given instance.
+   * @param instanceId the instance that owns the mod.
    * @param path the file to delete.
    * @returns {Promise<InvokeResponse<void>>}
    */
   @responseHandler("utils")
-  static async deleteFile(path: string): Promise<InvokeResponse<void>> {
-    return await invoke("delete_file", { path });
+  static async deleteFile(
+    instanceId: string,
+    path: string
+  ): Promise<InvokeResponse<void>> {
+    return await invoke("delete_file", { instanceId, path });
   }
 
   /**
-   * DELETE a directory by absolute path.
-   * This method deletes the directory recursively, including all its contents.
-   * @param path the directory to delete.
-   * @returns {Promise<InvokeResponse<void>>}
+   * OPEN a directory known to the launcher.
    */
   @responseHandler("utils")
-  static async deleteDirectory(path: string): Promise<InvokeResponse<void>> {
-    return await invoke("delete_directory", { path });
+  static async openDirectory(path: string): Promise<InvokeResponse<void>> {
+    return await invoke("open_directory", { path });
+  }
+
+  /**
+   * READ an image from an instance's screenshots directory.
+   */
+  @responseHandler("utils")
+  static async readScreenshot(path: string): Promise<InvokeResponse<number[]>> {
+    return await invoke("read_screenshot", { path });
   }
 
   /**

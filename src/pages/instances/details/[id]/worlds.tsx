@@ -8,7 +8,6 @@ import {
   useDisclosure,
 } from "@chakra-ui/react";
 import { convertFileSrc } from "@tauri-apps/api/core";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useCallback, useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { LuCheck, LuX } from "react-icons/lu";
@@ -31,6 +30,7 @@ import { GetStateFlag } from "@/hooks/get-state";
 import { GameServerInfo } from "@/models/instance/misc";
 import { WorldInfo } from "@/models/instance/world";
 import { InstanceService } from "@/services/instance";
+import { UtilsService } from "@/services/utils";
 import { UNIXToISOString, formatRelativeTime } from "@/utils/datetime";
 import { base64ImgSrc } from "@/utils/string";
 
@@ -206,7 +206,7 @@ const InstanceWorldsPage = () => {
     {
       label: "",
       icon: "revealFile",
-      onClick: () => openPath(save.dirPath),
+      onClick: () => void UtilsService.openDirectory(save.dirPath),
     },
     {
       label: t("InstanceWorldsPage.worldList.viewLevelData"),

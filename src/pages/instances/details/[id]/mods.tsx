@@ -195,7 +195,8 @@ const InstanceModsPage = () => {
 
   const handleToggleModByExtension = useCallback(
     (filePath: string, enable: boolean) => {
-      InstanceService.toggleModByExtension(filePath, enable).then(
+      if (!summary?.id) return;
+      InstanceService.toggleModByExtension(summary.id, filePath, enable).then(
         (response) => {
           if (response.status === "success") {
             setLocalMods((prevMods) =>
@@ -231,7 +232,7 @@ const InstanceModsPage = () => {
         }
       );
     },
-    [toast, getLocalModListWrapper]
+    [toast, getLocalModListWrapper, summary?.id]
   );
 
   const handleDeleteSingleMod = useCallback(
@@ -247,7 +248,8 @@ const InstanceModsPage = () => {
         showSuppressBtn: true,
         suppressKey: "deleteModAlert",
         onOKCallback: () => {
-          UtilsService.deleteFile(mod.filePath)
+          if (!summary?.id) return;
+          UtilsService.deleteFile(summary.id, mod.filePath)
             .then((response) => {
               if (response.status === "success") {
                 setLocalMods((prev) =>
@@ -271,7 +273,14 @@ const InstanceModsPage = () => {
         },
       });
     },
-    [openGenericConfirmDialog, t, toast, getLocalModListWrapper, summary?.name]
+    [
+      openGenericConfirmDialog,
+      t,
+      toast,
+      getLocalModListWrapper,
+      summary?.name,
+      summary?.id,
+    ]
   );
 
   const modSecMenuOperations = [

@@ -1,5 +1,4 @@
 import { open } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useRouter } from "next/router";
 import React, {
   createContext,
@@ -23,6 +22,7 @@ import {
 } from "@/models/instance/misc";
 import { WorldInfo } from "@/models/instance/world";
 import { InstanceService } from "@/services/instance";
+import { UtilsService } from "@/services/utils";
 import { isInstallingInstance } from "@/utils/installing-instance";
 import {
   createLocalModUpdateBuffer,
@@ -214,7 +214,7 @@ export const InstanceContextProvider: React.FC<{
   const openInstanceSubdir = useCallback(
     (dirType: InstanceSubdirType) => {
       handleRetrieveInstanceSubdirPath(dirType).then((path) => {
-        if (path) openPath(path);
+        if (path) void UtilsService.openDirectory(path);
       });
     },
     [handleRetrieveInstanceSubdirPath]

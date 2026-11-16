@@ -16,7 +16,6 @@ import {
   Text,
 } from "@chakra-ui/react";
 import { open } from "@tauri-apps/plugin-dialog";
-import { openPath } from "@tauri-apps/plugin-opener";
 import { useRouter } from "next/router";
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -34,6 +33,7 @@ import { useTaskContext } from "@/contexts/task";
 import { useToast } from "@/contexts/toast";
 import { GTaskEventStatusEnums } from "@/models/task";
 import { ConfigService } from "@/services/config";
+import { UtilsService } from "@/services/utils";
 
 const DownloadSettingsPage = () => {
   const { t } = useTranslation();
@@ -355,7 +355,9 @@ const DownloadSettingsPage = () => {
                 variant="subtle"
                 size="xs"
                 onClick={() => {
-                  openPath(downloadConfigs.cache.directory);
+                  void UtilsService.openDirectory(
+                    downloadConfigs.cache.directory
+                  );
                 }}
               >
                 {t("General.open")}
