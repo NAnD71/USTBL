@@ -56,6 +56,29 @@ const GlobalEventHandler: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [isStandAlone, toast]);
 
+  useEffect(() => {
+    if (isStandAlone) return;
+    let disposed = false;
+    invoke<string[]>("take_startup_corrupt_files")
+      .then((files) => {
+        if (disposed) return;
+        for (const file of files) {
+          const isAccount = file.includes("ustbl.account.json");
+          toast({
+            title: isAccount ? "账号文件已损坏" : "启动器设置文件已损坏",
+            description: isAccount
+              ? `需要重新登录。原文件备份为 ${file}`
+              : `已恢复默认设置。原文件备份为 ${file}`,
+            status: "warning",
+          });
+        }
+      })
+      .catch((error) => logger.error(error));
+    return () => {
+      disposed = true;
+    };
+  }, [isStandAlone, toast]);
+
   const isMainWindowHidden = async () => {
     let mainWindow;
     try {

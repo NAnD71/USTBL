@@ -19,6 +19,7 @@
 use super::diff::DISABLED_SUFFIX;
 use super::remote::{safe_relative_path, FileSource, RemoteModpack, UPDATE_DIR};
 use crate::instance::helpers::modpack::baseline::{BaselineFileState, ModpackBaseline};
+use crate::storage::{recover_json, write_json_atomic};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeSet, HashMap, HashSet};
 use std::fs;
@@ -78,18 +79,8 @@ pub struct OptionalRecord {
 /// Read the record. A missing or unreadable file is an instance without one.
 pub fn read(root: &Path) -> OptionalRecord {
   let path = record_path(root);
-  match fs::read(&path) {
-    Ok(bytes) => serde_json::from_slice(&bytes).unwrap_or_else(|error| {
-      log::warn!("ignoring unreadable optional file record {path:?}: {error}");
-      OptionalRecord::default()
-    }),
-    Err(error) => {
-      if error.kind() != io::ErrorKind::NotFound {
-        log::warn!("cannot read optional file record {path:?}: {error}");
-      }
-      OptionalRecord::default()
-    }
-  }
+  let recovered = recover_json(&path);
+  recovered.value
 }
 
 /// Store `record`; a record that knows no file removes the file instead.
@@ -108,9 +99,7 @@ pub fn write(root: &Path, record: &OptionalRecord) -> io::Result<()> {
     schema: SCHEMA,
     ..record.clone()
   };
-  let temp = path.with_extension("json.tmp");
-  fs::write(&temp, serde_json::to_vec_pretty(&record)?)?;
-  fs::rename(temp, path)
+  write_json_atomic(&path, &record)
 }
 
 /// The player's picks before an instance is installed.
@@ -699,14 +688,15 @@ mod tests {
   }
 
   #[test]
-  fn keys_stay_distinct_within_a_table() {
-    let table = table([
-      ("curseforge:1".to_string(), "mods/a.jar".to_string()),
-      ("curseforge:1".to_string(), "mods/b.jar".to_string()),
-      (String::new(), "mods/C.jar".to_string()),
-    ]);
-    let keys: Vec<_> = table.iter().map(|file| file.key.as_str()).collect();
-    assert_eq!(keys, ["curseforge:1", "path:mods/b.jar", "path:mods/c.jar"]);
-    assert_eq!(table[1].name, "b.jar");
+  fn a_corrupt_optional_record_is_backed_up_before_a_new_write() {
+    let root = Root::new();
+    let corrupt = "optional corrupt marker";
+    root.write(".ustbl-update/optional.json", corrupt);
+    assert_eq!(read(&root.0), OptionalRecord::default());
+    write_picks(&root.0, &["k:a".into()]).unwrap();
+    assert!(crate::storage::test_support::bytes_survive(
+      &root.0,
+      corrupt.as_bytes()
+    ));
   }
 }

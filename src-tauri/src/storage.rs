@@ -1,9 +1,140 @@
 use serde::de::DeserializeOwned;
 use serde::Serialize;
+use std::collections::HashSet;
 use std::fs;
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{LazyLock, Mutex};
+
+pub enum JsonRead<T> {
+  Value(T),
+  Missing,
+  Corrupt(String),
+  Unreadable(io::Error),
+}
+
+/// Read a JSON file without turning a parse or IO failure into a missing file.
+pub fn read_json<T>(path: &Path) -> JsonRead<T>
+where
+  T: DeserializeOwned,
+{
+  match fs::read_to_string(path) {
+    Ok(text) => match serde_json::from_str(&text) {
+      Ok(value) => JsonRead::Value(value),
+      Err(error) => JsonRead::Corrupt(error.to_string()),
+    },
+    Err(error) if error.kind() == io::ErrorKind::NotFound => JsonRead::Missing,
+    Err(error) => JsonRead::Unreadable(error),
+  }
+}
+
+static WRITE_PROTECTED: LazyLock<Mutex<HashSet<PathBuf>>> =
+  LazyLock::new(|| Mutex::new(HashSet::new()));
+
+/// Prevent all later writes to a path for this process. Used when the source
+/// file could not be read safely, so a default value must not overwrite it.
+pub fn protect_write(path: &Path) {
+  let mut protected = WRITE_PROTECTED
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  protected.insert(path.to_path_buf());
+}
+
+pub fn is_write_protected(path: &Path) -> bool {
+  WRITE_PROTECTED
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner())
+    .contains(path)
+}
+
+/// Move a corrupt source aside, returning the backup path. The source remains
+/// untouched if the backup cannot be created.
+pub fn backup_corrupt(path: &Path) -> io::Result<PathBuf> {
+  let name = path
+    .file_name()
+    .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "missing file name"))?;
+  let stamp = std::time::SystemTime::now()
+    .duration_since(std::time::UNIX_EPOCH)
+    .map_err(io::Error::other)?
+    .as_secs();
+  for suffix in 0..100 {
+    let backup = path.with_file_name(format!(
+      "{}.corrupt-{}{}",
+      name.to_string_lossy(),
+      stamp,
+      if suffix == 0 {
+        String::new()
+      } else {
+        format!("-{suffix}")
+      }
+    ));
+    if backup.exists() {
+      continue;
+    }
+    fs::rename(path, &backup)?;
+    return Ok(backup);
+  }
+  Err(io::Error::new(
+    io::ErrorKind::AlreadyExists,
+    "could not allocate a corrupt backup name",
+  ))
+}
+
+pub struct RecoveredJson<T> {
+  pub value: T,
+  pub corrupt_backup: Option<PathBuf>,
+  pub write_protected: bool,
+}
+
+/// Recover a top-level settings or account file. Only a missing file may be
+/// replaced without a backup. Corrupt files are backed up first; unreadable
+/// files and failed backups put the path into write protection for this run.
+pub fn recover_json<T>(path: &Path) -> RecoveredJson<T>
+where
+  T: DeserializeOwned + Default,
+{
+  match read_json(path) {
+    JsonRead::Value(value) => RecoveredJson {
+      value,
+      corrupt_backup: None,
+      write_protected: false,
+    },
+    JsonRead::Missing => RecoveredJson {
+      value: T::default(),
+      corrupt_backup: None,
+      write_protected: false,
+    },
+    JsonRead::Corrupt(_error) => match backup_corrupt(path) {
+      Ok(backup) => RecoveredJson {
+        value: T::default(),
+        corrupt_backup: Some(backup),
+        write_protected: false,
+      },
+      Err(backup_error) => {
+        log::warn!(
+          "Could not back up corrupt JSON {}: {backup_error}",
+          path.display()
+        );
+        protect_write(path);
+        RecoveredJson {
+          value: T::default(),
+          corrupt_backup: None,
+          write_protected: true,
+        }
+      }
+    },
+    JsonRead::Unreadable(error) => {
+      log::warn!("Could not read JSON {}: {error}", path.display());
+      protect_write(path);
+      RecoveredJson {
+        value: T::default(),
+        corrupt_backup: None,
+        write_protected: true,
+      }
+    }
+  }
+}
 
 pub trait Storage {
   fn file_path() -> std::path::PathBuf;
@@ -63,6 +194,12 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 /// publish listings skip `._*` paths, so a leftover from a crash is not
 /// offered as a user file.
 pub fn write_atomic(path: &Path, bytes: &[u8], durability: Durability) -> io::Result<()> {
+  if is_write_protected(path) {
+    return Err(io::Error::new(
+      io::ErrorKind::PermissionDenied,
+      format!("write is protected for this run: {}", path.display()),
+    ));
+  }
   let (file, temporary) = create_temporary(path)?;
   let result = write_then_rename(file, &temporary, path, bytes, durability);
   if result.is_err() {
@@ -185,6 +322,22 @@ pub(crate) mod test_support {
     }
   }
 
+  /// Whether a file under `dir` holds exactly `bytes`.
+  pub(crate) fn bytes_survive(dir: &Path, bytes: &[u8]) -> bool {
+    fs::read_dir(dir)
+      .into_iter()
+      .flatten()
+      .flatten()
+      .any(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+          bytes_survive(&path, bytes)
+        } else {
+          fs::read(&path).is_ok_and(|content| content == bytes)
+        }
+      })
+  }
+
   /// Holds `path` with no sharing, so any other open for read or write fails on Windows.
   #[cfg(windows)]
   pub(crate) fn lock_exclusive(path: &Path) -> fs::File {
@@ -202,7 +355,9 @@ mod tests {
   #[cfg(windows)]
   use super::test_support::lock_exclusive;
   use super::test_support::{serial, TempDir};
-  use super::{save_json_async, write_atomic, write_json_atomic, Durability, Storage};
+  use super::{
+    recover_json, save_json_async, write_atomic, write_json_atomic, Durability, Storage,
+  };
   use crate::account::models::AccountInfo;
   use serde::ser::SerializeStruct;
   use serde::{Deserialize, Serialize, Serializer};
@@ -491,5 +646,43 @@ mod tests {
     assert_eq!(fs::read(&path).unwrap(), b"[\n  1,\n  2\n]");
     write_json_atomic(&path, &vec![3]).unwrap();
     assert_eq!(fs::read(&path).unwrap(), b"[\n  3\n]");
+  }
+
+  #[test]
+  fn recovery_uses_a_default_only_for_a_missing_file() {
+    let dir = TempDir::new("recover-missing");
+    let recovered = recover_json::<BTreeMap<String, u32>>(&dir.0.join("missing.json"));
+    assert!(recovered.value.is_empty());
+    assert!(recovered.corrupt_backup.is_none());
+    assert!(!recovered.write_protected);
+  }
+
+  #[test]
+  fn recovery_backs_up_corrupt_json_before_using_a_default() {
+    let dir = TempDir::new("recover-corrupt");
+    let path = dir.0.join("value.json");
+    fs::write(&path, b"corrupt marker").unwrap();
+    let recovered = recover_json::<BTreeMap<String, u32>>(&path);
+    assert!(recovered.value.is_empty());
+    let backup = recovered.corrupt_backup.unwrap();
+    assert_eq!(fs::read(backup).unwrap(), b"corrupt marker");
+    assert!(!path.exists());
+    assert!(!recovered.write_protected);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn recovery_write_protection_prevents_later_saves_from_overwriting() {
+    let dir = TempDir::new("recover-unreadable");
+    let path = dir.0.join("value.json");
+    fs::write(&path, b"healthy marker").unwrap();
+    let held = lock_exclusive(&path);
+    let recovered = recover_json::<BTreeMap<String, u32>>(&path);
+    assert!(recovered.write_protected);
+    assert!(recovered.corrupt_backup.is_none());
+    let saved = write_json_atomic(&path, &recovered.value);
+    drop(held);
+    assert!(saved.is_err());
+    assert_eq!(fs::read(&path).unwrap(), b"healthy marker");
   }
 }

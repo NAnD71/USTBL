@@ -1,7 +1,7 @@
 use crate::account::helpers::vustb;
 use crate::account::models::AccountInfo;
 use crate::error::USTBLResult;
-use crate::storage::Storage;
+use crate::storage::{recover_json, Storage};
 use serde::{Deserialize, Serialize};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
@@ -67,7 +67,7 @@ fn current_subject(app: &AppHandle) -> USTBLResult<Option<String>> {
 }
 
 fn load_queue() -> PlaytimeQueue {
-  let mut queue = PlaytimeQueue::load().unwrap_or_default();
+  let mut queue: PlaytimeQueue = recover_json(&PlaytimeQueue::file_path()).value;
   if queue.client_id.len() < 8 {
     queue.client_id = uuid::Uuid::new_v4().simple().to_string();
   }
@@ -166,7 +166,10 @@ pub async fn monitor_playtime_sync(app: AppHandle) {
 
 #[cfg(test)]
 mod tests {
-  use super::{split_playtime_seconds, truncate};
+  use super::{load_queue, split_playtime_seconds, truncate, PlaytimeEvent, PlaytimeQueue};
+  use crate::storage::test_support::{bytes_survive, serial};
+  use crate::storage::Storage;
+  use std::fs;
 
   #[test]
   fn playtime_is_split_into_api_sized_events() {
@@ -179,5 +182,26 @@ mod tests {
   #[test]
   fn playtime_metadata_is_truncated_by_characters() {
     assert_eq!(truncate("像素北科启动器", 4), "像素北科");
+  }
+
+  #[test]
+  fn a_corrupt_queue_is_backed_up_before_the_next_save() {
+    let _guard = serial();
+    let dir = crate::storage::test_support::app_data_dir();
+    let path = PlaytimeQueue::file_path();
+    let corrupt = b"playtime corrupt marker";
+    fs::write(&path, corrupt).unwrap();
+    let mut queue = load_queue();
+    queue.events.push(PlaytimeEvent {
+      event_id: "event".into(),
+      client_id: queue.client_id.clone(),
+      subject: "subject".into(),
+      seconds: 60,
+      instance_id: None,
+      instance_name: None,
+    });
+    queue.save().unwrap();
+    assert!(bytes_survive(&dir, corrupt));
+    let _ = fs::remove_file(&path);
   }
 }

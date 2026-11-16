@@ -28,7 +28,7 @@ use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{LazyLock, Mutex, OnceLock};
-use storage::Storage;
+use storage::{recover_json, Storage};
 use tasks::monitor::TaskMonitor;
 use utils::portable::is_portable;
 use utils::web::{build_api_client, build_no_redirect_client, build_ustbl_client};
@@ -45,6 +45,26 @@ static EXE_DIR: LazyLock<PathBuf> = LazyLock::new(|| EXE_PATH.parent().unwrap().
 static IS_PORTABLE: LazyLock<bool> = LazyLock::new(|| is_portable().unwrap_or(false));
 
 static APP_DATA_DIR: OnceLock<PathBuf> = OnceLock::new();
+static STARTUP_CORRUPT_FILES: LazyLock<Mutex<Vec<PathBuf>>> =
+  LazyLock::new(|| Mutex::new(Vec::new()));
+
+fn record_corrupt_backup(backup: Option<PathBuf>) {
+  if let Some(backup) = backup {
+    STARTUP_CORRUPT_FILES
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
+      .push(backup);
+  }
+}
+
+#[tauri::command]
+fn take_startup_corrupt_files() -> Vec<PathBuf> {
+  let mut issues = STARTUP_CORRUPT_FILES
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  std::mem::take(&mut *issues)
+}
+
 static EXITING_AFTER_PRESENCE_CLEAR: AtomicBool = AtomicBool::new(false);
 
 pub fn show_tray_popup(app: &tauri::AppHandle, view: &str, message: Option<String>) {
@@ -321,6 +341,7 @@ pub async fn run() -> i32 {
       tasks::commands::resume_progressive_task_group,
       tasks::commands::delete_progressive_task_group,
       utils::commands::retrieve_memory_info,
+      take_startup_corrupt_files,
       utils::commands::extract_filename,
       utils::commands::delete_file,
       utils::commands::delete_directory,
@@ -340,9 +361,13 @@ pub async fn run() -> i32 {
 
       // Set the launcher config and other states
       // Also extract assets in `setup_with_app()` if the application is portable
-      let mut launcher_config: LauncherConfig = LauncherConfig::load().unwrap_or_default();
+      let recovered = recover_json(&<LauncherConfig as Storage>::file_path());
+      record_corrupt_backup(recovered.corrupt_backup);
+      let mut launcher_config: LauncherConfig = recovered.value;
       launcher_config.setup_with_app(app.handle()).unwrap();
-      launcher_config.save().unwrap();
+      if let Err(error) = launcher_config.save() {
+        log::warn!("Could not save the launcher config: {error}");
+      }
       let version = launcher_config.basic_info.launcher_version.clone();
       let os = launcher_config.basic_info.platform.clone();
       let exe_sha256 = launcher_config.basic_info.exe_sha256.clone();
@@ -355,12 +380,16 @@ pub async fn run() -> i32 {
       app.manage(tokio::sync::Mutex::new(
         accelerator::ipv6::Ipv6Service::default(),
       ));
-      let account_info = AccountInfo::load().unwrap_or_default();
+      let recovered = recover_json(&<AccountInfo as Storage>::file_path());
+      record_corrupt_backup(recovered.corrupt_backup);
+      let account_info: AccountInfo = recovered.value;
       app.manage(Mutex::new(account_info.clone()));
 
       // Migrate account info to new format
       // TODO: will be removed after the new migration utils crate implemented
-      account_info.save().unwrap();
+      if let Err(error) = account_info.save() {
+        log::warn!("Could not save account info: {error}");
+      }
 
       let instances: HashMap<String, Instance> = HashMap::new();
       app.manage(Mutex::new(instances));

@@ -15,7 +15,7 @@ use super::text_diff::{edits, lines_of, Edit};
 use crate::file_error::{tag, AtPath};
 use crate::instance::helpers::modpack::baseline::ModpackBaseline;
 use crate::instance::helpers::modpack::{base_store, text};
-use crate::storage::{write_atomic, Durability};
+use crate::storage::{recover_json, write_atomic, Durability};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet, HashSet};
 use std::fs;
@@ -191,9 +191,12 @@ pub fn merge_regions(mut regions: Vec<Region>) -> Vec<Region> {
 }
 
 pub fn read(root: &Path) -> Ignores {
-  fs::read(ignores_path(root))
-    .map(|bytes| Ignores::parse(&bytes))
-    .unwrap_or_default()
+  let recovered: crate::storage::RecoveredJson<Ignores> = recover_json(&ignores_path(root));
+  if recovered.value.schema == SCHEMA {
+    recovered.value
+  } else {
+    Ignores::default()
+  }
 }
 
 /// The stored records that still apply to this baseline.
@@ -853,11 +856,16 @@ mod tests {
   }
 
   #[test]
-  fn schema_one_ignore_json_reads_as_empty() {
-    let parsed = Ignores::parse(
-      br#"{"schema":1,"files":{"a.toml":{"baseSha1":"aa","whole":true}},"added":["mods/a.jar"]}"#,
-    );
-    assert!(parsed.is_empty());
-    assert_eq!(parsed.schema, SCHEMA);
+  fn a_corrupt_ignore_file_is_backed_up_before_a_new_write() {
+    let dir = crate::storage::test_support::TempDir::new("ignores-corrupt");
+    let corrupt = "ignores corrupt marker";
+    fs::create_dir_all(dir.0.join(UPDATE_DIR)).unwrap();
+    fs::write(ignores_path(&dir.0), corrupt).unwrap();
+    assert!(read(&dir.0).is_empty());
+    write(&dir.0, &Ignores::default()).unwrap();
+    assert!(crate::storage::test_support::bytes_survive(
+      &dir.0,
+      corrupt.as_bytes()
+    ));
   }
 }

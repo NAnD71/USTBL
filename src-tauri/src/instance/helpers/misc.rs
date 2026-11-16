@@ -16,7 +16,7 @@ use crate::instance::models::misc::{
 use crate::launcher_config::helpers::misc::get_global_game_config;
 use crate::launcher_config::models::{GameConfig, GameDirectory, LauncherConfig};
 use crate::resource::helpers::misc::get_source_priority_list;
-use crate::storage::{load_json_async, Storage};
+use crate::storage::{load_json_async, read_json, JsonRead, Storage};
 use sanitize_filename;
 use serde::Serialize;
 use serde_json::Value;
@@ -221,6 +221,21 @@ pub fn check_folder(existing: &HashSet<String>, folder: &str) -> InstanceFolderC
   }
 }
 
+/// A corrupt or unreadable instance config keeps the instance out of the list.
+/// The original file is left alone so the user can repair or remove it.
+fn refresh_config_allowed(path: &Path) -> bool {
+  match read_json::<serde_json::Value>(path) {
+    JsonRead::Value(_) | JsonRead::Missing => true,
+    JsonRead::Corrupt(_) | JsonRead::Unreadable(_) => {
+      log::warn!(
+        "Skipping instance with unreadable config: {}",
+        path.display()
+      );
+      false
+    }
+  }
+}
+
 async fn refresh_instance(
   app: &AppHandle,
   mut version_path: PathBuf,
@@ -245,6 +260,14 @@ async fn refresh_instance(
     }
   }
   let name = client_data.id.clone();
+  let cfg_path = Instance {
+    version_path: version_path.clone(),
+    ..Default::default()
+  }
+  .get_json_cfg_path();
+  if !refresh_config_allowed(&cfg_path) {
+    return Ok(None);
+  }
   let mut cfg_read = Instance {
     version_path: version_path.clone(),
     ..Default::default()
@@ -761,4 +784,34 @@ pub fn create_instance_shortcut_icon(
   let icon_path = instance.version_path.join(icon_name);
   img.save(&icon_path)?;
   Ok(icon_path)
+}
+
+#[cfg(test)]
+mod corrupt_config_tests {
+  use super::*;
+
+  #[test]
+  fn corrupt_instance_config_is_not_refreshed_or_rewritten() {
+    let dir = crate::storage::test_support::TempDir::new("instance-corrupt");
+    let path = dir.0.join("instance.json");
+    fs::write(&path, b"corrupt marker").unwrap();
+    assert!(!refresh_config_allowed(&path));
+    assert_eq!(fs::read(&path).unwrap(), b"corrupt marker");
+  }
+
+  #[test]
+  fn a_missing_instance_config_can_be_created() {
+    let dir = crate::storage::test_support::TempDir::new("instance-missing");
+    assert!(refresh_config_allowed(&dir.0.join("instance.json")));
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn an_occupied_instance_config_is_not_refreshed() {
+    let dir = crate::storage::test_support::TempDir::new("instance-occupied");
+    let path = dir.0.join("instance.json");
+    fs::write(&path, b"{}").unwrap();
+    let _held = crate::storage::test_support::lock_exclusive(&path);
+    assert!(!refresh_config_allowed(&path));
+  }
 }
