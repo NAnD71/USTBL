@@ -307,7 +307,7 @@ pub async fn run() -> i32 {
       discover::commands::fetch_news_sources_info,
       discover::commands::fetch_news_post_summaries,
       discover::commands::fetch_vustb_server_statuses,
-      tasks::commands::schedule_progressive_task_group,
+      tasks::commands::schedule_resource_download,
       tasks::commands::cancel_progressive_task,
       tasks::commands::resume_progressive_task,
       tasks::commands::stop_progressive_task,

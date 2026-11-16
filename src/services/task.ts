@@ -28,7 +28,7 @@ export class TaskService {
     params: TaskParam[],
     withTimestamp: boolean = true
   ): Promise<InvokeResponse<TaskGroupDesc>> {
-    return await invoke("schedule_progressive_task_group", {
+    return await invoke("schedule_resource_download", {
       taskGroup,
       params,
       withTimestamp,
