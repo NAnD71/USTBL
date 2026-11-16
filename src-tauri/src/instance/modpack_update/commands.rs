@@ -43,7 +43,7 @@ use crate::launch::models::LaunchingState;
 use crate::launcher_config::commands::retrieve_launcher_config;
 use crate::resource::helpers::misc::{download_source_candidates, get_source_priority_list};
 use crate::resource::models::{ModLoaderResourceInfo, ResourceType};
-use crate::storage::{write_atomic, Durability};
+use crate::storage::{read_json, write_atomic, Durability, JsonRead};
 use crate::tasks::download::DownloadParam;
 use crate::tasks::download::DownloadTransferOptions;
 use crate::tasks::events::TauriEventSink;
@@ -342,12 +342,20 @@ fn save_campus_install_record(root: &Path, record: &CampusInstallRecord) -> USTB
   Ok(())
 }
 
+fn read_campus_install_record(root: &Path) -> JsonRead<CampusInstallRecord> {
+  read_json(&campus_install_record(root))
+}
+
 fn load_campus_install_record(root: &Path) -> Option<CampusInstallRecord> {
-  serde_json::from_slice(&fs::read(campus_install_record(root)).ok()?).ok()
+  match read_campus_install_record(root) {
+    JsonRead::Value(record) => Some(record),
+    JsonRead::Missing | JsonRead::Corrupt(_) | JsonRead::Unreadable(_) => None,
+  }
 }
 
 pub fn has_campus_install(root: &Path) -> bool {
-  load_campus_install_record(root).is_some()
+  // Presence, not parseability, decides whether a half-written install blocks launch.
+  campus_install_record(root).exists()
 }
 
 pub fn pending_campus_instances(app: &AppHandle) -> HashMap<String, Instance> {
@@ -398,7 +406,22 @@ fn campus_install_records(app: &AppHandle) -> Vec<CampusUnfinishedInstall> {
 }
 
 fn unfinished_campus_install(instance: &Instance) -> Option<CampusUnfinishedInstall> {
-  let record = load_campus_install_record(&instance.version_path)?;
+  let record = match read_campus_install_record(&instance.version_path) {
+    JsonRead::Value(record) => record,
+    JsonRead::Missing => return None,
+    JsonRead::Corrupt(_) | JsonRead::Unreadable(_) => {
+      return Some(CampusUnfinishedInstall {
+        instance_id: instance.id.clone(),
+        instance_name: instance.shown_name().to_string(),
+        label: instance.shown_name().to_string(),
+        phase: "failed".into(),
+        error: Some(InstanceError::ModpackInstallInterrupted.to_string()),
+        resumable: true,
+        group: None,
+        progress: None,
+      });
+    }
+  };
   if active_plans()
     .lock()
     .ok()?
@@ -511,7 +534,10 @@ pub async fn discard_campus_modpack_install(
       wait_for_plan_guard(&root).await?
     }
   };
-  let record = load_campus_install_record(&root).ok_or(InstanceError::ModpackUpdateUnsupported)?;
+  let record = match read_campus_install_record(&root) {
+    JsonRead::Value(record) => Some(record),
+    JsonRead::Missing | JsonRead::Corrupt(_) | JsonRead::Unreadable(_) => None,
+  };
   let recovery = recover_checked(&root, || ensure_not_running(&app, &instance_id))?;
   if recovery != Recovery::Nothing {
     refresh_and_update_instances(&app, false).await;
@@ -521,9 +547,13 @@ pub async fn discard_campus_modpack_install(
   if instance.origin.as_ref().is_some_and(is_fresh) {
     // The guard is held, so no install job of this instance is running. The
     // client and loader downloads are separate groups and still have to stop.
-    cancel_pending_install_downloads(&app, &instance, &record).await?;
+    cancel_pending_install_downloads(&app, &instance, record.as_ref()).await?;
     plan_cache::clear_plan_cache(&root);
-    remove_campus_install_groups(&app, &instance_id, record.group.as_deref());
+    remove_campus_install_groups(
+      &app,
+      &instance_id,
+      record.as_ref().and_then(|record| record.group.as_deref()),
+    );
     let app_for_delete = app.clone();
     let id_for_delete = instance_id.clone();
     let root_for_delete = root.clone();
@@ -553,7 +583,11 @@ pub async fn discard_campus_modpack_install(
     }
   }
   plan_cache::clear_plan_cache(&root);
-  remove_campus_install_groups(&app, &instance_id, record.group.as_deref());
+  remove_campus_install_groups(
+    &app,
+    &instance_id,
+    record.as_ref().and_then(|record| record.group.as_deref()),
+  );
   Ok(())
 }
 
@@ -614,14 +648,14 @@ fn belongs_to_pending_install(desc: &PDesc<PTaskParam>, root: &Path, groups: &[S
 async fn cancel_pending_install_downloads(
   app: &AppHandle,
   instance: &Instance,
-  record: &CampusInstallRecord,
+  record: Option<&CampusInstallRecord>,
 ) -> USTBLResult<()> {
   let monitor = app.state::<Pin<Box<TaskMonitor>>>();
   let root = instance.version_path.clone();
   let groups = pending_install_groups(
     monitor.task_descriptors(),
     instance,
-    record.client_group.as_deref(),
+    record.and_then(|record| record.client_group.as_deref()),
   );
   let jobs = monitor.cancel_tasks_where(|desc| belongs_to_pending_install(desc, &root, &groups));
   for job in jobs {
@@ -3317,9 +3351,20 @@ async fn start_campus_modpack_install(
   let instance = current_instance(&app, &instance_id)?;
   let guard = PlanGuard::acquire(&instance.version_path)?;
   let control = InstallControlGuard::register(&instance_id);
-  let old_record = load_campus_install_record(&instance.version_path);
+  let read_record = read_campus_install_record(&instance.version_path);
+  let unreadable = matches!(read_record, JsonRead::Corrupt(_) | JsonRead::Unreadable(_));
+  let old_record = match read_record {
+    JsonRead::Value(record) => Some(record),
+    JsonRead::Missing | JsonRead::Corrupt(_) | JsonRead::Unreadable(_) => None,
+  };
   if instance.origin.as_ref().is_none_or(|origin| {
-    !is_campus_install(origin, old_record.as_ref()) || (old_record.is_none() && !is_fresh(origin))
+    if unreadable {
+      // A fresh install can be rebuilt from origin even when its record cannot
+      // be parsed. Non-fresh instances must not turn this into a false update.
+      !is_fresh(origin)
+    } else {
+      !is_campus_install(origin, old_record.as_ref()) || (old_record.is_none() && !is_fresh(origin))
+    }
   }) {
     return Err(InstanceError::ModpackUpdateUnsupported.into());
   }
@@ -5562,5 +5607,41 @@ mod tests {
     assert!(PlanGuard::acquire(&root).is_err());
     drop(taken);
     assert!(PlanGuard::acquire(&root).is_ok());
+  }
+}
+
+#[cfg(test)]
+mod campus_install_record_tests {
+  use super::*;
+
+  fn instance_with(root: &Path) -> Instance {
+    Instance {
+      id: "cloud".into(),
+      name: "Pack".into(),
+      version_path: root.to_path_buf(),
+      ..Default::default()
+    }
+  }
+
+  #[test]
+  fn a_corrupt_install_record_blocks_launch_but_offers_a_recovery_card() {
+    let dir = crate::storage::test_support::TempDir::new("campus-record-corrupt");
+    let path = campus_install_record(&dir.0);
+    fs::create_dir_all(path.parent().unwrap()).unwrap();
+    fs::write(&path, b"corrupt marker").unwrap();
+
+    assert!(has_campus_install(&dir.0));
+    let entry = unfinished_campus_install(&instance_with(&dir.0)).unwrap();
+    assert_eq!(entry.phase, "failed");
+    assert!(entry.resumable);
+    assert_eq!(entry.label, "Pack");
+    assert_eq!(entry.instance_name, "Pack");
+  }
+
+  #[test]
+  fn a_missing_install_record_does_not_block_or_create_a_card() {
+    let dir = crate::storage::test_support::TempDir::new("campus-record-missing");
+    assert!(!has_campus_install(&dir.0));
+    assert!(unfinished_campus_install(&instance_with(&dir.0)).is_none());
   }
 }
