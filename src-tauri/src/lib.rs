@@ -371,7 +371,16 @@ pub async fn run() -> i32 {
       let mod_database = ModDataBase::new();
       app.manage(Mutex::new(mod_database));
 
-      app.manage(Box::pin(TaskMonitor::new(app.handle().clone())));
+      let task_monitor = Box::pin(TaskMonitor::new(app.handle().clone()));
+      let cache_dir = {
+        let binding = app.state::<Mutex<LauncherConfig>>();
+        let state = binding.lock().unwrap();
+        state.download.cache.directory.clone()
+      };
+      if let Some(maximum) = tasks::monitor::max_saved_task_id(&cache_dir) {
+        task_monitor.advance_id_counter(maximum);
+      }
+      app.manage(task_monitor);
 
       let local_mod_translations = LocalModTranslationsCache::load().unwrap_or_default();
       app.manage(Mutex::new(local_mod_translations));

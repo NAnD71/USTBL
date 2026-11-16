@@ -6,10 +6,11 @@ use crate::tasks::streams::desc::PStatus;
 use crate::tasks::{USTBLFuture, *};
 use async_speed_limit::Limiter;
 use flume::{Receiver as FlumeReceiver, Sender as FlumeSender};
-use glob::glob;
 use log::info;
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::fs;
 use std::future::Future;
+use std::path::Path;
 use std::sync::atomic::AtomicU32;
 use std::sync::{Arc, Mutex, RwLock};
 use std::vec::Vec;
@@ -47,6 +48,37 @@ pub fn download_concurrency(auto_concurrent: bool, concurrent_count: usize) -> u
   }
 }
 
+fn saved_task_id(path: &Path) -> Option<u32> {
+  path
+    .file_name()
+    .and_then(|name| name.to_str())
+    .and_then(|name| name.strip_prefix("task-"))
+    .and_then(|name| name.strip_suffix(".json"))
+    .and_then(|id| id.parse().ok())
+}
+
+pub fn max_saved_task_id(cache: &Path) -> Option<u32> {
+  fs::read_dir(crate::tasks::streams::desc::journal_dir(cache))
+    .ok()?
+    .filter_map(|entry| entry.ok())
+    .filter_map(|entry| saved_task_id(&entry.path()))
+    .max()
+}
+
+fn remove_legacy_task_records(cache: &Path) {
+  let Ok(entries) = fs::read_dir(cache) else {
+    return;
+  };
+  for entry in entries.filter_map(|entry| entry.ok()) {
+    let path = entry.path();
+    if path.is_file() && saved_task_id(&path).is_some() {
+      if let Err(error) = fs::remove_file(&path) {
+        log::warn!("Could not remove legacy task descriptor {path:?}: {error}");
+      }
+    }
+  }
+}
+
 impl TaskMonitor {
   pub fn new(app_handle: AppHandle) -> Self {
     let config = retrieve_launcher_config(app_handle.clone()).unwrap();
@@ -75,47 +107,74 @@ impl TaskMonitor {
     }
   }
 
-  #[allow(clippy::manual_flatten)]
   pub async fn load_saved_tasks(&self) {
     let cache_dir = retrieve_launcher_config(self.app_handle.clone())
       .unwrap()
       .download
       .cache
       .directory;
-
-    for entry in glob(&format!(
-      "{}/descriptors/task_*.json",
-      cache_dir.to_str().unwrap()
-    ))
-    .unwrap()
-    {
-      if let Ok(task) = entry {
-        match PTaskDesc::load(&task.clone()) {
-          Ok(desc) => {
-            let task_id = desc.task_id;
-            let task_group = desc.task_group.clone();
-            match desc.payload {
-              // The job behind an upload died with the last session.
-              PTaskParam::Upload(_) => {}
-              PTaskParam::Download(_) => {
-                let task = DownloadTask::from_descriptor(
-                  self.app_handle.clone(),
-                  desc,
-                  Duration::from_secs(1),
-                  false,
-                );
-                let (f, p_handle) = task
-                  .future(self.app_handle.clone(), self.download_rate_limiter.clone())
-                  .await
-                  .unwrap();
-                self.enqueue_task(task_id, task_group, f, p_handle).await;
-              }
-            }
-          }
-          Err(_) => {
-            info!("Failed to load task descriptor: {}", task.display());
+    remove_legacy_task_records(&cache_dir);
+    let mut groups = BTreeMap::<String, Vec<PTaskDesc>>::new();
+    let entries = match fs::read_dir(crate::tasks::streams::desc::journal_dir(&cache_dir)) {
+      Ok(entries) => entries,
+      Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+      Err(error) => {
+        log::warn!("Could not scan task journals: {error}");
+        return;
+      }
+    };
+    for entry in entries.filter_map(|entry| entry.ok()) {
+      let path = entry.path();
+      if saved_task_id(&path).is_none() {
+        continue;
+      }
+      match PTaskDesc::load(&path) {
+        Ok(desc) if desc.status.is_terminated() => {
+          let _ = fs::remove_file(path);
+        }
+        Ok(desc) => {
+          if let Some(group) = desc.task_group.clone() {
+            groups.entry(group).or_default().push(desc);
           }
         }
+        Err(_) => info!("Failed to load task descriptor: {}", path.display()),
+      }
+    }
+
+    for (group, descriptors) in groups {
+      // A group with any non-download entry is not independently resumable.
+      if descriptors
+        .iter()
+        .any(|desc| !matches!(desc.payload, PTaskParam::Download(_)))
+      {
+        continue;
+      }
+      let mut restored = false;
+      for desc in descriptors {
+        let task_id = desc.task_id;
+        let task_group = desc.task_group.clone();
+        let reset = matches!(&desc.payload, PTaskParam::Download(param) if crate::tasks::download::restart_from_scratch(param));
+        let task = DownloadTask::from_descriptor(
+          self.app_handle.clone(),
+          desc,
+          Duration::from_secs(1),
+          reset,
+        );
+        match task
+          .future(self.app_handle.clone(), self.download_rate_limiter.clone())
+          .await
+        {
+          Ok((future, handle)) => {
+            self.enqueue_task(task_id, task_group, future, handle).await;
+            restored = true;
+          }
+          Err(error) => log::warn!("Could not restore task {task_id}: {error:?}"),
+        }
+      }
+      if restored {
+        // The background loop starts after this scan, so no restored download
+        // can run before its group is put into the paused state.
+        self.stop_progressive_task_group(group);
       }
     }
   }
@@ -124,6 +183,13 @@ impl TaskMonitor {
     self
       .id_counter
       .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+  }
+
+  pub fn advance_id_counter(&self, maximum: u32) {
+    self.id_counter.fetch_max(
+      maximum.saturating_add(1),
+      std::sync::atomic::Ordering::SeqCst,
+    );
   }
 
   pub async fn enqueue_task<T>(
@@ -647,6 +713,9 @@ impl TaskMonitor {
     if let Some(group) = group_map.get(&task_group) {
       // Only delete non-active groups (not Started/Stopped); backend status is authoritative for race-condition protection.
       if group.status != GEventStatus::Started && group.status != GEventStatus::Stopped {
+        for handle in group.phs.values() {
+          handle.read().unwrap().remove_saved();
+        }
         group_map.remove(&task_group);
       }
     }
@@ -679,6 +748,9 @@ impl TaskMonitor {
     for name in task_groups {
       if let Some(group) = groups.remove(name) {
         for id in group.phs.keys() {
+          if let Some(handle) = handles.get(id) {
+            handle.read().unwrap().remove_saved();
+          }
           handles.remove(id);
           jobs.remove(id);
         }
@@ -784,5 +856,25 @@ mod tests {
     for group in ["modpack-publish?pack@1", "game-client?pack@1"] {
       assert!(!super::is_modpack_transaction(group));
     }
+  }
+
+  #[test]
+  fn startup_cleanup_removes_only_legacy_records_and_ids_come_from_the_new_journal() {
+    let dir = crate::storage::test_support::TempDir::new("task-startup-cleanup");
+    fs::write(dir.0.join("task-100.json"), b"legacy").unwrap();
+    fs::write(dir.0.join("task-not-a-number.json"), b"keep").unwrap();
+    fs::write(dir.0.join("keep.json"), b"keep").unwrap();
+    let journal = crate::tasks::streams::desc::journal_dir(&dir.0);
+    fs::create_dir_all(&journal).unwrap();
+    fs::write(journal.join("task-7.json"), b"journal").unwrap();
+    fs::write(journal.join("task-11.json"), b"journal").unwrap();
+
+    remove_legacy_task_records(&dir.0);
+
+    assert!(!dir.0.join("task-100.json").exists());
+    assert!(dir.0.join("task-not-a-number.json").exists());
+    assert!(dir.0.join("keep.json").exists());
+    assert!(journal.join("task-11.json").exists());
+    assert_eq!(max_saved_task_id(&dir.0), Some(11));
   }
 }

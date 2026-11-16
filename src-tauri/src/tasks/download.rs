@@ -49,6 +49,12 @@ pub struct DownloadParam {
   pub transfer_options: DownloadTransferOptions,
 }
 
+/// Only a file with a known hash may retain its restart offset. Same-process
+/// pause/resume does not call this path and keeps its existing behavior.
+pub(crate) fn restart_from_scratch(param: &DownloadParam) -> bool {
+  param.sha1.is_none()
+}
+
 #[derive(Serialize, Deserialize, Clone, Debug, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase", default)]
 pub struct DownloadTransferOptions {
@@ -283,17 +289,17 @@ impl DownloadTask {
       .download
       .cache
       .directory;
-    DownloadTask {
+    let task = DownloadTask {
       p_handle: PTaskHandle::new(
         PDesc::<PTaskParam>::new(
           task_id,
           task_group.clone(),
           0,
           PTaskParam::Download(param.clone()),
-          PStatus::InProgress,
+          PStatus::Waiting,
         ),
         Duration::from_secs(1),
-        cache_dir.clone().join(format!("task-{task_id}.json")),
+        crate::tasks::streams::desc::journal_path(&cache_dir, task_id),
         Reporter::new(
           0,
           Duration::from_secs(1),
@@ -303,7 +309,12 @@ impl DownloadTask {
       param: param.clone(),
       dest_path: cache_dir.clone().join(param.dest.clone()),
       report_interval,
+    };
+    // Queueing must be recoverable too, not only tasks that already started.
+    if let Err(error) = task.p_handle.desc.save(&task.p_handle.path) {
+      log::error!("Could not create task journal {task_id}: {error}");
     }
+    task
   }
 
   pub fn from_descriptor(
@@ -323,7 +334,7 @@ impl DownloadTask {
       .cache
       .directory;
     let task_id = desc.task_id;
-    let path = cache_dir.join(format!("task-{task_id}.json"));
+    let path = crate::tasks::streams::desc::journal_path(&cache_dir, task_id);
     DownloadTask {
       p_handle: PTaskHandle::new(
         if reset {
@@ -444,7 +455,7 @@ impl DownloadTask {
     ensure_complete(on_disk, outcome?)?;
 
     if let Some(sha1) = &param.sha1 {
-      if let Err(error) = validate_sha1(param.dest.clone(), sha1.clone()) {
+      if let Err(error) = validate_sha1(dest_path.to_path_buf(), sha1.clone()) {
         // A completed but invalid file cannot be resumed.
         return Err(AttemptError::from_scratch(error.0));
       }
@@ -950,6 +961,14 @@ mod tests {
     .unwrap();
 
     assert_eq!(param.transfer_options, DownloadTransferOptions::default());
+  }
+
+  #[test]
+  fn only_hashless_downloads_restart_from_zero() {
+    let mut param = download_param(Url::parse("https://example.com/file.jar").unwrap());
+    assert!(super::restart_from_scratch(&param));
+    param.sha1 = Some("0123456789abcdef".into());
+    assert!(!super::restart_from_scratch(&param));
   }
 
   #[test]

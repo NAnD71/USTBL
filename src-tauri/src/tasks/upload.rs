@@ -40,7 +40,7 @@ pub fn upload_handle(
       PStatus::Waiting,
     ),
     Duration::from_secs(1),
-    cache_dir.join(format!("task-{task_id}.json")),
+    crate::tasks::streams::desc::journal_path(&cache_dir, task_id),
     Reporter::new(
       total,
       Duration::from_secs(1),

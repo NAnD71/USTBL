@@ -1,9 +1,43 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::sync::LazyLock;
 
 use serde::{Deserialize, Serialize};
 
 use crate::storage::{write_atomic, Durability};
 use crate::tasks::events::GEventStatus;
+
+pub const JOURNAL_SCHEMA: u32 = 1;
+static SESSION_ID: LazyLock<String> = LazyLock::new(|| uuid::Uuid::new_v4().to_string());
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct JournalRecord<'a, T>
+where
+  T: Clone + Serialize,
+{
+  schema_version: u32,
+  session_id: &'static str,
+  desc: &'a PDesc<T>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct OwnedJournalRecord<T>
+where
+  T: Clone + Serialize,
+{
+  schema_version: u32,
+  session_id: String,
+  desc: PDesc<T>,
+}
+
+pub fn journal_dir(cache: &Path) -> PathBuf {
+  cache.join("task-journal")
+}
+
+pub fn journal_path(cache: &Path, task_id: u32) -> PathBuf {
+  journal_dir(cache).join(format!("task-{task_id}.json"))
+}
 
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -77,16 +111,34 @@ where
     }
   }
   pub fn save(&self, path: &PathBuf) -> std::io::Result<()> {
-    let bytes = serde_json::to_vec(self)?;
+    let record = JournalRecord {
+      schema_version: JOURNAL_SCHEMA,
+      session_id: SESSION_ID.as_str(),
+      desc: self,
+    };
+    let bytes = serde_json::to_vec(&record)?;
+    if let Some(parent) = path.parent() {
+      std::fs::create_dir_all(parent)?;
+    }
     // Rewritten about once a second and regenerable; the rename already prevents truncation,
     // so skip the sync.
     write_atomic(path, &bytes, Durability::NoSync)
   }
 
   pub fn load(path: &PathBuf) -> std::io::Result<Self> {
-    let file = std::fs::File::open(path)?;
-    let desc: Self = serde_json::from_reader(file)?;
-    Ok(desc)
+    let bytes = std::fs::read(path)?;
+    if let Ok(record) = serde_json::from_slice::<OwnedJournalRecord<T>>(&bytes) {
+      if record.schema_version != JOURNAL_SCHEMA || record.session_id.is_empty() {
+        return Err(std::io::Error::new(
+          std::io::ErrorKind::InvalidData,
+          "unsupported task journal record",
+        ));
+      }
+      return Ok(record.desc);
+    }
+    // Legacy descriptors were bare PDesc values. They are never scanned from
+    // the new journal directory, but remain readable for compatibility tests.
+    Ok(serde_json::from_slice(&bytes)?)
   }
 
   pub fn increment_progress(&mut self, size: i64) {
@@ -138,7 +190,7 @@ where
 
 #[cfg(test)]
 mod tests {
-  use super::{PDesc, PStatus};
+  use super::{journal_path, PDesc, PStatus, JOURNAL_SCHEMA};
   use crate::storage::test_support::TempDir;
   use serde::ser::SerializeStruct;
   use serde::{Deserialize, Serialize, Serializer};
@@ -155,6 +207,33 @@ mod tests {
       state.serialize_field("first", &1)?;
       Err(<S::Error as serde::ser::Error>::custom("injected failure"))
     }
+  }
+
+  #[test]
+  fn journal_records_round_trip_and_legacy_bare_descriptors_remain_readable() {
+    let dir = TempDir::new("desc-journal");
+    let path = journal_path(&dir.0, 7);
+    let desc = PDesc::new(
+      7,
+      Some("mods".into()),
+      12,
+      "payload".to_string(),
+      PStatus::Stopped,
+    );
+    desc.save(&path).unwrap();
+
+    let value: serde_json::Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
+    assert_eq!(value["schemaVersion"], JOURNAL_SCHEMA);
+    assert!(value["sessionId"].as_str().is_some_and(|id| !id.is_empty()));
+    let loaded = PDesc::<String>::load(&path).unwrap();
+    assert_eq!((loaded.task_id, loaded.current), (7, 0));
+    assert_eq!(loaded.task_group.as_deref(), Some("mods"));
+    assert_eq!(loaded.payload, "payload");
+    assert!(loaded.status == PStatus::Stopped);
+
+    let legacy = dir.0.join("legacy.json");
+    fs::write(&legacy, serde_json::to_vec(&desc).unwrap()).unwrap();
+    assert_eq!(PDesc::<String>::load(&legacy).unwrap().payload, "payload");
   }
 
   #[test]
