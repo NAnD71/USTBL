@@ -12,7 +12,9 @@ use crate::launcher_config::models::{
   GameDirectory, JavaInfo, LauncherConfig, LauncherConfigError, VersionMetaInfo,
 };
 use crate::storage::Storage;
-use crate::tasks::{commands::schedule_progressive_task_group, monitor::TaskMonitor};
+use crate::tasks::{
+  commands::schedule_progressive_task_group, monitor::TaskMonitor, streams::desc::PDesc, PTaskParam,
+};
 use crate::utils::fs::{generate_unique_filename, get_subdirectories};
 use crate::utils::string::camel_to_snake_case;
 use serde_json::{json, Value};
@@ -309,6 +311,61 @@ pub async fn check_game_directory(app: AppHandle, dir: String) -> USTBLResult<St
   Ok("".to_string())
 }
 
+fn has_reparse_point(path: &Path) -> bool {
+  fs::symlink_metadata(path)
+    .map(|metadata| metadata.file_type().is_symlink())
+    .unwrap_or(false)
+}
+
+fn safe_download_path(root: &Path, dest: &Path) -> bool {
+  if has_reparse_point(root) {
+    return false;
+  }
+  let Ok(relative) = dest.strip_prefix(root) else {
+    return false;
+  };
+  let mut current = root.to_path_buf();
+  for component in relative.components() {
+    current.push(component);
+    if has_reparse_point(&current) {
+      return false;
+    }
+  }
+  true
+}
+
+fn delete_downloaded_file(root: &Path, dest: &Path) -> std::io::Result<()> {
+  if !safe_download_path(root, dest) {
+    return Ok(());
+  }
+  match fs::remove_file(dest) {
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(()),
+    other => other,
+  }
+}
+
+fn clear_cache_records(cache_path: &Path) -> std::io::Result<()> {
+  if has_reparse_point(cache_path) {
+    return Ok(());
+  }
+  for entry in fs::read_dir(cache_path)? {
+    let path = entry?.path();
+    let Some(name) = path.file_name().map(|name| name.to_string_lossy()) else {
+      continue;
+    };
+    if !name.starts_with("task-") || !name.ends_with(".json") || has_reparse_point(&path) {
+      continue;
+    }
+    if let Ok(desc) = PDesc::<PTaskParam>::load(&path) {
+      if let PTaskParam::Download(param) = desc.payload {
+        delete_downloaded_file(cache_path, &param.dest)?;
+      }
+    }
+    fs::remove_file(path)?;
+  }
+  Ok(())
+}
+
 #[tauri::command]
 pub async fn clear_download_cache(app: AppHandle) -> USTBLResult<()> {
   let launcher_config = app.state::<Mutex<LauncherConfig>>();
@@ -323,9 +380,7 @@ pub async fn clear_download_cache(app: AppHandle) -> USTBLResult<()> {
     config.download.cache.directory.clone()
   };
 
-  std::fs::remove_dir_all(&cache_path).map_err(|_| LauncherConfigError::FileDeletionFailed)?;
-  // recreate the cache directory
-  std::fs::create_dir_all(&cache_path).map_err(|_| LauncherConfigError::FileDeletionFailed)?;
+  clear_cache_records(&cache_path).map_err(|_| LauncherConfigError::FileDeletionFailed)?;
 
   Ok(())
 }
@@ -389,5 +444,77 @@ pub async fn install_launcher_update(
   #[cfg(target_os = "linux")]
   {
     Ok(()) // No supported
+  }
+}
+
+#[cfg(test)]
+mod download_cache_tests {
+  use super::*;
+  use crate::storage::test_support::TempDir;
+  use crate::tasks::download::{DownloadParam, DownloadTransferOptions};
+  use crate::tasks::streams::desc::PStatus;
+
+  fn write_record(path: &Path, dest: PathBuf) {
+    let param = DownloadParam {
+      src: tauri::Url::parse("https://example.com/file.jar").unwrap(),
+      dest,
+      filename: None,
+      sha1: None,
+      custom_headers: None,
+      transfer_options: DownloadTransferOptions::default(),
+    };
+    PDesc::new(1, None, 0, PTaskParam::Download(param), PStatus::Completed)
+      .save(&path.to_path_buf())
+      .unwrap();
+  }
+
+  #[test]
+  fn only_recorded_downloads_and_records_are_removed() {
+    let dir = TempDir::new("cache-clean");
+    let dest = dir.0.join("file.jar");
+    let record = dir.0.join("task-1.json");
+    let other = dir.0.join("keep.txt");
+    fs::write(&dest, b"jar").unwrap();
+    fs::write(&other, b"keep").unwrap();
+    write_record(&record, dest.clone());
+    clear_cache_records(&dir.0).unwrap();
+    assert!(!dest.exists());
+    assert!(!record.exists());
+    assert!(other.exists());
+  }
+
+  #[test]
+  fn a_record_cannot_delete_a_file_outside_the_cache() {
+    let dir = TempDir::new("cache-outside");
+    let outside = TempDir::new("cache-outside-file");
+    let dest = outside.0.join("outside.jar");
+    let record = dir.0.join("task-2.json");
+    fs::write(&dest, b"outside").unwrap();
+    write_record(&record, dest.clone());
+    clear_cache_records(&dir.0).unwrap();
+    assert!(dest.exists());
+    assert!(!record.exists());
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn a_cache_root_reparse_point_is_not_followed() {
+    let actual = TempDir::new("cache-actual");
+    let link = std::env::temp_dir().join(format!("cache-link-{}", uuid::Uuid::new_v4()));
+    let status = std::process::Command::new("cmd")
+      .args(["/c", "mklink", "/J"])
+      .arg(&link)
+      .arg(&actual.0)
+      .status()
+      .unwrap();
+    if !status.success() {
+      println!("cannot create a junction for this test");
+      return;
+    }
+    let record = link.join("task-3.json");
+    write_record(&record, actual.0.join("file.jar"));
+    clear_cache_records(&link).unwrap();
+    assert!(record.exists());
+    let _ = std::fs::remove_dir(link);
   }
 }

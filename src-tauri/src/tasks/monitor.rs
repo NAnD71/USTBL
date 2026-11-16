@@ -244,6 +244,30 @@ impl TaskMonitor {
     }
   }
 
+  /// Mark a group whose downloads completed but whose final file replacement failed.
+  pub fn fail_group(&self, group: &str) {
+    if let Some(current) = self.group_map.write().unwrap().get_mut(group) {
+      current.status = GEventStatus::Failed;
+    }
+    GEvent::emit_group_failed(&self.app_handle, group);
+  }
+
+  /// Wait until a task group reaches a terminal state. A removed group counts as cancelled.
+  pub async fn wait_for_group(&self, group: &str) -> GEventStatus {
+    loop {
+      let status = self
+        .group_map
+        .read()
+        .ok()
+        .and_then(|groups| groups.get(group).map(|group| group.status.clone()));
+      match status {
+        Some(GEventStatus::Started) => tokio::time::sleep(Duration::from_millis(100)).await,
+        Some(status) => return status,
+        None => return GEventStatus::Cancelled,
+      }
+    }
+  }
+
   /// Puts tasks that a job drives itself on the task list as a group.
   pub fn register_job_group(&self, task_group: &str, handles: &[Arc<RwLock<PTaskHandle>>]) {
     self.register_job_group_inner(task_group, handles, None);

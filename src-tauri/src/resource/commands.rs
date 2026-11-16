@@ -27,6 +27,8 @@ use crate::tasks::commands::schedule_progressive_task_group;
 use crate::tasks::download::DownloadParam;
 use crate::tasks::PTaskParam;
 use std::collections::HashMap;
+use std::path::{Path, PathBuf};
+use std::pin::Pin;
 use std::sync::Mutex;
 use tauri::{AppHandle, Manager, State};
 use tauri_plugin_http::reqwest;
@@ -190,6 +192,35 @@ pub async fn fetch_remote_resource_by_local(
   }
 }
 
+fn new_mod_download_path(path: &Path) -> PathBuf {
+  let name = path
+    .file_name()
+    .map(|name| name.to_string_lossy())
+    .unwrap_or_default();
+  path.with_file_name(format!(".{name}.new"))
+}
+
+fn finalize_mod_file(query: &ModUpdateQuery, mods_dir: &Path) -> std::io::Result<()> {
+  let new_file_path = mods_dir.join(&query.file_name);
+  let temporary = new_mod_download_path(&new_file_path);
+  if query.old_file_path != new_file_path.to_string_lossy().to_string() {
+    let old_backup_path = format!("{}.old", query.old_file_path);
+    std::fs::rename(&query.old_file_path, &old_backup_path)?;
+    if let Err(error) = std::fs::rename(&temporary, &new_file_path) {
+      // A failed replacement must not leave the only old copy at a new name.
+      let _ = std::fs::rename(old_backup_path, &query.old_file_path);
+      return Err(error);
+    }
+    return Ok(());
+  }
+  std::fs::rename(temporary, new_file_path)
+}
+
+fn discard_mod_download(query: &ModUpdateQuery, mods_dir: &Path) {
+  let temporary = new_mod_download_path(&mods_dir.join(&query.file_name));
+  let _ = std::fs::remove_file(temporary);
+}
+
 #[tauri::command]
 pub async fn update_mods(
   app: AppHandle,
@@ -208,7 +239,7 @@ pub async fn update_mods(
 
   let mut download_tasks = Vec::new();
   for query in &queries {
-    let file_path = mods_dir.join(&query.file_name);
+    let file_path = new_mod_download_path(&mods_dir.join(&query.file_name));
     let download_param = DownloadParam {
       src: url::Url::parse(&query.url).map_err(|_| ResourceError::ParseError)?,
       dest: file_path,
@@ -220,20 +251,24 @@ pub async fn update_mods(
     download_tasks.push(PTaskParam::Download(download_param));
   }
 
-  schedule_progressive_task_group(app, "mod-update".to_string(), download_tasks, true).await?;
-
-  for query in &queries {
-    let old_file_path = &query.old_file_path;
-    let new_file_path = mods_dir.join(&query.file_name);
-
-    if old_file_path != &new_file_path.to_string_lossy().to_string() {
-      let old_backup_path = format!("{}.old", old_file_path);
-      if let Err(e) = std::fs::rename(old_file_path, &old_backup_path) {
-        log::error!("Failed to rename old mod file: {}", e);
-        return Err(ResourceError::FileOperationError.into());
+  let group =
+    schedule_progressive_task_group(app.clone(), "mod-update".to_string(), download_tasks, true)
+      .await?;
+  let app_for_finish = app.clone();
+  tauri::async_runtime::spawn(async move {
+    let monitor = app_for_finish.state::<Pin<Box<crate::tasks::monitor::TaskMonitor>>>();
+    let status = monitor.wait_for_group(&group.task_group).await;
+    for query in &queries {
+      if status == crate::tasks::events::GEventStatus::Completed {
+        if let Err(error) = finalize_mod_file(query, &mods_dir) {
+          log::error!("Failed to replace the old mod file: {error}");
+          monitor.fail_group(&group.task_group);
+        }
+      } else {
+        discard_mod_download(query, &mods_dir);
       }
     }
-  }
+  });
 
   Ok(())
 }
@@ -252,5 +287,59 @@ pub async fn fetch_remote_resource_by_id(
       Ok(fetch_remote_resource_by_id_curseforge(&app, &resource_id).await?)
     }
     _ => Err(ResourceError::NoDownloadApi.into()),
+  }
+}
+
+#[cfg(test)]
+mod mod_update_tests {
+  use super::{discard_mod_download, finalize_mod_file};
+  use crate::resource::models::ModUpdateQuery;
+  use crate::storage::test_support::TempDir;
+  use std::fs;
+
+  fn query(root: &std::path::Path, old: &str) -> ModUpdateQuery {
+    ModUpdateQuery {
+      file_name: "new.jar".into(),
+      old_file_path: root.join(old).to_string_lossy().to_string(),
+      sha1: String::new(),
+      url: "https://example.com/new.jar".into(),
+    }
+  }
+
+  #[test]
+  fn a_same_path_mod_is_replaced_only_at_finalize() {
+    let dir = TempDir::new("mod-finalize-same");
+    let target = dir.0.join("new.jar");
+    let temp = dir.0.join(".new.jar.new");
+    fs::write(&target, b"old").unwrap();
+    fs::write(&temp, b"new").unwrap();
+    finalize_mod_file(&query(&dir.0, "new.jar"), &dir.0).unwrap();
+    assert_eq!(fs::read(&target).unwrap(), b"new");
+    assert!(!dir.0.join("new.jar.old").exists());
+  }
+
+  #[test]
+  fn a_renamed_mod_keeps_the_old_file_as_backup() {
+    let dir = TempDir::new("mod-finalize-rename");
+    let old = dir.0.join("old.jar");
+    let temp = dir.0.join(".new.jar.new");
+    fs::write(&old, b"old").unwrap();
+    fs::write(&temp, b"new").unwrap();
+    finalize_mod_file(&query(&dir.0, "old.jar"), &dir.0).unwrap();
+    assert_eq!(fs::read(dir.0.join("old.jar.old")).unwrap(), b"old");
+    assert_eq!(fs::read(dir.0.join("new.jar")).unwrap(), b"new");
+  }
+
+  #[test]
+  fn a_failed_final_rename_restores_the_old_file() {
+    let dir = TempDir::new("mod-finalize-rollback");
+    let old = dir.0.join("old.jar");
+    let target = dir.0.join("new.jar");
+    let temp = dir.0.join(".new.jar.new");
+    fs::write(&old, b"old").unwrap();
+    fs::write(&temp, b"new").unwrap();
+    fs::create_dir(&target).unwrap();
+    assert!(finalize_mod_file(&query(&dir.0, "old.jar"), &dir.0).is_err());
+    assert_eq!(fs::read(&old).unwrap(), b"old");
   }
 }
