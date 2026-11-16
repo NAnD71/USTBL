@@ -138,4 +138,3 @@ tauri-plugin-window-state = "2.4.1"
 [patch.crates-io]
 glib = { path = "libs/glib" }
 mc-server-status = { path = "libs/mc-server-status" }
-phf_generator = { path = "libs/phf_generator" }
