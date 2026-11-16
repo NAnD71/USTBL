@@ -45,23 +45,14 @@ pub fn store(root: &Path, file: &BaselineFile, bytes: &[u8]) -> io::Result<()> {
   result
 }
 
-/// Cache text files from the just-committed baseline and remove stale entries.
-///
-/// An entry whose sha1 a baseline text file references is kept even when the
-/// file on disk differs from it: the update may have written merged or kept
-/// local content, while the base was cached separately. Only entries the new
-/// baseline no longer references are removed. A dormant entry keeps its copy
-/// too; a disabled file reads from its `.disabled` variant.
-pub fn sync(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
+/// Cache matching text files without deleting the previous baseline copies.
+/// A disabled file reads from its `.disabled` variant.
+pub fn cache(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
   let dir = base_dir(root);
   fs::create_dir_all(&dir).at_in(&dir, root)?;
-  let mut referenced = std::collections::BTreeSet::new();
   for file in files {
     if file.sha1.is_empty() {
       continue;
-    }
-    if is_text_path(&file.path, &[]) && base_path(root, &file.sha1).exists() {
-      referenced.insert(file.sha1.clone());
     }
     let variant = if file.disabled {
       format!(
@@ -83,7 +74,6 @@ pub fn sync(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
     if actual != file.sha1 {
       continue;
     }
-    referenced.insert(file.sha1.clone());
     let target = base_path(root, &file.sha1);
     if !target.exists() {
       let temporary = target.with_extension("tmp");
@@ -91,6 +81,18 @@ pub fn sync(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
       fs::rename(&temporary, &target).at_in(&target, root)?;
     }
   }
+  Ok(())
+}
+
+/// Remove copies no longer referenced by a committed baseline.
+pub fn prune(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
+  let dir = base_dir(root);
+  fs::create_dir_all(&dir).at_in(&dir, root)?;
+  let referenced = files
+    .iter()
+    .filter(|file| !file.sha1.is_empty() && is_text_path(&file.path, &[]))
+    .map(|file| file.sha1.clone())
+    .collect::<std::collections::BTreeSet<_>>();
   for entry in fs::read_dir(&dir).at_in(&dir, root)? {
     let entry = entry.at_in(&dir, root)?;
     if entry.file_type().at_in(&entry.path(), root)?.is_file()
@@ -100,6 +102,11 @@ pub fn sync(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
     }
   }
   Ok(())
+}
+
+pub fn sync(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
+  cache(root, files)?;
+  prune(root, files)
 }
 
 #[cfg(test)]

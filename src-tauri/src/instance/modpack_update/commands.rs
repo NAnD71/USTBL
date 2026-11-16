@@ -1837,9 +1837,12 @@ async fn light_check(app: &AppHandle, target: &Target) -> USTBLResult<LightCheck
 
 /// Drop the identity and baseline; the game files and isolation stay.
 async fn unlink_origin(app: &AppHandle, instance_id: &str, target: &Target) -> USTBLResult<()> {
-  ensure_unlink_safe(&target.root)?;
-  fs::remove_file(target.root.join(BASELINE_FILE_NAME)).ok();
-  release::remove(&target.root).ok();
+  let _guard = ensure_unlink_safe(&target.root)?;
+  match fs::remove_file(target.root.join(BASELINE_FILE_NAME)) {
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+    result => result?,
+  }
+  release::remove(&target.root)?;
   super::ignores::remove(&target.root);
   plan_cache::clear_plan_cache(&target.root);
   store_instance(app, instance_id, |instance| {

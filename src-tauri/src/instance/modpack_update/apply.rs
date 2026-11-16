@@ -18,7 +18,7 @@ use crate::instance::helpers::modpack::baseline::{
 use crate::instance::helpers::modpack::multimc::snapshot::{
   COMPONENTS_FILE_NAME, SNAPSHOT_FILE_NAME,
 };
-use crate::instance::models::misc::{InstanceError, InstanceOrigin};
+use crate::instance::models::misc::{Instance, InstanceError, InstanceOrigin};
 use crate::tasks::download::DownloadParam;
 use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
@@ -260,6 +260,51 @@ pub struct UpdateRequest {
   pub plan_hash: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct LocalFileState {
+  occupied: bool,
+  key: Option<FileKey>,
+}
+
+type OperationStates = BTreeMap<String, (LocalFileState, LocalFileState)>;
+
+fn local_file_state(path: &Path) -> io::Result<LocalFileState> {
+  let metadata = match fs::metadata(path) {
+    Ok(metadata) => metadata,
+    Err(error) if error.kind() == io::ErrorKind::NotFound => {
+      return Ok(LocalFileState {
+        occupied: false,
+        key: None,
+      });
+    }
+    Err(error) => return Err(tag(error, path, None)),
+  };
+  let key = if metadata.is_file() {
+    let (sha1, size) = hash_file(path)?;
+    Some(FileKey { sha1, size })
+  } else {
+    None
+  };
+  Ok(LocalFileState {
+    occupied: true,
+    key,
+  })
+}
+
+fn operation_states(root: &Path, operations: &[Operation]) -> io::Result<OperationStates> {
+  let mut states = BTreeMap::new();
+  for operation in operations {
+    states.insert(
+      operation.path.clone(),
+      (
+        local_file_state(&root.join(&operation.path))?,
+        local_file_state(&root.join(disabled_path(&operation.path)))?,
+      ),
+    );
+  }
+  Ok(states)
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Recovery {
   Nothing,
@@ -273,6 +318,7 @@ fn active_updates() -> &'static Mutex<HashSet<PathBuf>> {
 }
 
 /// Holds the right to modify one instance; at most one update runs at a time.
+#[derive(Debug)]
 pub struct UpdateGuard(PathBuf);
 
 impl UpdateGuard {
@@ -324,6 +370,16 @@ fn read_journal(root: &Path) -> io::Result<Option<Journal>> {
     Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
     Err(error) => Err(tag(error, &path, Some(root))),
   }
+}
+
+fn current_origin_version(root: &Path) -> Option<String> {
+  let bytes = fs::read(root.join(INSTANCE_CONFIG_FILE)).ok()?;
+  let instance = serde_json::from_slice::<Instance>(&bytes).ok()?;
+  instance.origin.map(|origin| origin.version_id)
+}
+
+fn origin_has_committed(root: &Path, journal: &Journal) -> bool {
+  current_origin_version(root).as_deref() == Some(journal.to_version.as_str())
 }
 
 /// Rename `from` to `to`. A failure names `from`: that is the file a scanner
@@ -485,29 +541,92 @@ fn roll_back_from(root: &Path, backup: &Path, journal: &Journal) -> io::Result<(
   Ok(())
 }
 
-/// Drop the staging area and keep this update's backup for the next one.
-fn finish_cleanup(root: &Path, keep_backup: bool) {
-  let _ = fs::remove_dir_all(staging_dir(root));
-  let _ = fs::remove_file(staging_meta_path(root));
-  let _ = fs::remove_dir_all(components_dir(root));
-  let _ = fs::remove_dir_all(update_dir(root).join("remote"));
-  if keep_backup && backup_dir(root).exists() {
-    let _ = fs::remove_dir_all(last_backup_dir(root));
-    let _ = fs::rename(backup_dir(root), last_backup_dir(root));
-    // The journal says what the backup holds, which rolling back needs.
-    let _ = fs::rename(
-      journal_path(root),
-      last_backup_dir(root).join(LAST_JOURNAL_NAME),
-    );
-  } else {
-    let _ = fs::remove_dir_all(backup_dir(root));
+/// Best-effort cleanup never changes an already committed update into a failure.
+fn note_cleanup(action: &str, result: io::Result<()>) -> bool {
+  match result {
+    Ok(()) => true,
+    Err(error) if error.kind() == io::ErrorKind::NotFound => true,
+    Err(error) => {
+      log::warn!("modpack update cleanup failed ({action}): {error}");
+      false
+    }
   }
-  let _ = fs::remove_file(journal_path(root));
+}
+
+/// Drop temporary files and keep this update's backup only with its journal.
+fn finish_cleanup(root: &Path, keep_backup: bool) {
+  for path in [
+    staging_dir(root),
+    components_dir(root),
+    update_dir(root).join("remote"),
+  ] {
+    if path.exists() {
+      let _ = note_cleanup("remove temporary directory", fs::remove_dir_all(&path));
+    }
+  }
+  let _ = note_cleanup(
+    "remove staging metadata",
+    fs::remove_file(staging_meta_path(root)),
+  );
+
+  let trash = update_dir(root).join("trash");
+  if trash.exists() {
+    let _ = note_cleanup(
+      "remove an earlier trash directory",
+      fs::remove_dir_all(&trash),
+    );
+  }
+  let backup = backup_dir(root);
+  let last = last_backup_dir(root);
+  let journal = journal_path(root);
+  if keep_backup && backup.exists() {
+    // Move an older backup out of the way instead of deleting it before the
+    // current backup is known to fit. A failed rotation gives up one rollback.
+    let ready = if last.exists() {
+      let destination = trash.join(uuid::Uuid::new_v4().to_string());
+      note_cleanup("create the trash directory", fs::create_dir_all(&trash))
+        && note_cleanup("retire the previous backup", fs::rename(&last, destination))
+    } else {
+      true
+    };
+    let moved = ready && note_cleanup("keep the current backup", fs::rename(&backup, &last));
+    if moved {
+      if !note_cleanup(
+        "attach the current journal to its backup",
+        fs::rename(&journal, last.join(LAST_JOURNAL_NAME)),
+      ) {
+        let _ = note_cleanup(
+          "discard an unattached current journal",
+          fs::remove_file(&journal),
+        );
+      }
+    } else {
+      // Never offer files from one update with another update's journal.
+      if last.exists() {
+        let _ = note_cleanup(
+          "invalidate an unmatched previous backup",
+          fs::remove_file(last.join(LAST_JOURNAL_NAME)),
+        );
+      }
+      let _ = note_cleanup(
+        "finish without a rollback backup",
+        fs::remove_file(&journal),
+      );
+    }
+  } else {
+    if backup.exists() {
+      let _ = note_cleanup("remove a rolled-back backup", fs::remove_dir_all(backup));
+    }
+    let _ = note_cleanup("remove the completed journal", fs::remove_file(journal));
+  }
 }
 
 /// Whether the previous update can still be rolled back.
 pub fn can_roll_back_last(root: &Path) -> bool {
-  last_backup_dir(root).join(LAST_JOURNAL_NAME).is_file()
+  fs::read(last_backup_dir(root).join(LAST_JOURNAL_NAME))
+    .ok()
+    .and_then(|bytes| serde_json::from_slice::<Journal>(&bytes).ok())
+    .is_some_and(|journal| origin_has_committed(root, &journal))
 }
 
 /// Put the instance back the way it was before the last update. Files the
@@ -533,6 +652,9 @@ pub fn roll_back_last_checked(
     Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(false),
     Err(error) => return Err(io_error(tag(error, &journal_file, Some(root)))),
   };
+  if !origin_has_committed(root, &journal) {
+    return Ok(false);
+  }
   roll_back_from(root, &backup, &journal).map_err(io_error)?;
   fs::remove_dir_all(&backup)
     .at_in(&backup, root)
@@ -540,15 +662,16 @@ pub fn roll_back_last_checked(
   Ok(true)
 }
 
-/// Refuse unlinking while an update is mid-flight: the journal means the
-/// instance is between two versions and has to be recovered or rolled back
-/// first. The guard keeps an update from starting after the check.
-pub fn ensure_unlink_safe(root: &Path) -> USTBLResult<()> {
-  let _guard = UpdateGuard::acquire(root)?;
-  if journal_path(root).exists() {
-    return Err(InstanceError::ModpackUpdateUnlinkPending.into());
+/// Hold the update guard for the whole unlink. Committed journals never block it;
+/// a mid-flight journal without the target origin does.
+pub fn ensure_unlink_safe(root: &Path) -> USTBLResult<UpdateGuard> {
+  let guard = UpdateGuard::acquire(root)?;
+  if let Some(journal) = read_journal(root).map_err(io_error)? {
+    if journal.state == JournalState::Committing && !origin_has_committed(root, &journal) {
+      return Err(InstanceError::ModpackUpdateUnlinkPending.into());
+    }
   }
-  Ok(())
+  Ok(guard)
 }
 
 /// Finish or undo whatever an interrupted update left behind.
@@ -574,6 +697,12 @@ fn recover_locked(root: &Path) -> USTBLResult<Recovery> {
     return Ok(Recovery::Nothing);
   };
   match journal.state {
+    JournalState::Committing if origin_has_committed(root, &journal) => {
+      // The origin is the commit point. A failed `Committed` journal write must
+      // not turn a finished update into a rollback on the next launch.
+      finish_cleanup(root, true);
+      Ok(Recovery::CleanedUp)
+    }
     JournalState::Committing => {
       roll_back(root, &journal).map_err(io_error)?;
       finish_cleanup(root, false);
@@ -1136,6 +1265,16 @@ async fn run(env: &dyn UpdateEnv, request: &UpdateRequest) -> USTBLResult<()> {
   }) {
     return Err(InstanceError::ModpackUpdateStale.into());
   }
+  // Snapshot the plan's local inputs before fetching. The same paths are hashed
+  // again after `before_commit`, so an edit made while waiting is not overwritten.
+  let expected_states = {
+    let root = root.clone();
+    let operations = request.operations.clone();
+    tokio::task::spawn_blocking(move || operation_states(&root, &operations))
+      .await
+      .map_err(|error| crate::error::USTBLError(error.to_string()))?
+      .map_err(io_error)?
+  };
 
   // Phase 1: fetch and verify everything into staging. A matching manifest is
   // deliberately kept across pre-journal failures so a retry can reuse files.
@@ -1458,6 +1597,17 @@ async fn run(env: &dyn UpdateEnv, request: &UpdateRequest) -> USTBLResult<()> {
   // Phase 2: write the journal and save the files the update rewrites. From
   // here on the run cannot be cancelled.
   env.begin_commit()?;
+  {
+    let root = root.clone();
+    let operations = request.operations.clone();
+    let current = tokio::task::spawn_blocking(move || operation_states(&root, &operations))
+      .await
+      .map_err(|error| crate::error::USTBLError(error.to_string()))?
+      .map_err(io_error)?;
+    if current != expected_states {
+      return Err(InstanceError::ModpackUpdateStale.into());
+    }
+  }
   env.report(Progress {
     stage: Stage::Applying,
     done: 0,
@@ -1580,7 +1730,7 @@ async fn run(env: &dyn UpdateEnv, request: &UpdateRequest) -> USTBLResult<()> {
     tokio::task::spawn_blocking({
       let root = root.clone();
       let files = baseline.files.clone();
-      move || base_store::sync(&root, &files)
+      move || base_store::cache(&root, &files)
     })
     .await
     .map_err(|e| crate::error::USTBLError(e.to_string()))?
@@ -1591,9 +1741,20 @@ async fn run(env: &dyn UpdateEnv, request: &UpdateRequest) -> USTBLResult<()> {
 
   match outcome {
     Ok(()) => {
+      // Old text-base copies are disposable only after the origin commit.
+      let root_for_prune = root.clone();
+      let files = request.next_baseline.clone();
+      match tokio::task::spawn_blocking(move || base_store::prune(&root_for_prune, &files)).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => log::warn!("cannot prune old modpack text baselines: {error}"),
+        Err(error) => log::warn!("cannot join modpack text baseline cleanup: {error}"),
+      }
       journal.state = JournalState::Committed;
-      // If this write fails the next recovery would undo a finished update.
-      write_journal(root, &journal).map_err(io_error)?;
+      // The origin is already committed. A journal write failure is a cleanup
+      // problem, not a reason to roll back the files the player now uses.
+      if let Err(error) = write_journal(root, &journal) {
+        log::warn!("cannot mark the committed modpack journal: {error}");
+      }
       finish_cleanup(root, true);
       env.report(Progress {
         stage: Stage::Finalizing,
@@ -1628,6 +1789,7 @@ async fn run(env: &dyn UpdateEnv, request: &UpdateRequest) -> USTBLResult<()> {
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::instance::helpers::modpack::baseline::BaselineFile;
   use crate::instance::models::misc::{ModLoaderType, OriginPlatform};
   use crate::instance::modpack_update::diff::FileKey;
   use crate::instance::modpack_update::release;
@@ -1720,6 +1882,8 @@ mod tests {
     hold_commit: Option<Arc<tokio::sync::Notify>>,
     before_commit_error: Option<String>,
     waiting_to_commit: std::sync::atomic::AtomicBool,
+    /// Fails the journal write after the origin has committed.
+    break_journal_after_commit: bool,
   }
 
   #[async_trait]
@@ -1810,6 +1974,20 @@ mod tests {
       if self.cancel_in_commit {
         self.cancel.store(true, Ordering::SeqCst);
       }
+      if self.break_journal_after_commit {
+        fs::create_dir_all(journal_path(&self.root).with_extension("json.tmp")).unwrap();
+      }
+      let mut current = Instance {
+        version_path: self.root.clone(),
+        name: "pack".into(),
+        ..Default::default()
+      };
+      current.origin = Some(origin(version_id));
+      fs::write(
+        self.root.join(INSTANCE_CONFIG_FILE),
+        serde_json::to_vec(&current).unwrap(),
+      )
+      .unwrap();
       self.committed.lock().unwrap().push(version_id.into());
       Ok(())
     }
@@ -4509,5 +4687,218 @@ mod tests {
     let error = read_staging_meta(&root.0).unwrap_err();
     let parsed = crate::file_error::parse(&error.to_string()).unwrap();
     assert!(parsed.file.starts_with(".ustbl-update"));
+  }
+
+  #[tokio::test]
+  async fn a_managed_file_edited_while_the_update_waits_is_not_overwritten() {
+    let root = setup();
+    let hold = Arc::new(tokio::sync::Notify::new());
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      hold_commit: Some(hold.clone()),
+      ..Default::default()
+    };
+    let updated = url_file("mods/old.jar", "old-v2", &mut env);
+    let mut run = Box::pin(apply(
+      &env,
+      request(
+        &root,
+        vec![updated.clone()],
+        vec![write_op(&updated)],
+        "0.15.0",
+      ),
+    ));
+    until_waiting_to_commit(&mut run, &env).await;
+    root.write("mods/old.jar", "local-edit");
+    hold.notify_one();
+
+    let result = run.await;
+
+    let stale: crate::error::USTBLError = InstanceError::ModpackUpdateStale.into();
+    assert!(matches!(&result, Err(error) if error.0 == stale.0));
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("local-edit"));
+    assert!(env.committed.lock().unwrap().is_empty());
+  }
+
+  #[tokio::test]
+  async fn a_failed_committed_journal_write_does_not_roll_back_the_result() {
+    let root = setup();
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      break_journal_after_commit: true,
+      ..Default::default()
+    };
+    let updated = url_file("mods/old.jar", "old-v2", &mut env);
+    let operations = vec![write_op(&updated), remove_op("mods/gone.jar")];
+
+    apply(&env, request(&root, vec![updated], operations, "0.16.0"))
+      .await
+      .unwrap();
+
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old-v2"));
+    assert_eq!(root.read("mods/gone.jar"), None);
+    if journal_path(&root.0).exists() {
+      assert_eq!(recover(&root.0).unwrap(), Recovery::CleanedUp);
+      assert_eq!(root.read("mods/old.jar").as_deref(), Some("old-v2"));
+    }
+  }
+
+  #[test]
+  fn recovery_treats_a_committing_journal_with_the_target_origin_as_committed() {
+    let root = setup();
+    root.write("mods/old.jar", "new");
+    let mut current = Instance {
+      version_path: root.0.clone(),
+      ..Default::default()
+    };
+    current.origin = Some(origin("2"));
+    fs::write(
+      root.0.join(INSTANCE_CONFIG_FILE),
+      serde_json::to_vec(&current).unwrap(),
+    )
+    .unwrap();
+    fs::create_dir_all(update_dir(&root.0)).unwrap();
+    write_journal(
+      &root.0,
+      &Journal {
+        schema: JOURNAL_SCHEMA,
+        state: JournalState::Committing,
+        from_version: "1".into(),
+        to_version: "2".into(),
+        ops: Vec::new(),
+        meta_present: Vec::new(),
+        meta_absent: Vec::new(),
+      },
+    )
+    .unwrap();
+
+    assert_eq!(recover(&root.0).unwrap(), Recovery::CleanedUp);
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("new"));
+  }
+
+  #[tokio::test]
+  async fn a_failed_commit_keeps_the_base_copy_the_restored_baseline_needs() {
+    let root = setup();
+    let old_text = b"a=1\n";
+    root.write("config/a.properties", "a=1\n");
+    let old_file = BaselineFile::managed("config/a.properties", sha1_of(old_text), false);
+    ModpackBaseline::build(&origin("1"), loader("0.15.0"), vec![old_file.clone()])
+      .save(&root.0)
+      .await
+      .unwrap();
+    base_store::store(&root.0, &old_file, old_text).unwrap();
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      fail_commit: true,
+      ..Default::default()
+    };
+    let updated = url_file("config/a.properties", "a=2\n", &mut env);
+
+    assert!(apply(
+      &env,
+      request(
+        &root,
+        vec![updated.clone()],
+        vec![write_op(&updated)],
+        "0.15.0"
+      ),
+    )
+    .await
+    .is_err());
+
+    let restored = ModpackBaseline::load(&root.0).await.unwrap();
+    assert_eq!(restored.origin.version_id, "1");
+    assert_eq!(root.read("config/a.properties").as_deref(), Some("a=1\n"));
+    assert_eq!(
+      base_store::load(&root.0, &old_file.sha1)
+        .unwrap()
+        .as_deref(),
+      Some(old_text.as_slice())
+    );
+  }
+
+  #[test]
+  fn a_failed_cleanup_is_a_successful_committed_recovery_and_does_not_block_unlink() {
+    let root = setup();
+    fs::create_dir_all(update_dir(&root.0)).unwrap();
+    write_journal(
+      &root.0,
+      &Journal {
+        schema: JOURNAL_SCHEMA,
+        state: JournalState::Committed,
+        from_version: "1".into(),
+        to_version: "2".into(),
+        ops: Vec::new(),
+        meta_present: Vec::new(),
+        meta_absent: Vec::new(),
+      },
+    )
+    .unwrap();
+    root.write(".ustbl-update/remote", "not a directory");
+
+    assert_eq!(recover(&root.0).unwrap(), Recovery::CleanedUp);
+    assert!(!journal_path(&root.0).exists());
+    assert!(root.0.join(UPDATE_DIR).join("remote").exists());
+    assert_eq!(recover(&root.0).unwrap(), Recovery::Nothing);
+    assert!(ensure_unlink_safe(&root.0).is_ok());
+  }
+
+  #[tokio::test]
+  async fn a_backup_for_another_target_version_is_not_offered_for_rollback() {
+    let root = setup();
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      ..Default::default()
+    };
+    let updated = url_file("mods/old.jar", "old-v2", &mut env);
+    apply(
+      &env,
+      request(
+        &root,
+        vec![updated.clone()],
+        vec![write_op(&updated)],
+        "0.15.0",
+      ),
+    )
+    .await
+    .unwrap();
+    let config = root.0.join(INSTANCE_CONFIG_FILE);
+    let mut current: Instance = serde_json::from_slice(&fs::read(&config).unwrap()).unwrap();
+    current.origin = Some(origin("3"));
+    fs::write(&config, serde_json::to_vec(&current).unwrap()).unwrap();
+
+    assert!(!can_roll_back_last(&root.0));
+    assert!(!roll_back_last(&root.0).unwrap());
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old-v2"));
+  }
+
+  #[tokio::test]
+  async fn a_failed_previous_backup_rotation_still_commits_the_update() {
+    let root = setup();
+    // A file at `trash` makes retiring the old backup fail without depending on
+    // an OS-specific open-handle lock.
+    root.write(".ustbl-update/trash", "blocked");
+    root.write(".ustbl-update/last-backup/journal.json", "old journal");
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      ..Default::default()
+    };
+    let updated = url_file("mods/old.jar", "old-v2", &mut env);
+
+    apply(
+      &env,
+      request(
+        &root,
+        vec![updated.clone()],
+        vec![write_op(&updated)],
+        "0.15.0",
+      ),
+    )
+    .await
+    .unwrap();
+
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old-v2"));
+    assert!(!journal_path(&root.0).exists());
+    assert!(!can_roll_back_last(&root.0));
   }
 }
