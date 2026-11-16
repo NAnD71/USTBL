@@ -18,7 +18,7 @@ use crate::file_error::{tag, AtPath};
 use crate::instance::helpers::misc::{get_instance_game_config, get_instance_subdir_paths};
 use crate::instance::helpers::modpack::base_store;
 use crate::instance::helpers::modpack::baseline::{
-  canonical_loader_version, hash_file, BaselineLoader, ModpackBaseline,
+  canonical_loader_version, hash_file, BaselineLoader, ModpackBaseline, BASELINE_FILE_NAME,
 };
 use crate::instance::helpers::modpack::multimc::profile::safe_relative;
 use crate::instance::helpers::modpack::multimc::snapshot::load_required_snapshot;
@@ -26,8 +26,8 @@ use crate::instance::helpers::modpack::text;
 use crate::instance::models::misc::{
   Instance, InstanceError, InstanceOrigin, InstanceSubdirType, OriginPlatform,
 };
-use crate::instance::modpack_update::commands::fast_forward;
 use crate::instance::modpack_update::commands::store_instance;
+use crate::instance::modpack_update::commands::{fast_forward, PlanGuard};
 use crate::instance::modpack_update::decide::Policy;
 use crate::instance::modpack_update::diff::FileKey;
 use crate::instance::modpack_update::plan::{compare, scan_cache, Compared};
@@ -36,13 +36,14 @@ use crate::instance::modpack_update::remote::RemoteRule;
 use crate::instance::modpack_update::sources::{
   campus_base_remote, campus_client, loader_slug, CAMPUS_API,
 };
+use crate::storage::{save_json_async, write_json_atomic};
 use crate::utils::web::build_part_upload_client;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -178,6 +179,25 @@ pub enum Adoption {
   /// The published version was not adopted because a local deletion failed.
   DeleteFailed,
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+enum AdoptionPhase {
+  Deleting,
+  Finalizing,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AdoptionPending {
+  schema: u32,
+  phase: AdoptionPhase,
+  paths: Vec<String>,
+  origin: InstanceOrigin,
+  label: String,
+}
+
+const ADOPTION_PENDING_SCHEMA: u32 = 1;
 
 #[derive(Debug, Clone, Copy, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -1097,7 +1117,22 @@ pub(super) async fn adopt_published(
   version_id: i64,
   version_number: &str,
 ) -> (Adoption, usize) {
-  match try_adopt(app, instance, project, version_id, version_number).await {
+  let result = async {
+    if read_adoption_pending(&instance.version_path)?.is_some() {
+      settle_adoption(app, &instance.id).await?;
+    }
+    let current = {
+      let binding = app.state::<Mutex<HashMap<String, Instance>>>();
+      let state = binding.lock()?;
+      state
+        .get(&instance.id)
+        .cloned()
+        .ok_or(InstanceError::InstanceNotFoundByID)?
+    };
+    try_adopt(app, &current, project, version_id, version_number).await
+  }
+  .await;
+  match result {
     Ok(result) => result,
     Err(error) => {
       // The release itself succeeded; a failed record only means the next
@@ -1208,13 +1243,183 @@ fn publish_delete_paths(
   Ok(paths)
 }
 
+fn adopt_pending_path(root: &Path) -> PathBuf {
+  root.join(".ustbl-update").join("adopt-pending.json")
+}
+
+fn staged_adopt_baseline(root: &Path) -> PathBuf {
+  root.join(".ustbl-update").join("adopt-baseline.json")
+}
+
+fn staged_adopt_release(root: &Path) -> PathBuf {
+  root.join(".ustbl-update").join("adopt-release.json")
+}
+
+fn read_adoption_pending(root: &Path) -> USTBLResult<Option<AdoptionPending>> {
+  let path = adopt_pending_path(root);
+  match fs::read(&path) {
+    Ok(bytes) => {
+      let pending = serde_json::from_slice::<AdoptionPending>(&bytes)
+        .map_err(|error| io_invalid_data(error, &path, root))?;
+      if pending.schema != ADOPTION_PENDING_SCHEMA {
+        return Err(InstanceError::ModpackUpdateRemoteInvalid.into());
+      }
+      Ok(Some(pending))
+    }
+    Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+    Err(error) => Err(tag(error, &path, Some(root)).into()),
+  }
+}
+
+fn io_invalid_data(error: serde_json::Error, path: &Path, root: &Path) -> USTBLError {
+  tag(
+    std::io::Error::new(std::io::ErrorKind::InvalidData, error),
+    path,
+    Some(root),
+  )
+  .into()
+}
+
+fn write_adoption_pending(root: &Path, pending: &AdoptionPending) -> USTBLResult<()> {
+  write_json_atomic(&adopt_pending_path(root), pending)?;
+  Ok(())
+}
+
+fn clear_adoption_pending(root: &Path) {
+  for path in [
+    staged_adopt_baseline(root),
+    staged_adopt_release(root),
+    adopt_pending_path(root),
+  ] {
+    if let Err(error) = fs::remove_file(&path) {
+      if error.kind() != std::io::ErrorKind::NotFound {
+        log::warn!("Could not clear publish adoption staging {path:?}: {error}");
+      }
+    }
+  }
+}
+
+fn restore_publish_deletes(root: &Path, paths: &[String]) -> USTBLResult<()> {
+  let backup = root.join(".ustbl-update").join("publish-deleted");
+  for path in paths.iter().rev() {
+    safe_relative(path)?;
+    let source = root.join(path);
+    if source.exists() {
+      continue;
+    }
+    let saved = backup.join(path);
+    if let Some(parent) = source.parent() {
+      fs::create_dir_all(parent).at_in(parent, root)?;
+    }
+    fs::copy(&saved, &source)
+      .at_in(&saved, root)
+      .map_err(|error| USTBLError::from(error))?;
+  }
+  Ok(())
+}
+
+fn install_staged_record(staged: &Path, target: &Path, root: &Path) -> USTBLResult<()> {
+  if staged.exists() {
+    fs::rename(staged, target).at_in(staged, root)?;
+  }
+  if !target.is_file() {
+    return Err(
+      tag(
+        std::io::Error::new(std::io::ErrorKind::NotFound, "adoption record is missing"),
+        target,
+        Some(root),
+      )
+      .into(),
+    );
+  }
+  Ok(())
+}
+
+async fn commit_adoption_identity<F, Fut>(
+  root: &Path,
+  pending: &AdoptionPending,
+  write_identity: F,
+) -> USTBLResult<()>
+where
+  F: FnOnce(InstanceOrigin, String) -> Fut,
+  Fut: std::future::Future<Output = USTBLResult<()>>,
+{
+  write_identity(pending.origin.clone(), pending.label.clone()).await?;
+  clear_adoption_pending(root);
+  Ok(())
+}
+
+/// Converge an interrupted adoption. Deletion is undone only while the marker
+/// says `Deleting`; once finalization starts, the identity write is the commit.
+pub(crate) async fn settle_adoption(app: &AppHandle, instance_id: &str) -> USTBLResult<()> {
+  let instance = {
+    let binding = app.state::<Mutex<HashMap<String, Instance>>>();
+    let state = binding.lock()?;
+    state
+      .get(instance_id)
+      .cloned()
+      .ok_or(InstanceError::InstanceNotFoundByID)?
+  };
+  let root = instance.version_path;
+  let Some(pending) = read_adoption_pending(&root)? else {
+    return Ok(());
+  };
+  if pending.phase == AdoptionPhase::Deleting {
+    restore_publish_deletes(&root, &pending.paths)?;
+    clear_adoption_pending(&root);
+    return Ok(());
+  }
+
+  install_staged_record(
+    &staged_adopt_baseline(&root),
+    &root.join(BASELINE_FILE_NAME),
+    &root,
+  )?;
+  let baseline = ModpackBaseline::load(&root).await?;
+  if let Err(error) = base_store::sync(&root, &baseline.files) {
+    log::warn!("Could not cache adopted text baselines: {error}");
+  }
+  install_staged_record(
+    &staged_adopt_release(&root),
+    &root.join(release::meta_name()),
+    &root,
+  )?;
+  commit_adoption_identity(&root, &pending, |origin, label| async move {
+    store_instance(app, instance_id, move |stored| {
+      adopt_instance_identity(stored, origin, label);
+    })
+    .await
+  })
+  .await?;
+  clear_adoption_pending(&root);
+  Ok(())
+}
+
 /// Back up every target before removing any of them. The directory is private
 /// to publishing and never shares the update transaction's last-backup area.
 fn backup_and_delete_publish_files(root: &Path, paths: &[String]) -> USTBLResult<usize> {
+  backup_and_delete_publish_files_inner(root, paths, false)
+}
+
+fn backup_and_delete_publish_files_for_adoption(
+  root: &Path,
+  paths: &[String],
+) -> USTBLResult<usize> {
+  backup_and_delete_publish_files_inner(root, paths, true)
+}
+
+fn backup_and_delete_publish_files_inner(
+  root: &Path,
+  paths: &[String],
+  current_adoption: bool,
+) -> USTBLResult<usize> {
   if paths.is_empty() {
     return Ok(0);
   }
   let backup = root.join(".ustbl-update").join("publish-deleted");
+  if !current_adoption && adopt_pending_path(root).exists() {
+    return Err(InstanceError::ModpackUpdateBusy.into());
+  }
   if backup.exists() {
     fs::remove_dir_all(&backup).at_in(&backup, root)?;
   }
@@ -1229,6 +1434,11 @@ fn backup_and_delete_publish_files(root: &Path, paths: &[String]) -> USTBLResult
   for path in paths {
     if let Err(error) = fs::remove_file(root.join(path)) {
       log::warn!("Could not remove published delete target {path}: {error}");
+      if let Err(restore_error) = restore_publish_deletes(root, paths) {
+        log::error!("Could not restore published delete targets: {restore_error:?}");
+      } else if adopt_pending_path(root).exists() {
+        clear_adoption_pending(root);
+      }
       return Err(tag(error, &root.join(path), Some(root)).into());
     }
   }
@@ -1268,6 +1478,7 @@ async fn try_adopt(
   }
 
   let root = instance.version_path.clone();
+  let _guard = PlanGuard::acquire(&root)?;
   let new_origin = InstanceOrigin {
     platform: OriginPlatform::Campus,
     project_id: project.to_string(),
@@ -1296,18 +1507,9 @@ async fn try_adopt(
   if !is_fast_forward_after_delete_rules(&compared, &remote) {
     return Ok((Adoption::LocalChanged, 0));
   }
-  let locally_deleted = match backup_and_delete_publish_files(&root, &delete_paths) {
-    Ok(count) => count,
-    Err(error) => {
-      log::warn!("Could not apply published delete rules locally: {error:?}");
-      return Ok((Adoption::DeleteFailed, 0));
-    }
-  };
-
   let mut baseline = ModpackBaseline::build(&new_origin, loader, compared.next_baseline);
   if let Some(components) = remote.components.clone() {
-    // The publisher's disk is what the pack was made from, so it already
-    // matches the pack and must not be rebuilt on its next update.
+    // The publisher's disk already matches the pack and must not be rebuilt.
     baseline = baseline
       .with_components(components)
       .with_component_fingerprint(
@@ -1317,29 +1519,40 @@ async fn try_adopt(
           .map(|pack| pack.fingerprint()),
       );
   }
-  if let Err(error) = baseline.save(&instance.version_path).await {
-    log::warn!("Could not save published baseline: {error:?}");
-    return Ok((Adoption::RecordFailed, locally_deleted));
-  }
-  if let Err(error) = base_store::sync(&instance.version_path, &baseline.files) {
-    log::warn!("Could not cache published text baselines: {error}");
-  }
-  if let Err(error) = release::write(
-    &instance.version_path,
+  save_json_async(&baseline, &staged_adopt_baseline(&root)).await?;
+  save_json_async(
     &release::Release::from_remote(&remote),
+    &staged_adopt_release(&root),
   )
-  .await
-  {
-    log::warn!("Could not save published release record: {error:?}");
-    return Ok((Adoption::RecordFailed, locally_deleted));
+  .await?;
+  let mut pending = AdoptionPending {
+    schema: ADOPTION_PENDING_SCHEMA,
+    phase: AdoptionPhase::Deleting,
+    paths: delete_paths.clone(),
+    origin: new_origin,
+    label: version_number.to_string(),
+  };
+  write_adoption_pending(&root, &pending)?;
+  let locally_deleted = match backup_and_delete_publish_files_for_adoption(&root, &delete_paths) {
+    Ok(count) => count,
+    Err(error) => {
+      log::warn!("Could not apply published delete rules locally: {error:?}");
+      return Ok((Adoption::DeleteFailed, 0));
+    }
+  };
+
+  pending.phase = AdoptionPhase::Finalizing;
+  if let Err(error) = write_adoption_pending(&root, &pending) {
+    log::warn!("Could not advance publish adoption to finalizing: {error:?}");
+    if let Err(restore_error) = restore_publish_deletes(&root, &pending.paths) {
+      log::error!("Could not restore publish delete targets: {restore_error:?}");
+      return Ok((Adoption::RecordFailed, locally_deleted));
+    }
+    clear_adoption_pending(&root);
+    return Ok((Adoption::DeleteFailed, 0));
   }
-  let label = version_number.to_string();
-  if let Err(error) = store_instance(app, &instance.id, move |stored| {
-    adopt_instance_identity(stored, new_origin, label);
-  })
-  .await
-  {
-    log::warn!("Could not save published instance identity: {error:?}");
+  if let Err(error) = settle_adoption(app, &instance.id).await {
+    log::warn!("Could not finish publish adoption; it remains pending: {error:?}");
     return Ok((Adoption::RecordFailed, locally_deleted));
   }
   Ok((Adoption::Followed, locally_deleted))
@@ -1759,6 +1972,114 @@ mod tests {
     );
     assert!(result.is_err());
     assert!(root.join("config/old.txt").exists());
+    let _ = fs::remove_dir_all(root);
+  }
+
+  /// Opens `path` so other handles may read it but may not delete it.
+  #[cfg(windows)]
+  fn hold_against_removal(path: &Path) -> fs::File {
+    use std::os::windows::fs::OpenOptionsExt;
+    const FILE_SHARE_READ: u32 = 0x1;
+    fs::OpenOptions::new()
+      .read(true)
+      .share_mode(FILE_SHARE_READ)
+      .open(path)
+      .unwrap()
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn every_publish_delete_is_backed_up_before_the_first_removal() {
+    let root = instance_dir(&[("config/a.txt", "a"), ("config/b.txt", "b")]);
+    let held = hold_against_removal(&root.join("config/b.txt"));
+
+    let result =
+      backup_and_delete_publish_files(&root, &["config/a.txt".into(), "config/b.txt".into()]);
+
+    assert!(result.is_err());
+    let backup = root.join(".ustbl-update/publish-deleted");
+    assert_eq!(
+      fs::read_to_string(backup.join("config/a.txt")).unwrap(),
+      "a"
+    );
+    assert_eq!(
+      fs::read_to_string(backup.join("config/b.txt")).unwrap(),
+      "b"
+    );
+    drop(held);
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[cfg(windows)]
+  #[test]
+  fn a_failed_publish_delete_midway_restores_the_files_it_removed() {
+    let root = instance_dir(&[("config/a.txt", "a"), ("config/b.txt", "b")]);
+    let held = hold_against_removal(&root.join("config/b.txt"));
+
+    let result =
+      backup_and_delete_publish_files(&root, &["config/a.txt".into(), "config/b.txt".into()]);
+
+    assert!(result.is_err());
+    assert_eq!(fs::read_to_string(root.join("config/a.txt")).unwrap(), "a");
+    assert_eq!(fs::read_to_string(root.join("config/b.txt")).unwrap(), "b");
+    drop(held);
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[test]
+  fn the_current_adoption_can_delete_with_its_own_pending_marker() {
+    let root = instance_dir(&[("config/old.txt", "old")]);
+    fs::create_dir_all(root.join(".ustbl-update")).unwrap();
+    fs::write(root.join(".ustbl-update/adopt-pending.json"), "{}").unwrap();
+
+    assert_eq!(
+      backup_and_delete_publish_files_for_adoption(&root, &["config/old.txt".into()]).unwrap(),
+      1
+    );
+    assert!(!root.join("config/old.txt").exists());
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[test]
+  fn a_pending_restore_prevents_a_later_publish_from_clearing_its_backup() {
+    let root = instance_dir(&[("config/old.txt", "old"), ("config/new.txt", "new")]);
+    backup_and_delete_publish_files(&root, &["config/old.txt".into()]).unwrap();
+    fs::write(root.join(".ustbl-update/adopt-pending.json"), "{}").unwrap();
+
+    assert!(backup_and_delete_publish_files(&root, &["config/new.txt".into()]).is_err());
+    assert!(root
+      .join(".ustbl-update/publish-deleted/config/old.txt")
+      .exists());
+    assert_eq!(
+      fs::read_to_string(root.join("config/new.txt")).unwrap(),
+      "new"
+    );
+    let _ = fs::remove_dir_all(root);
+  }
+
+  #[tokio::test]
+  async fn an_identity_write_failure_keeps_the_pending_marker_until_a_retry_succeeds() {
+    let root = instance_dir(&[]);
+    let pending = AdoptionPending {
+      schema: ADOPTION_PENDING_SCHEMA,
+      phase: AdoptionPhase::Finalizing,
+      paths: Vec::new(),
+      origin: followed(OriginPlatform::Campus, "p", "1.21.1"),
+      label: "2".into(),
+    };
+    write_adoption_pending(&root, &pending).unwrap();
+
+    assert!(commit_adoption_identity(&root, &pending, |_, _| async {
+      Err(USTBLError("write failed".into()))
+    })
+    .await
+    .is_err());
+    assert!(adopt_pending_path(&root).exists());
+
+    commit_adoption_identity(&root, &pending, |_, _| async { Ok(()) })
+      .await
+      .unwrap();
+    assert!(!adopt_pending_path(&root).exists());
     let _ = fs::remove_dir_all(root);
   }
 

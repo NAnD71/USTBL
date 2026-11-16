@@ -567,6 +567,32 @@ pub async fn refresh_and_update_instances(app: &AppHandle, is_first_run: bool) {
   LOADER_LIFECYCLE
     .run(refresh_and_update_instances_inner(app, is_first_run))
     .await;
+  if is_first_run {
+    let pending = {
+      let binding = app.state::<Mutex<HashMap<String, Instance>>>();
+      let state = match binding.lock() {
+        Ok(state) => state,
+        Err(_) => return,
+      };
+      state
+        .values()
+        .filter(|instance| {
+          instance
+            .version_path
+            .join(".ustbl-update/adopt-pending.json")
+            .is_file()
+        })
+        .map(|instance| instance.id.clone())
+        .collect::<Vec<_>>()
+    };
+    for instance_id in pending {
+      if let Err(error) =
+        crate::instance::modpack_publish::commands::settle_adoption(app, &instance_id).await
+      {
+        log::error!("Could not settle publish adoption of {instance_id}: {error:?}");
+      }
+    }
+  }
 }
 
 async fn refresh_and_update_instances_inner(app: &AppHandle, is_first_run: bool) {

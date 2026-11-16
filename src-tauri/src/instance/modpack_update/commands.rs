@@ -1009,10 +1009,10 @@ fn active_plans() -> &'static Mutex<HashMap<PathBuf, bool>> {
   ACTIVE.get_or_init(Default::default)
 }
 
-struct PlanGuard(PathBuf);
+pub(crate) struct PlanGuard(PathBuf);
 
 impl PlanGuard {
-  fn acquire(root: &Path) -> USTBLResult<Self> {
+  pub(crate) fn acquire(root: &Path) -> USTBLResult<Self> {
     Self::claim(root, false)
   }
 
@@ -1859,6 +1859,7 @@ async fn unlink_origin(app: &AppHandle, instance_id: &str, target: &Target) -> U
 #[tauri::command]
 pub async fn unlink_modpack_origin(app: AppHandle, instance_id: String) -> USTBLResult<()> {
   let target = target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
+  crate::instance::modpack_publish::commands::settle_adoption(&app, &instance_id).await?;
   unlink_origin(&app, &instance_id, &target).await?;
   refresh_and_update_instances(&app, false).await;
   Ok(())
@@ -2156,6 +2157,7 @@ async fn prepare_inner(
   instance_id: &str,
   optional_choice: &[String],
 ) -> USTBLResult<UpdatePlan> {
+  crate::instance::modpack_publish::commands::settle_adoption(app, instance_id).await?;
   let target = update_target(app, instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   // The preview this one replaces was cancelled by the caller and may not have
   // dropped its guard yet.
@@ -3124,6 +3126,7 @@ async fn apply_modpack_update_inner(
       received.join(","),
     );
   }
+  crate::instance::modpack_publish::commands::settle_adoption(&app, &instance_id).await?;
   let target = update_target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   ensure_not_running(&app, &instance_id)?;
   let mut reporter = AppEnv::preparing(&app, &target);
