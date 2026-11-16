@@ -1,4 +1,5 @@
 use crate::error::{USTBLError, USTBLResult};
+use crate::storage::{write_atomic, Durability};
 use log::{info, warn};
 use sha2::{Digest, Sha256};
 use std::io::{Cursor, Read};
@@ -15,15 +16,17 @@ const MIRROR_BASES: [&str; 4] = [
   "https://gh-proxy.net/",
 ];
 
-pub fn artifact() -> USTBLResult<(&'static str, &'static str)> {
+pub fn artifact() -> USTBLResult<(&'static str, &'static str, &'static str)> {
   match std::env::consts::ARCH {
     "x86_64" => Ok((
       "mihomo-windows-amd64-compatible-v1.19.31.zip",
       "93d14e9a13b49b2f2d256202d02cc8d14a7c4695edf084cae0f941986bc9c218",
+      "1fa8055e03596fc35167f70e9ecd1890517d38d960a39177445746a1b0defc2b",
     )),
     "aarch64" => Ok((
       "mihomo-windows-arm64-v1.19.31.zip",
       "68659624a38ae1dbc4e1b92f45d4dc75da0eaedd4d732b0a6f01a308da945792",
+      "4c63f401f013896a75fd9048878ea8340f0dcde7b84fbdc5397325691f0a4355",
     )),
     _ => Err(USTBLError("IPv6 免流核心只支持 Windows x64 / ARM64".into())),
   }
@@ -58,7 +61,7 @@ pub fn secure_directory(root: &Path) -> USTBLResult<()> {
 }
 
 pub async fn install(root: &Path) -> USTBLResult<()> {
-  let (name, expected) = artifact()?;
+  let (name, expected_archive, expected_binary) = artifact()?;
   let client = reqwest::Client::builder()
     .no_gzip()
     .no_proxy()
@@ -80,7 +83,7 @@ pub async fn install(root: &Path) -> USTBLResult<()> {
   for (label, url) in candidates {
     info!("尝试下载 IPv6 免流核心: {label} ({url})");
     match download_archive(&client, &url).await {
-      Ok(data) => match verify_archive(&data, expected) {
+      Ok(data) => match verify_archive(&data, expected_archive) {
         Ok(()) => {
           info!("IPv6 免流核心下载成功: {label}");
           bytes = Some(data);
@@ -122,18 +125,11 @@ pub async fn install(root: &Path) -> USTBLResult<()> {
     }
   }
   let data = executable.ok_or_else(|| USTBLError("免流核心压缩包缺少可执行文件".into()))?;
-  let temporary = root.join("mihomo.download");
-  tokio::fs::write(&temporary, &data).await?;
-  let target = binary(root);
-  if target.exists() {
-    tokio::fs::remove_file(&target).await?;
-  }
-  tokio::fs::rename(&temporary, &target).await?;
-  tokio::fs::write(
-    root.join("mihomo.sha256"),
-    hex::encode(Sha256::digest(data)),
-  )
-  .await?;
+  let install_root = root.to_path_buf();
+  tokio::task::spawn_blocking(move || replace_binary(&install_root, &data, expected_binary))
+    .await??;
+  // Keep the sidecar for v0.5.4 downgrade compatibility; this version never trusts it.
+  tokio::fs::write(root.join("mihomo.sha256"), expected_binary).await?;
   tokio::fs::write(
     root.join("FreeV6-MIT.txt"),
     include_str!("../../../../docs/licenses/free-v6-MIT.txt"),
@@ -144,6 +140,12 @@ pub async fn install(root: &Path) -> USTBLResult<()> {
     include_str!("../../../../LICENSE"),
   )
   .await?;
+  Ok(())
+}
+
+fn replace_binary(root: &Path, data: &[u8], expected: &str) -> USTBLResult<()> {
+  verify_archive(data, expected)?;
+  write_atomic(&binary(root), data, Durability::Sync)?;
   Ok(())
 }
 
@@ -177,9 +179,9 @@ fn verify_archive(data: &[u8], expected: &str) -> USTBLResult<()> {
 }
 
 pub async fn verify_binary(root: &Path) -> USTBLResult<()> {
+  let (_, _, expected) = artifact()?;
   let data = tokio::fs::read(binary(root)).await?;
-  let expected = tokio::fs::read_to_string(root.join("mihomo.sha256")).await?;
-  verify_archive(&data, expected.trim())
+  verify_archive(&data, expected)
 }
 
 pub fn command(program: impl AsRef<std::ffi::OsStr>) -> Command {
@@ -329,5 +331,40 @@ mod tests {
     let digest = hex::encode(Sha256::digest(b"original"));
     assert!(verify_archive(b"original", &digest).is_ok());
     assert!(verify_archive(b"modified", &digest).is_err());
+  }
+
+  #[test]
+  fn a_bad_executable_hash_preserves_the_installed_binary() {
+    let dir = crate::storage::test_support::TempDir::new("mihomo-bad-binary");
+    let target = binary(&dir.0);
+    std::fs::write(&target, b"old binary").unwrap();
+    let expected = hex::encode(Sha256::digest(b"expected binary"));
+
+    assert!(replace_binary(&dir.0, b"tampered binary", &expected).is_err());
+    assert_eq!(std::fs::read(target).unwrap(), b"old binary");
+  }
+
+  #[test]
+  fn a_verified_executable_replaces_the_old_binary() {
+    let dir = crate::storage::test_support::TempDir::new("mihomo-good-binary");
+    let target = binary(&dir.0);
+    std::fs::write(&target, b"old binary").unwrap();
+    let expected = hex::encode(Sha256::digest(b"new binary"));
+
+    replace_binary(&dir.0, b"new binary", &expected).unwrap();
+    assert_eq!(std::fs::read(target).unwrap(), b"new binary");
+  }
+
+  #[tokio::test]
+  async fn a_matching_sidecar_cannot_authorize_a_tampered_binary() {
+    let dir = crate::storage::test_support::TempDir::new("mihomo-sidecar");
+    std::fs::write(binary(&dir.0), b"tampered binary").unwrap();
+    std::fs::write(
+      dir.0.join("mihomo.sha256"),
+      hex::encode(Sha256::digest(b"tampered binary")),
+    )
+    .unwrap();
+
+    assert!(verify_binary(&dir.0).await.is_err());
   }
 }

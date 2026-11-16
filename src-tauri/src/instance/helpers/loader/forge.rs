@@ -98,6 +98,15 @@ pub async fn install_forge_loader(
   Ok(())
 }
 
+fn library_sha1(lib: &LibrariesValue) -> Option<String> {
+  lib
+    .downloads
+    .as_ref()
+    .and_then(|downloads| downloads.artifact.as_ref())
+    .map(|artifact| artifact.sha1.clone())
+    .filter(|sha1| !sha1.is_empty())
+}
+
 pub async fn download_forge_libraries(
   app: &AppHandle,
   priority: &[SourceType],
@@ -335,7 +344,7 @@ pub async fn download_forge_libraries(
         src,
         dest: lib_dir.join(&convert_library_name_to_path(name, None)?),
         filename: None,
-        sha1: None,
+        sha1: library_sha1(lib),
         custom_headers: None,
         transfer_options,
       }));
@@ -394,7 +403,7 @@ pub async fn download_forge_libraries(
         src,
         dest: lib_dir.join(&rel),
         filename: None,
-        sha1: None,
+        sha1: library_sha1(lib),
         custom_headers: None,
         transfer_options,
       }));
@@ -565,4 +574,38 @@ pub struct LegacyInstallProfile {
 pub struct LegacyLibrariesValue {
   pub name: String,
   pub url: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+  use super::*;
+
+  fn library(sha1: &str) -> LibrariesValue {
+    serde_json::from_value(serde_json::json!({
+      "name": "example:library:1.0",
+      "downloads": {
+        "artifact": {
+          "path": "example/library/1.0/library-1.0.jar",
+          "url": "https://example.com/library-1.0.jar",
+          "sha1": sha1,
+          "size": 3
+        }
+      }
+    }))
+    .unwrap()
+  }
+
+  #[test]
+  fn a_forge_library_download_uses_the_manifest_sha1() {
+    assert_eq!(
+      library_sha1(&library("0123456789abcdef")),
+      Some("0123456789abcdef".into())
+    );
+  }
+
+  #[test]
+  fn a_forge_library_without_a_sha1_keeps_the_optional_download_behavior() {
+    assert_eq!(library_sha1(&library("")), None);
+    assert_eq!(library_sha1(&LibrariesValue::default()), None);
+  }
 }
