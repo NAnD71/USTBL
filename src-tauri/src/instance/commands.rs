@@ -53,6 +53,7 @@ use crate::instance::models::misc::{
 };
 use crate::instance::models::world::base::WorldInfo;
 use crate::instance::models::world::level::LevelData;
+use crate::instance::modpack_update::commands::store_instance;
 use crate::launch::helpers::file_validator::{get_invalid_assets, get_invalid_library_files};
 use crate::launcher_config::helpers::misc::get_global_game_config;
 use crate::launcher_config::models::{GameConfig, GameDirectory, LauncherConfig};
@@ -1359,22 +1360,26 @@ pub async fn create_instance(
     .map_err(|_| InstanceError::FileCreationFailed)?;
   }
 
-  // A cached client can finish immediately. Publish all metadata first so its
-  // completion refresh cannot read an unfinished instance (all import paths).
-  let client_group = schedule_progressive_task_group(
-    app.clone(),
-    format!("game-client?{}", name),
-    task_params,
-    true,
-  )
-  .await?;
+  // Register the pending install before queueing: even a cached client can
+  // complete immediately. A stable instance id makes the group known up front.
+  let client_group = format!("game-client?{}", instance.id);
   crate::instance::modpack_update::commands::register_created_campus_instance(
     &instance,
-    client_group.task_group,
+    client_group.clone(),
     local_target.or_else(|| {
       crate::instance::modpack_update::commands::install_target_from_origin(origin_input.as_ref())
     }),
   )?;
+  if let Err(error) =
+    schedule_progressive_task_group(app.clone(), client_group.clone(), task_params, false).await
+  {
+    // Scheduling normally fails before enqueueing; cancel defensively if a
+    // future implementation ever queues part of the group first.
+    app
+      .state::<std::pin::Pin<Box<crate::tasks::monitor::TaskMonitor>>>()
+      .cancel_progressive_task_group(client_group);
+    return Err(error);
+  }
   dir_guard.commit(); // disarm the cleanup guard on success
   Ok(instance.id)
 }
@@ -1701,15 +1706,7 @@ pub(crate) async fn switch_mod_loader(
   let [libraries_dir, mods_dir] = subdirs.as_slice() else {
     return Err(InstanceError::InstanceNotFoundByID.into());
   };
-  // Remove Fabric API mods if switching from Fabric modloader
-  if instance.mod_loader.loader_type == ModLoaderType::Fabric
-    && version_isolation
-    && !keep_fabric_api
-  {
-    remove_fabric_api_mods(mods_dir).await?;
-  }
   // construct new version info
-  instance.mod_loader = mod_loader.clone();
   let mut version_info: McClientInfo = vanilla_info.clone();
   version_info.id = current_info.id.clone();
   version_info.jar = Some(instance.name.clone());
@@ -1732,11 +1729,21 @@ pub(crate) async fn switch_mod_loader(
   )
   .await?;
 
+  // Only touch the old loader's API after planning the replacement succeeded.
+  if instance.mod_loader.loader_type == ModLoaderType::Fabric
+    && version_isolation
+    && !keep_fabric_api
+  {
+    remove_fabric_api_mods(mods_dir).await?;
+  }
+
   save_json_async(&version_info, &json_path).await?;
-  instance
-    .save_json_cfg()
-    .await
-    .map_err(|_| InstanceError::FileCreationFailed)?;
+  let next_loader = mod_loader.clone();
+  store_instance(&app, &instance_id, move |stored| {
+    stored.mod_loader = next_loader;
+  })
+  .await
+  .map_err(|_| InstanceError::FileCreationFailed)?;
 
   schedule_progressive_task_group(
     app.clone(),
