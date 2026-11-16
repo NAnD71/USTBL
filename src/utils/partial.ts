@@ -22,3 +22,13 @@ export const updateByKeyPath = (obj: any, path: string, value: any): void => {
 
   current[lastKey] = value;
 };
+
+export const updatedByKeyPath = <T>(
+  current: T,
+  path: string,
+  value: any
+): T => {
+  const next = structuredClone(current);
+  updateByKeyPath(next, path, value);
+  return next;
+};

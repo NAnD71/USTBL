@@ -158,7 +158,7 @@ const InstanceShaderPacksPage = () => {
       <Section
         title={t("InstanceShaderPacksPage.shaderPackList.title")}
         isAccordion
-        initialIsOpen={accordionStates[0]}
+        initialIsOpen={accordionStates[1]}
         onAccordionToggle={(isOpen) => {
           update(
             "states.instanceShaderPacksPage.accordionStates",

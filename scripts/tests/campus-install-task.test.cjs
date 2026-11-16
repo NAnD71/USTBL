@@ -6,7 +6,7 @@ const ts = require("typescript");
 
 function load(file, requireModule = () => ({})) {
   const exports = {};
-  const module = { exports };
+  const moduleRecord = { exports };
   new Function(
     "exports",
     "module",
@@ -20,8 +20,8 @@ function load(file, requireModule = () => ({})) {
         },
       }
     ).outputText
-  )(exports, module, requireModule);
-  return module.exports;
+  )(exports, moduleRecord, requireModule);
+  return moduleRecord.exports;
 }
 
 const fileError = load("src/utils/file-error.ts");
@@ -140,6 +140,20 @@ test("task context applies removal events before repeated resume creation and ke
     return () => {};
   };
   const taskModel = load("src/models/task.ts");
+  const taskState = load("src/utils/task-state.ts", (name) => {
+    if (name === "@/models/task") return taskModel;
+    if (name === "@/utils/campus-install-task") {
+      return load("src/utils/campus-install-task.ts", (inner) =>
+        inner === "@/utils/file-error" ? fileError : {}
+      );
+    }
+    if (name === "@/utils/modpack-update-task") {
+      return {
+        isModpackUpdateGroup: (group) => group.startsWith("modpack-update?"),
+      };
+    }
+    return {};
+  });
   const context = load("src/contexts/task.tsx", (name) => {
     if (name === "react") return { ...react, default: react };
     if (name === "next/router") return { useRouter: () => ({}) };
@@ -153,6 +167,7 @@ test("task context applies removal events before repeated resume creation and ke
       return { useSharedModals: () => ({}) };
     if (name === "@/contexts/toast") return { useToast: () => () => {} };
     if (name === "@/models/task") return taskModel;
+    if (name === "@/utils/task-state") return taskState;
     if (name === "@/utils/campus-install-task")
       return load("src/utils/campus-install-task.ts", (inner) =>
         inner === "@/utils/file-error" ? fileError : {}

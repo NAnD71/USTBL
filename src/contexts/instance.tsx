@@ -28,7 +28,7 @@ import {
   createLocalModUpdateBuffer,
   mergeLocalModUpdates,
 } from "@/utils/local-mod-updates";
-import { updateByKeyPath } from "@/utils/partial";
+import { updatedByKeyPath } from "@/utils/partial";
 
 export interface InstanceContextType {
   instanceId: string | undefined;
@@ -117,6 +117,20 @@ export const InstanceContextProvider: React.FC<{
     summaryIdRef.current = undefined;
   }
 
+  const resourceRequests = React.useRef<Record<string, number>>({});
+  const configRequest = React.useRef(0);
+  const beginResourceRequest = useCallback((kind: string, id: string) => {
+    const generation = (resourceRequests.current[kind] || 0) + 1;
+    resourceRequests.current[kind] = generation;
+    return generation;
+  }, []);
+  const isCurrentResourceRequest = useCallback(
+    (kind: string, id: string, generation: number) =>
+      summaryIdRef.current === id &&
+      resourceRequests.current[kind] === generation,
+    []
+  );
+
   const clearAllResState = useCallback(() => {
     setWorlds(undefined);
     setLocalMods(undefined);
@@ -129,42 +143,45 @@ export const InstanceContextProvider: React.FC<{
 
   const updateSummaryInContext = useCallback(
     (path: string, value: any) => {
-      // for frontend-only state update to sync with backend if needed.
-      if (path === "id") return; // forbid update id here
-
-      setInstanceSummary((prevSummary) => {
-        if (!prevSummary) return prevSummary;
-
-        const newSummary = { ...prevSummary };
-        updateByKeyPath(newSummary, path, value);
-
+      if (path === "id") return;
+      const id = summaryIdRef.current;
+      setInstanceSummary((current) =>
+        current && current.id === id
+          ? updatedByKeyPath(current, path, value)
+          : current
+      );
+      if (id) {
         const instanceList = getInstanceList() || [];
-        const updatedList = instanceList.map((instance) =>
-          instance.id === newSummary.id ? newSummary : instance
+        setInstanceList(
+          instanceList.map((instance) =>
+            instance.id === id
+              ? updatedByKeyPath(instance, path, value)
+              : instance
+          ) as InstanceSummary[]
         );
-        setInstanceList(updatedList as InstanceSummary[]);
-
-        return newSummary;
-      });
+      }
     },
     [getInstanceList, setInstanceList]
   );
 
   const handleRetrieveInstanceGameConfig = useCallback(
     (id: string) => {
-      if (id !== undefined && id) {
-        InstanceService.retrieveInstanceGameConfig(id).then((response) => {
-          if (response.status === "success") {
-            setInstanceGameConfig(response.data);
-          } else {
-            toast({
-              title: response.message,
-              description: response.details,
-              status: "error",
-            });
-          }
-        });
-      }
+      if (!id) return;
+      const generation = configRequest.current + 1;
+      configRequest.current = generation;
+      InstanceService.retrieveInstanceGameConfig(id).then((response) => {
+        if (id !== summaryIdRef.current || generation !== configRequest.current)
+          return;
+        if (response.status === "success") {
+          setInstanceGameConfig(response.data);
+        } else {
+          toast({
+            title: response.message,
+            description: response.details,
+            status: "error",
+          });
+        }
+      });
     },
     [setInstanceGameConfig, toast]
   );
@@ -275,15 +292,12 @@ export const InstanceContextProvider: React.FC<{
   );
 
   const handleRetrieveWorldList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
-    const response = await InstanceService.retrieveWorldList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("worlds", id);
+    const response = await InstanceService.retrieveWorldList(id);
+    if (!isCurrentResourceRequest("worlds", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       const sorted = [...response.data].sort(
@@ -297,24 +311,21 @@ export const InstanceContextProvider: React.FC<{
         description: response.details,
         status: "error",
       });
-      setResourcePacks([]);
+      setWorlds([]);
       return [];
     }
-  }, [setWorlds, toast]);
+  }, [beginResourceRequest, isCurrentResourceRequest, setWorlds, toast]);
 
   const handleRetrieveLocalModList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("localMods", id);
     // Names found in the background may be announced before this response is
     // handled, so collect them from now on.
-    localModUpdateBuffer.current.reset(lastSummaryIdRef);
-    const response = await InstanceService.retrieveLocalModList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    localModUpdateBuffer.current.reset(id);
+    const response = await InstanceService.retrieveLocalModList(id);
+    if (!isCurrentResourceRequest("localMods", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       const mods = mergeLocalModUpdates(
@@ -332,18 +343,15 @@ export const InstanceContextProvider: React.FC<{
       setLocalMods([]);
       return [];
     }
-  }, [setLocalMods, toast]);
+  }, [beginResourceRequest, isCurrentResourceRequest, setLocalMods, toast]);
 
   const handleRetrieveResourcePackList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
-    const response = await InstanceService.retrieveResourcePackList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("resourcePacks", id);
+    const response = await InstanceService.retrieveResourcePackList(id);
+    if (!isCurrentResourceRequest("resourcePacks", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       setResourcePacks(response.data);
@@ -357,18 +365,15 @@ export const InstanceContextProvider: React.FC<{
       setResourcePacks([]);
       return [];
     }
-  }, [setResourcePacks, toast]);
+  }, [beginResourceRequest, isCurrentResourceRequest, setResourcePacks, toast]);
 
   const handleServerRetrieveResourcePackList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
-    const response = await InstanceService.retrieveServerResourcePackList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("serverResourcePacks", id);
+    const response = await InstanceService.retrieveServerResourcePackList(id);
+    if (!isCurrentResourceRequest("serverResourcePacks", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       setServerResourcePacks(response.data);
@@ -382,18 +387,20 @@ export const InstanceContextProvider: React.FC<{
       setServerResourcePacks([]);
       return [];
     }
-  }, [setServerResourcePacks, toast]);
+  }, [
+    beginResourceRequest,
+    isCurrentResourceRequest,
+    setServerResourcePacks,
+    toast,
+  ]);
 
   const handleRetrieveSchematicList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
-    const response = await InstanceService.retrieveSchematicList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("schematics", id);
+    const response = await InstanceService.retrieveSchematicList(id);
+    if (!isCurrentResourceRequest("schematics", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       setSchematics(response.data);
@@ -407,18 +414,15 @@ export const InstanceContextProvider: React.FC<{
       setSchematics([]);
       return [];
     }
-  }, [setSchematics, toast]);
+  }, [beginResourceRequest, isCurrentResourceRequest, setSchematics, toast]);
 
   const handleRetrieveShaderPackList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
-    const response = await InstanceService.retrieveShaderPackList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("shaderPacks", id);
+    const response = await InstanceService.retrieveShaderPackList(id);
+    if (!isCurrentResourceRequest("shaderPacks", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       setShaderPacks(response.data);
@@ -432,18 +436,15 @@ export const InstanceContextProvider: React.FC<{
       setShaderPacks([]);
       return [];
     }
-  }, [setShaderPacks, toast]);
+  }, [beginResourceRequest, isCurrentResourceRequest, setShaderPacks, toast]);
 
   const handleRetrieveScreenshotList = useCallback(async () => {
-    if (summaryIdRef.current === undefined) {
-      return;
-    }
-    let lastSummaryIdRef = summaryIdRef.current;
-    const response = await InstanceService.retrieveScreenshotList(
-      summaryIdRef.current
-    );
-    if (lastSummaryIdRef !== summaryIdRef.current) {
-      return "%CANCELLED%"; // to avoid state update after unmount
+    const id = summaryIdRef.current;
+    if (id === undefined) return;
+    const generation = beginResourceRequest("screenshots", id);
+    const response = await InstanceService.retrieveScreenshotList(id);
+    if (!isCurrentResourceRequest("screenshots", id, generation)) {
+      return "%CANCELLED%";
     }
     if (response.status === "success") {
       const sorted = [...response.data].sort((a, b) => b.time - a.time);
@@ -458,7 +459,7 @@ export const InstanceContextProvider: React.FC<{
       setScreenshots([]);
       return [];
     }
-  }, [setScreenshots, toast]);
+  }, [beginResourceRequest, isCurrentResourceRequest, setScreenshots, toast]);
 
   const handleUpdateInstanceConfig = useCallback(
     (path: string, value: any) => {
@@ -473,13 +474,15 @@ export const InstanceContextProvider: React.FC<{
               });
             } else {
               if (path.startsWith("specGameConfig")) {
-                const newConfig = { ...instanceGameConfig };
-                updateByKeyPath(
-                  newConfig,
-                  path.replace("specGameConfig.", ""),
-                  value
+                setInstanceGameConfig((current) =>
+                  current
+                    ? updatedByKeyPath(
+                        current,
+                        path.replace("specGameConfig.", ""),
+                        value
+                      )
+                    : current
                 );
-                setInstanceGameConfig(newConfig as GameConfig);
                 clearAllResState();
                 if (path === "specGameConfig.versionIsolation") {
                   getInstanceList(true);
@@ -499,7 +502,6 @@ export const InstanceContextProvider: React.FC<{
     },
     [
       instanceId,
-      instanceGameConfig,
       getInstanceList,
       handleRetrieveInstanceGameConfig,
       setInstanceGameConfig,
