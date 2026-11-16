@@ -16,7 +16,7 @@ use crate::tasks::{
   commands::schedule_progressive_task_group, monitor::TaskMonitor, streams::desc::PDesc, PTaskParam,
 };
 use crate::utils::fs::{generate_unique_filename, get_subdirectories};
-use crate::utils::string::camel_to_snake_case;
+use crate::utils::string::{camel_to_snake_case, snake_to_camel_case};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -26,6 +26,48 @@ use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_http::reqwest;
 use tauri_plugin_opener::reveal_item_in_dir;
+
+const SYNC_LOCAL_FIELDS: &[&str] = &[
+  "run_count",
+  "local_game_directories",
+  "extra_java_paths",
+  "global_game_config.game_java.exec_path",
+  "global_game_config.advanced.custom_commands.precall_command",
+  "global_game_config.advanced.custom_commands.post_exit_command",
+  "global_game_config.advanced.custom_commands.wrapper_launcher",
+  "global_game_config.advanced.jvm.args",
+  "download.proxy",
+  "download.cache.directory",
+];
+
+fn remove_sync_field(value: &mut Value, path: &str) {
+  let mut components = path.split('.').peekable();
+  let mut current = value;
+  while let Some(component) = components.next() {
+    let key = snake_to_camel_case(component);
+    if components.peek().is_none() {
+      if let Some(object) = current.as_object_mut() {
+        object.remove(&key);
+      }
+      return;
+    }
+    let Some(next) = current
+      .as_object_mut()
+      .and_then(|object| object.get_mut(&key))
+    else {
+      return;
+    };
+    current = next;
+  }
+}
+
+fn config_for_sync_export(config: LauncherConfig) -> Result<Value, serde_json::Error> {
+  let mut value = serde_json::to_value(config)?;
+  for key in SYNC_LOCAL_FIELDS {
+    remove_sync_field(&mut value, key);
+  }
+  Ok(value)
+}
 
 #[tauri::command]
 pub fn retrieve_launcher_config(app: AppHandle) -> USTBLResult<LauncherConfig> {
@@ -64,7 +106,7 @@ pub async fn export_launcher_config(
   client: tauri::State<'_, reqwest::Client>,
 ) -> USTBLResult<String> {
   let binding = app.state::<Mutex<LauncherConfig>>();
-  let state = { binding.lock()?.clone() };
+  let state = config_for_sync_export(binding.lock()?.clone())?;
   match client
     .post("https://mc.sjtu.cn/api-sjmcl/settings")
     .json(&json!({
@@ -122,8 +164,7 @@ pub async fn import_launcher_config(
         let binding = app.state::<Mutex<LauncherConfig>>();
         let mut state = binding.lock()?;
 
-        let preserved_fields = &["run_count", "local_game_directories", "extra_java_paths"];
-        state.replace_with_preserved(new_config, preserved_fields);
+        state.replace_with_preserved(new_config, SYNC_LOCAL_FIELDS);
         state.save()?;
 
         Ok(state.clone())
@@ -456,6 +497,84 @@ pub async fn install_launcher_update(
   {
     let _ = update;
     Ok(()) // No supported
+  }
+}
+
+#[cfg(test)]
+mod sync_config_tests {
+  use super::*;
+  use crate::partial::PartialAccess;
+
+  fn local_config() -> LauncherConfig {
+    let mut config = LauncherConfig::default();
+    config.run_count = 42;
+    config.local_game_directories = vec![GameDirectory {
+      name: "Local games".into(),
+      dir: PathBuf::from(r"D:\Games"),
+    }];
+    config.extra_java_paths = vec![r"D:\Java\bin\javaw.exe".into()];
+    config.global_game_config.game_java.exec_path = r"D:\Java\bin\javaw.exe".into();
+    config
+      .global_game_config
+      .advanced
+      .custom_commands
+      .precall_command = "pre-call".into();
+    config
+      .global_game_config
+      .advanced
+      .custom_commands
+      .post_exit_command = "post-exit".into();
+    config
+      .global_game_config
+      .advanced
+      .custom_commands
+      .wrapper_launcher = "wrapper".into();
+    config.global_game_config.advanced.jvm.args = "-Xmx4G".into();
+    config.download.proxy.enabled = true;
+    config.download.proxy.host = "127.0.0.1".into();
+    config.download.proxy.port = 7890;
+    config.download.cache.directory = PathBuf::from(r"D:\Cache");
+    config
+  }
+
+  #[test]
+  fn sync_import_preserves_local_execution_and_network_fields() {
+    let local = local_config();
+    let mut incoming = LauncherConfig::default();
+    incoming.general.general.language = "en".into();
+    incoming.states.instance_groups.order = vec!["custom".into()];
+    incoming.discover_source_endpoints = vec![("https://example.com/rss".into(), true)];
+    let mut merged = local.clone();
+
+    merged.replace_with_preserved(incoming, SYNC_LOCAL_FIELDS);
+
+    for key in SYNC_LOCAL_FIELDS {
+      assert_eq!(
+        merged.access(key).unwrap(),
+        local.access(key).unwrap(),
+        "{key}"
+      );
+    }
+    assert_eq!(merged.general.general.language, "en");
+    assert_eq!(merged.states.instance_groups.order, vec!["custom"]);
+    assert_eq!(
+      merged.discover_source_endpoints,
+      vec![("https://example.com/rss".into(), true)]
+    );
+  }
+
+  #[test]
+  fn sync_export_does_not_upload_local_execution_or_network_values() {
+    let exported = config_for_sync_export(local_config()).unwrap();
+
+    for key in SYNC_LOCAL_FIELDS {
+      let value = key.split('.').try_fold(&exported, |current, component| {
+        current.get(snake_to_camel_case(component))
+      });
+      assert_eq!(value, None, "{key}");
+    }
+    // v0.5.4 can still import the object with these defaulted fields omitted.
+    serde_json::from_value::<LauncherConfig>(exported).unwrap();
   }
 }
 
