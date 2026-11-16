@@ -1772,12 +1772,12 @@
     }
   },
   "RestartForUpdateConfirmDialog": {
-    "title": "Launcher Update",
-    "body": "The new version has been downloaded. Restart USTBL to complete the update.",
+    "title": "Update Ready",
+    "body": "USTBL {{version}} has been downloaded and verified. Install it and restart the launcher now?",
     "bodyMSI": "The new version has been downloaded. Clicking Install will close USTBL and run the installer.",
     "button": {
       "restart": "Restart",
-      "install": "Install",
+      "install": "Install Now",
       "later": "Later"
     }
   },
@@ -2177,6 +2177,22 @@
           "description": {
             "HAS_ACTIVE_DOWNLOAD_TASKS": "There are active download tasks in progress.",
             "FILE_DELETION_FAILED": "Failed to delete files, they may be in use."
+          }
+        }
+      },
+      "verifyLauncherUpdate": {
+        "error": {
+          "title": "Failed to check for updates",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "The update file failed verification and installation has been cancelled. Try again later, or download it manually from the release page."
+          }
+        }
+      },
+      "installLauncherUpdate": {
+        "error": {
+          "title": "Failed to check for updates",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "The update file failed verification and installation has been cancelled. Try again later, or download it manually from the release page."
           }
         }
       }

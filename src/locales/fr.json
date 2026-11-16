@@ -1772,12 +1772,12 @@
     }
   },
   "RestartForUpdateConfirmDialog": {
-    "title": "Mise à jour du lanceur",
-    "body": "La nouvelle version a été téléchargée. Redémarrez USTBL pour finaliser la mise à jour.",
+    "title": "Mise à jour prête",
+    "body": "USTBL {{version}} a été téléchargé et vérifié. Voulez-vous l’installer et redémarrer le lanceur maintenant ?",
     "bodyMSI": "La nouvelle version a été téléchargée. Cliquer sur « Installer » fermera USTBL et exécutera le programme d'installation.",
     "button": {
       "restart": "Redémarrer",
-      "install": "Installer",
+      "install": "Installer maintenant",
       "later": "Plus tard"
     }
   },
@@ -2177,6 +2177,22 @@
           "description": {
             "HAS_ACTIVE_DOWNLOAD_TASKS": "Une tâche de téléchargement est en cours d'exécution. Veuillez réessayer ultérieurement.",
             "FILE_DELETION_FAILED": "Impossible de supprimer le fichier de cache. Le fichier est peut-être en cours d'utilisation."
+          }
+        }
+      },
+      "verifyLauncherUpdate": {
+        "error": {
+          "title": "Échec de la vérification des mises à jour.",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "Échec de la vérification du fichier de mise à jour ; l’installation a été annulée. Réessayez plus tard ou téléchargez-le manuellement depuis la page de publication."
+          }
+        }
+      },
+      "installLauncherUpdate": {
+        "error": {
+          "title": "Échec de la vérification des mises à jour.",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "Échec de la vérification du fichier de mise à jour ; l’installation a été annulée. Réessayez plus tard ou téléchargez-le manuellement depuis la page de publication."
           }
         }
       }

@@ -430,6 +430,7 @@ pub enum LauncherConfigError {
   JavaExecInvalid,
   HasActiveDownloadTasks,
   FileDeletionFailed,
+  LauncherUpdateVerifyFailed,
 }
 
 impl std::error::Error for LauncherConfigError {}

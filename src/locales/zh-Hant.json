@@ -1772,12 +1772,12 @@
     }
   },
   "RestartForUpdateConfirmDialog": {
-    "title": "啟動器更新",
-    "body": "新版本已完成下載，重新開啟 USTBL 以完成更新",
+    "title": "更新已就緒",
+    "body": "USTBL {{version}} 已下載並通過校驗，現在安裝並重新啟動啟動器嗎？",
     "bodyMSI": "新版本已完成下載，點選安裝將關閉 USTBL 並執行安裝程式",
     "button": {
       "restart": "重新啟動",
-      "install": "安裝",
+      "install": "立即安裝",
       "later": "稍後"
     }
   },
@@ -2177,6 +2177,22 @@
           "description": {
             "HAS_ACTIVE_DOWNLOAD_TASKS": "目前有下載任務正在進行中，請稍後再試",
             "FILE_DELETION_FAILED": "無法刪除快取檔案，可能是檔案正在被使用"
+          }
+        }
+      },
+      "verifyLauncherUpdate": {
+        "error": {
+          "title": "檢查更新失敗",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "更新檔案校驗失敗，已取消安裝。請稍後重試，或前往發布頁手動下載。"
+          }
+        }
+      },
+      "installLauncherUpdate": {
+        "error": {
+          "title": "檢查更新失敗",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "更新檔案校驗失敗，已取消安裝。請稍後重試，或前往發布頁手動下載。"
           }
         }
       }

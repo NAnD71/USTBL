@@ -184,6 +184,7 @@ pub async fn run() -> i32 {
       launcher_config::commands::clear_download_cache,
       launcher_config::commands::check_launcher_update,
       launcher_config::commands::download_launcher_update,
+      launcher_config::commands::verify_launcher_update,
       launcher_config::commands::install_launcher_update,
       accelerator::commands::start_resource_acceleration,
       accelerator::commands::stop_resource_acceleration,

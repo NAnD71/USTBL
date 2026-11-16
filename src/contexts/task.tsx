@@ -90,7 +90,7 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
   const { getInstanceList, checkModpackUpdate } = useGlobalData();
   const router = useRouter();
   const { getJavaInfos } = useLauncherConfig();
-  const { openSharedModal } = useSharedModals();
+  const { openSharedModal, openGenericConfirmDialog } = useSharedModals();
   const [tasks, setTasks] = useState<TaskGroupDesc[]>([]);
   const [installProgress, setInstallProgress] = useState<
     Record<string, CampusInstallProgress>
@@ -622,23 +622,47 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
                 );
                 break;
               case "launcher-update": {
-                let group = newTasks.find(
+                const group = newTasks.find(
                   (t) => t.taskGroup === payload.taskGroup
                 );
-                if (group && group.taskDescs.length > 0) {
-                  ConfigService.installLauncherUpdate(
-                    group.taskDescs[0].payload.filename || "",
-                    true
-                  ).then((response) => {
+                const filename = group?.taskDescs[0]?.payload.filename || "";
+                if (!filename) break;
+                void ConfigService.verifyLauncherUpdate(filename).then(
+                  (response) => {
                     if (response.status !== "success") {
                       toast({
                         title: response.message,
                         description: response.details,
                         status: "error",
                       });
+                      return;
                     }
-                  });
-                }
+                    openGenericConfirmDialog({
+                      title: t("RestartForUpdateConfirmDialog.title"),
+                      body: t("RestartForUpdateConfirmDialog.body", {
+                        version: response.data,
+                      }),
+                      btnOK: t("RestartForUpdateConfirmDialog.button.install"),
+                      btnCancel: t(
+                        "RestartForUpdateConfirmDialog.button.later"
+                      ),
+                      onOKCallback: () => {
+                        void ConfigService.installLauncherUpdate(
+                          filename,
+                          true
+                        ).then((installResponse) => {
+                          if (installResponse.status !== "success") {
+                            toast({
+                              title: installResponse.message,
+                              description: installResponse.details,
+                              status: "error",
+                            });
+                          }
+                        });
+                      },
+                    });
+                  }
+                );
                 break;
               }
               case "mojang-java":
@@ -664,6 +688,7 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
     updateGroupInfo,
     getJavaInfos,
     openSharedModal,
+    openGenericConfirmDialog,
   ]);
 
   const [unfinishedPublishes, setUnfinishedPublishes] = useState<

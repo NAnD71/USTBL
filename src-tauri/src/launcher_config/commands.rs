@@ -428,21 +428,33 @@ pub async fn download_launcher_update(app: AppHandle, version: VersionMetaInfo) 
 }
 
 #[tauri::command]
+pub async fn verify_launcher_update(downloaded_filename: String) -> USTBLResult<String> {
+  Ok(
+    updater::verify_downloaded_update(&downloaded_filename)
+      .await?
+      .version,
+  )
+}
+
+#[tauri::command]
 pub async fn install_launcher_update(
   app: AppHandle,
   downloaded_filename: String,
   restart: bool,
 ) -> USTBLResult<()> {
+  // Re-hash at the execution boundary; the confirmation check is not a capability.
+  let update = updater::verify_downloaded_update(&downloaded_filename).await?;
   #[cfg(target_os = "windows")]
   {
-    updater::install_update_windows(&app, downloaded_filename, restart).await
+    updater::install_update_windows(&app, update.path, restart).await
   }
   #[cfg(target_os = "macos")]
   {
-    updater::install_update_macos(&app, downloaded_filename, restart).await
+    updater::install_update_macos(&app, update.path, update.version, restart).await
   }
   #[cfg(target_os = "linux")]
   {
+    let _ = update;
     Ok(()) // No supported
   }
 }

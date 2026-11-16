@@ -91,6 +91,7 @@ export enum ConfigServiceError {
   JavaExecInvalid = "JAVA_EXEC_INVALID",
   HasActiveDownloadTasks = "HAS_ACTIVE_DOWNLOAD_TASKS",
   FileDeletionFailed = "FILE_DELETION_FAILED",
+  LauncherUpdateVerifyFailed = "LAUNCHER_UPDATE_VERIFY_FAILED",
 }
 
 export enum ResourceServiceError {

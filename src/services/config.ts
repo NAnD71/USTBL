@@ -188,6 +188,18 @@ export class ConfigService {
   }
 
   /**
+   * Verify the update downloaded in this launcher session before asking to install it.
+   * @param {string} downloadedFilename The name of the downloaded new version file.
+   * @returns {Promise<InvokeResponse<string>>} The verified version.
+   */
+  @responseHandler("config")
+  static async verifyLauncherUpdate(
+    downloadedFilename: string
+  ): Promise<InvokeResponse<string>> {
+    return await invoke("verify_launcher_update", { downloadedFilename });
+  }
+
+  /**
    * INSTALL the launcher update.
    * @param {string} downloadedFilename The name of the downloaded new version file.
    * @param {boolean} restart Whether to restart the launcher now.

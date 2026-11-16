@@ -1772,12 +1772,12 @@
     }
   },
   "RestartForUpdateConfirmDialog": {
-    "title": "ランチャー更新",
-    "body": "新しいバージョンのダウンロードが完了しました。USTBL を再起動して更新を完了してください",
+    "title": "アップデートの準備完了",
+    "body": "USTBL {{version}} をダウンロードし、検証が完了しました。今すぐインストールしてランチャーを再起動しますか？",
     "bodyMSI": "新しいバージョンのダウンロードが完了しました。インストールをクリックすると USTBL が閉じ、インストーラーが実行されます",
     "button": {
       "restart": "再起動",
-      "install": "インストール",
+      "install": "今すぐインストール",
       "later": "後で"
     }
   },
@@ -2177,6 +2177,22 @@
           "description": {
             "HAS_ACTIVE_DOWNLOAD_TASKS": "現在ダウンロードタスクが進行中です。後でもう一度お試しください",
             "FILE_DELETION_FAILED": "キャッシュファイルを削除できません。ファイルが使用中の可能性があります"
+          }
+        }
+      },
+      "verifyLauncherUpdate": {
+        "error": {
+          "title": "アップデートの確認に失敗",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "更新ファイルの検証に失敗したため、インストールをキャンセルしました。しばらくしてから再試行するか、リリースページから手動でダウンロードしてください。"
+          }
+        }
+      },
+      "installLauncherUpdate": {
+        "error": {
+          "title": "アップデートの確認に失敗",
+          "description": {
+            "LAUNCHER_UPDATE_VERIFY_FAILED": "更新ファイルの検証に失敗したため、インストールをキャンセルしました。しばらくしてから再試行するか、リリースページから手動でダウンロードしてください。"
           }
         }
       }

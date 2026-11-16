@@ -6,15 +6,31 @@ use crate::tasks::commands::schedule_progressive_task_group;
 use crate::tasks::download::{DownloadParam, DownloadTransferOptions};
 use crate::tasks::PTaskParam;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use std::fs;
-use std::path::PathBuf;
+use std::io::Read;
+use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::Mutex;
+use std::sync::{LazyLock, Mutex};
 use tauri::path::BaseDirectory;
 use tauri::{AppHandle, Manager};
 use tauri_plugin_http::reqwest;
 
 const LATEST_RELEASE_URL: &str = "https://www.ustb.world/api/launcher/latest";
+const GITHUB_RELEASE_BASE: &str = "https://github.com/LYOfficial/USTBL/releases/download";
+const GITHUB_MIRROR_BASE: &str = "https://gh-proxy.com/";
+const SHA256SUMS_NAME: &str = "SHA256SUMS.txt";
+
+#[derive(Clone, Debug)]
+pub struct LauncherUpdateDownload {
+  pub version: String,
+  pub file_name: String,
+  pub path: PathBuf,
+  expected_sha256: String,
+}
+
+static PENDING_UPDATE: LazyLock<Mutex<Option<LauncherUpdateDownload>>> =
+  LazyLock::new(|| Mutex::new(None));
 
 #[derive(Deserialize)]
 struct LauncherLatestRelease {
@@ -98,6 +114,107 @@ fn parse_https_url(url: &str) -> Option<url::Url> {
   (parsed.scheme() == "https").then_some(parsed)
 }
 
+fn parse_sha256sums(contents: &str, file_name: &str) -> Option<String> {
+  contents.lines().find_map(|line| {
+    let mut fields = line.split_whitespace();
+    let hash = fields.next()?;
+    let name = fields.next()?.trim_start_matches('*');
+    if fields.next().is_some() || name != file_name {
+      return None;
+    }
+    (hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+      .then(|| hash.to_ascii_lowercase())
+  })
+}
+
+async fn fetch_sha256sums(
+  client: &reqwest::Client,
+  url: url::Url,
+) -> Result<String, LauncherConfigError> {
+  client
+    .get(url)
+    .send()
+    .await
+    .map_err(|_| LauncherConfigError::FetchError)?
+    .error_for_status()
+    .map_err(|_| LauncherConfigError::FetchError)?
+    .text()
+    .await
+    .map_err(|_| LauncherConfigError::FetchError)
+}
+
+async fn expected_update_sha256(
+  client: &reqwest::Client,
+  official_url: url::Url,
+  mirror_url: url::Url,
+  file_name: &str,
+) -> Result<String, LauncherConfigError> {
+  let sums = match fetch_sha256sums(client, official_url).await {
+    Ok(sums) => sums,
+    Err(error) => {
+      // A mirror SUMS only protects transport; it cannot establish publisher identity.
+      log::warn!(
+        "GitHub launcher SHA256SUMS fetch failed ({error}); trying the release mirror. A mirror checksum only protects against transfer corruption"
+      );
+      let sums = fetch_sha256sums(client, mirror_url).await?;
+      log::warn!("Using launcher SHA256SUMS obtained from the release mirror");
+      sums
+    }
+  };
+  parse_sha256sums(&sums, file_name).ok_or(LauncherConfigError::LauncherUpdateVerifyFailed)
+}
+
+fn sha256_file(path: &Path) -> std::io::Result<String> {
+  let mut file = fs::File::open(path)?;
+  let mut hasher = Sha256::new();
+  let mut buffer = [0_u8; 64 * 1024];
+  loop {
+    let read = file.read(&mut buffer)?;
+    if read == 0 {
+      break;
+    }
+    hasher.update(&buffer[..read]);
+  }
+  Ok(hex::encode(hasher.finalize()))
+}
+
+fn remembered_update(
+  pending: &Option<LauncherUpdateDownload>,
+  downloaded_filename: &str,
+) -> Result<LauncherUpdateDownload, LauncherConfigError> {
+  pending
+    .as_ref()
+    .filter(|update| update.file_name == downloaded_filename)
+    .cloned()
+    .ok_or(LauncherConfigError::LauncherUpdateVerifyFailed)
+}
+
+fn verify_update_file(update: &LauncherUpdateDownload) -> Result<(), LauncherConfigError> {
+  let actual =
+    sha256_file(&update.path).map_err(|_| LauncherConfigError::LauncherUpdateVerifyFailed)?;
+  if !actual.eq_ignore_ascii_case(&update.expected_sha256) {
+    log::warn!(
+      "Launcher update checksum mismatch for {}: expected {}, got {actual}",
+      update.file_name,
+      update.expected_sha256
+    );
+    return Err(LauncherConfigError::LauncherUpdateVerifyFailed);
+  }
+  Ok(())
+}
+
+pub async fn verify_downloaded_update(
+  downloaded_filename: &str,
+) -> USTBLResult<LauncherUpdateDownload> {
+  let update = {
+    let pending = PENDING_UPDATE.lock()?;
+    remembered_update(&pending, downloaded_filename)?
+  };
+  let checked = update.clone();
+  tokio::task::spawn_blocking(move || verify_update_file(&checked)).await??;
+  Ok(update)
+}
+
 #[cfg(target_os = "macos")]
 fn build_local_new_filename(old_name: &str, old_version: &str, new_version: &str) -> String {
   if let Some(idx) = old_name.find(old_version) {
@@ -175,8 +292,10 @@ pub async fn download_target_version(app: &AppHandle, version: VersionMetaInfo) 
     let config_state = config_binding.lock()?;
     config_state.download.cache.directory.clone()
   };
-  if !is_safe_filename(&version.file_name) {
-    return Err(LauncherConfigError::FetchError.into());
+  if !is_safe_filename(&version.file_name)
+    || release_version(&version.version).as_deref() != Some(version.version.as_str())
+  {
+    return Err(LauncherConfigError::LauncherUpdateVerifyFailed.into());
   }
   let download_url =
     parse_https_url(&version.download_url).ok_or(LauncherConfigError::FetchError)?;
@@ -184,8 +303,28 @@ pub async fn download_target_version(app: &AppHandle, version: VersionMetaInfo) 
     .filter(|fallback_url| fallback_url != &download_url)
     .into_iter()
     .collect();
+  let official_sums = url::Url::parse(&format!(
+    "{GITHUB_RELEASE_BASE}/v{}/{SHA256SUMS_NAME}",
+    version.version
+  ))?;
+  let mirror_sums = url::Url::parse(&format!("{GITHUB_MIRROR_BASE}{official_sums}"))?;
+  let expected_sha256 = expected_update_sha256(
+    &app.state::<reqwest::Client>(),
+    official_sums,
+    mirror_sums,
+    &version.file_name,
+  )
+  .await?;
+  let update = LauncherUpdateDownload {
+    version: version.version.clone(),
+    file_name: version.file_name.clone(),
+    path: download_cache_dir.join(&version.file_name),
+    expected_sha256,
+  };
+  // Remember the download before queueing: a small file can finish immediately.
+  *PENDING_UPDATE.lock()? = Some(update);
 
-  schedule_progressive_task_group(
+  let result = schedule_progressive_task_group(
     app.clone(),
     format!("launcher-update?{}", version.version),
     vec![PTaskParam::Download(DownloadParam {
@@ -198,7 +337,11 @@ pub async fn download_target_version(app: &AppHandle, version: VersionMetaInfo) 
     })],
     true,
   )
-  .await?;
+  .await;
+  if result.is_err() {
+    *PENDING_UPDATE.lock()? = None;
+  }
+  result?;
 
   Ok(())
 }
@@ -206,22 +349,15 @@ pub async fn download_target_version(app: &AppHandle, version: VersionMetaInfo) 
 #[cfg(target_os = "windows")]
 pub async fn install_update_windows(
   app: &AppHandle,
-  downloaded_filename: String,
+  downloaded_path: PathBuf,
   restart: bool,
 ) -> USTBLResult<()> {
   use std::os::windows::process::CommandExt;
 
   let config_binding = app.state::<Mutex<LauncherConfig>>();
-  let (downloaded_path, is_portable) = {
+  let is_portable = {
     let config_state = config_binding.lock()?;
-    (
-      config_state
-        .download
-        .cache
-        .directory
-        .join(&downloaded_filename),
-      config_state.basic_info.is_portable,
-    )
+    config_state.basic_info.is_portable
   };
   if !downloaded_path.is_file() {
     return Err(LauncherConfigError::FetchError.into());
@@ -298,7 +434,7 @@ try {
 
 #[cfg(test)]
 mod tests {
-  use super::{select_release_asset, LauncherAssetDownloads, LauncherReleaseAsset};
+  use super::*;
 
   fn asset(name: &str, kind: &str) -> LauncherReleaseAsset {
     LauncherReleaseAsset {
@@ -335,33 +471,114 @@ mod tests {
       "USTBL_0.5.0_arm64-setup.exe"
     );
   }
+
+  #[test]
+  fn sha256sums_are_matched_to_the_exact_asset_name() {
+    let expected = hex::encode(Sha256::digest(b"update"));
+    let sums = format!(
+      "{}  USTBL_0.5.5_x64-setup.exe\n{} *USTBL_0.5.5_windows_x86_64_portable.exe\n",
+      "0".repeat(64),
+      expected
+    );
+
+    assert_eq!(
+      parse_sha256sums(&sums, "USTBL_0.5.5_windows_x86_64_portable.exe"),
+      Some(expected)
+    );
+    assert_eq!(parse_sha256sums(&sums, "other.exe"), None);
+    assert_eq!(parse_sha256sums("not-a-hash  other.exe", "other.exe"), None);
+  }
+
+  #[test]
+  fn install_only_accepts_the_download_remembered_by_the_backend() {
+    let update = LauncherUpdateDownload {
+      version: "0.5.5".into(),
+      file_name: "update.exe".into(),
+      path: PathBuf::from("cache/update.exe"),
+      expected_sha256: "0".repeat(64),
+    };
+    let pending = Some(update);
+
+    assert_eq!(
+      remembered_update(&pending, "update.exe").unwrap().version,
+      "0.5.5"
+    );
+    assert!(remembered_update(&pending, "other.exe").is_err());
+    assert!(remembered_update(&pending, r"C:\outside\update.exe").is_err());
+    assert!(remembered_update(&None, "update.exe").is_err());
+  }
+
+  #[test]
+  fn a_tampered_update_fails_the_sha256_check() {
+    let dir = crate::storage::test_support::TempDir::new("launcher-update-verify");
+    let path = dir.0.join("update.exe");
+    let update = LauncherUpdateDownload {
+      version: "0.5.5".into(),
+      file_name: "update.exe".into(),
+      path: path.clone(),
+      expected_sha256: hex::encode(Sha256::digest(b"official update")),
+    };
+    fs::write(&path, b"official update").unwrap();
+    assert!(verify_update_file(&update).is_ok());
+
+    fs::write(&path, b"tampered update").unwrap();
+    assert!(matches!(
+      verify_update_file(&update),
+      Err(LauncherConfigError::LauncherUpdateVerifyFailed)
+    ));
+  }
+
+  #[tokio::test]
+  async fn an_unreachable_github_sums_falls_back_to_the_mirror() {
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    let official = {
+      let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+      url::Url::parse(&format!(
+        "http://{}/SHA256SUMS.txt",
+        listener.local_addr().unwrap()
+      ))
+      .unwrap()
+    };
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let mirror_addr = listener.local_addr().unwrap();
+    let expected = hex::encode(Sha256::digest(b"update"));
+    let body = format!("{expected}  update.exe\n");
+    tokio::spawn(async move {
+      let (mut socket, _) = listener.accept().await.unwrap();
+      let mut request = [0_u8; 1024];
+      let _ = socket.read(&mut request).await.unwrap();
+      let response = format!(
+        "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+      );
+      socket.write_all(response.as_bytes()).await.unwrap();
+    });
+    let mirror = url::Url::parse(&format!("http://{mirror_addr}/SHA256SUMS.txt")).unwrap();
+    let client = reqwest::Client::builder().no_proxy().build().unwrap();
+
+    assert_eq!(
+      expected_update_sha256(&client, official, mirror, "update.exe")
+        .await
+        .unwrap(),
+      expected
+    );
+  }
 }
 
 #[cfg(target_os = "macos")]
 pub async fn install_update_macos(
   app: &AppHandle,
-  downloaded_filename: String,
+  downloaded_path: PathBuf,
+  new_version: String,
   restart: bool,
 ) -> USTBLResult<()> {
   use std::ffi::OsStr;
 
   let config_binding = app.state::<Mutex<LauncherConfig>>();
-  let (old_version, downloaded_path, new_version) = {
+  let old_version = {
     let config_state = config_binding.lock()?;
-    (
-      config_state.basic_info.launcher_version.clone(),
-      config_state
-        .download
-        .cache
-        .directory
-        .join(&downloaded_filename),
-      downloaded_filename
-        .clone()
-        .split('_')
-        .nth(1)
-        .map(|s| s.to_string())
-        .unwrap_or_else(|| config_state.basic_info.launcher_version.clone()),
-    )
+    config_state.basic_info.launcher_version.clone()
   };
   let cur_exe = std::env::current_exe()?;
 
