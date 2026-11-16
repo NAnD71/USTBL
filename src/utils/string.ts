@@ -11,9 +11,8 @@ export const cleanHtmlText = (input: string): string => {
     String.fromCharCode(parseInt(code, 16))
   );
 
-  const container = document.createElement("div");
-  container.innerHTML = unicodeDecoded;
-  return container.textContent?.trim() || "";
+  const parsed = new DOMParser().parseFromString(unicodeDecoded, "text/html");
+  return parsed.body.textContent?.trim() || "";
 };
 
 export const removeFileExt = (filename: string): string => {
