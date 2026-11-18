@@ -208,6 +208,20 @@ pub fn write_atomic(path: &Path, bytes: &[u8], durability: Durability) -> io::Re
   result
 }
 
+/// Save a top-level mutable settings file. Read-failure protection makes the
+/// save a deliberate no-op, not an operation failure: the in-memory value is
+/// still useful for this run and must never replace the unreadable original.
+pub fn write_json_or_skip_protected<T>(path: &Path, value: &T) -> io::Result<()>
+where
+  T: Serialize + ?Sized,
+{
+  if is_write_protected(path) {
+    log::warn!("Skipping write-protected JSON save: {}", path.display());
+    return Ok(());
+  }
+  write_json_atomic(path, value)
+}
+
 /// Pretty-printed JSON, creating the parent directory like the writers before it.
 pub fn write_json_atomic<T>(path: &Path, value: &T) -> io::Result<()>
 where
@@ -683,6 +697,19 @@ mod tests {
     let saved = write_json_atomic(&path, &recovered.value);
     drop(held);
     assert!(saved.is_err());
+    assert_eq!(fs::read(&path).unwrap(), b"healthy marker");
+  }
+
+  #[test]
+  fn top_level_save_wrapper_skips_protection_without_relaxing_atomic_writes() {
+    let dir = TempDir::new("top-level-save-skip");
+    let path = dir.0.join("value.json");
+    fs::write(&path, b"healthy marker").unwrap();
+    super::protect_write(&path);
+
+    assert!(super::write_json_or_skip_protected(&path, &BTreeMap::<String, u32>::new()).is_ok());
+    assert_eq!(fs::read(&path).unwrap(), b"healthy marker");
+    assert!(super::write_atomic(&path, b"replacement", Durability::Sync).is_err());
     assert_eq!(fs::read(&path).unwrap(), b"healthy marker");
   }
 }

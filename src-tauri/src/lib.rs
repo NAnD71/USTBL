@@ -65,6 +65,26 @@ fn take_startup_corrupt_files() -> Vec<PathBuf> {
   std::mem::take(&mut *issues)
 }
 
+static STARTUP_WRITE_PROTECTED_FILES: LazyLock<Mutex<Vec<PathBuf>>> =
+  LazyLock::new(|| Mutex::new(Vec::new()));
+
+fn record_write_protection(path: PathBuf, protected: bool) {
+  if protected {
+    STARTUP_WRITE_PROTECTED_FILES
+      .lock()
+      .unwrap_or_else(|poisoned| poisoned.into_inner())
+      .push(path);
+  }
+}
+
+#[tauri::command]
+fn take_startup_write_protected_files() -> Vec<PathBuf> {
+  let mut files = STARTUP_WRITE_PROTECTED_FILES
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner());
+  std::mem::take(&mut *files)
+}
+
 static EXITING_AFTER_PRESENCE_CLEAR: AtomicBool = AtomicBool::new(false);
 
 pub fn show_tray_popup(app: &tauri::AppHandle, view: &str, message: Option<String>) {
@@ -342,6 +362,7 @@ pub async fn run() -> i32 {
       tasks::commands::delete_progressive_task_group,
       utils::commands::retrieve_memory_info,
       take_startup_corrupt_files,
+      take_startup_write_protected_files,
       utils::commands::extract_filename,
       utils::commands::delete_file,
       utils::commands::delete_directory,
@@ -361,8 +382,10 @@ pub async fn run() -> i32 {
 
       // Set the launcher config and other states
       // Also extract assets in `setup_with_app()` if the application is portable
-      let recovered = recover_json(&<LauncherConfig as Storage>::file_path());
+      let config_path = <LauncherConfig as Storage>::file_path();
+      let recovered = recover_json(&config_path);
       record_corrupt_backup(recovered.corrupt_backup);
+      record_write_protection(config_path, recovered.write_protected);
       let mut launcher_config: LauncherConfig = recovered.value;
       launcher_config.setup_with_app(app.handle()).unwrap();
       if let Err(error) = launcher_config.save() {
@@ -380,8 +403,10 @@ pub async fn run() -> i32 {
       app.manage(tokio::sync::Mutex::new(
         accelerator::ipv6::Ipv6Service::default(),
       ));
-      let recovered = recover_json(&<AccountInfo as Storage>::file_path());
+      let account_path = <AccountInfo as Storage>::file_path();
+      let recovered = recover_json(&account_path);
       record_corrupt_backup(recovered.corrupt_backup);
+      record_write_protection(account_path, recovered.write_protected);
       let account_info: AccountInfo = recovered.value;
       app.manage(Mutex::new(account_info.clone()));
 

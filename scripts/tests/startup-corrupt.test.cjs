@@ -11,9 +11,11 @@ test("startup recovers config and account files without an unchecked prompt", ()
   const lib = read("src-tauri/src/lib.rs");
   assert.match(
     lib,
-    /recover_json\(&<LauncherConfig as Storage>::file_path\(\)\)/
+    /let config_path = <LauncherConfig as Storage>::file_path\(\)/
   );
-  assert.match(lib, /recover_json\(&<AccountInfo as Storage>::file_path\(\)\)/);
+  assert.match(lib, /recover_json\(&config_path\)/);
+  assert.match(lib, /let account_path = <AccountInfo as Storage>::file_path\(\)/);
+  assert.match(lib, /recover_json\(&account_path\)/);
   assert.match(lib, /fn take_startup_corrupt_files/);
   assert.match(lib, /take_startup_corrupt_files,/);
 

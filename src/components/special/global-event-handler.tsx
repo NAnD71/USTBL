@@ -79,6 +79,28 @@ const GlobalEventHandler: React.FC<{ children: React.ReactNode }> = ({
     };
   }, [isStandAlone, toast]);
 
+  useEffect(() => {
+    if (isStandAlone) return;
+    let disposed = false;
+    invoke<string[]>("take_startup_write_protected_files")
+      .then((files) => {
+        if (disposed) return;
+        for (const file of files) {
+          const isAccount = file.includes("ustbl.account.json");
+          toast({
+            description: isAccount
+              ? "无法读取账号文件（可能被其他程序占用）。本次登录及账号修改不会保存。请关闭占用程序后重启启动器。"
+              : "无法读取启动器设置文件（可能被其他程序占用）。本次使用默认设置，运行期间的修改不会保存。请关闭占用程序后重启启动器。",
+            status: "warning",
+          });
+        }
+      })
+      .catch((error) => logger.error(error));
+    return () => {
+      disposed = true;
+    };
+  }, [isStandAlone, toast]);
+
   const isMainWindowHidden = async () => {
     let mainWindow;
     try {

@@ -409,6 +409,10 @@ impl Storage for LauncherConfig {
     Ok(value)
   }
 
+  fn save(&self) -> Result<(), std::io::Error> {
+    crate::storage::write_json_or_skip_protected(&Self::file_path(), self)
+  }
+
   fn file_path() -> PathBuf {
     if *IS_PORTABLE {
       EXE_DIR.join(LAUNCHER_CFG_FILE_NAME)

@@ -511,6 +511,10 @@ impl AccountInfo {
 }
 
 impl Storage for AccountInfo {
+  fn save(&self) -> Result<(), std::io::Error> {
+    crate::storage::write_json_or_skip_protected(&Self::file_path(), self)
+  }
+
   fn file_path() -> PathBuf {
     APP_DATA_DIR.get().unwrap().join(ACCOUNTS_FILE_NAME)
   }
