@@ -88,35 +88,90 @@ pub(crate) fn position_tray_popup(
   }
 }
 
-/// Tauri builds `create: true` windows before `setup` runs, so their pages could invoke commands
-/// before the state is managed. `main` and `tray_popup` are therefore `create: false` in
-/// `tauri.conf.json` and built here, after all `manage()` calls.
-fn create_startup_windows(app: &tauri::App) -> Result<(), Box<dyn std::error::Error>> {
-  let build = |label: &str| -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
-    let config = app
-      .config()
-      .app
-      .windows
-      .iter()
-      .find(|w| w.label == label)
-      .ok_or_else(|| format!("window config `{label}` not found"))?;
-    Ok(tauri::WebviewWindowBuilder::from_config(app.handle(), config)?.build()?)
-  };
+struct StartupInvokeGate<T> {
+  ready: bool,
+  pending: Vec<T>,
+}
 
-  build("main")?;
-
-  let tray_popup = build("tray_popup")?;
-  let _ = tray_popup.set_skip_taskbar(true);
-  let app_handle = app.handle().clone();
-  tray_popup.on_window_event(move |event| {
-    if matches!(event, tauri::WindowEvent::Focused(false)) {
-      if let Some(window) = app_handle.get_webview_window("tray_popup") {
-        let _ = window.hide();
-      }
+impl<T> StartupInvokeGate<T> {
+  fn submit(&mut self, item: T) -> Option<T> {
+    if self.ready {
+      Some(item)
+    } else {
+      self.pending.push(item);
+      None
     }
+  }
+
+  fn release(&mut self) -> Vec<T> {
+    self.ready = true;
+    std::mem::take(&mut self.pending)
+  }
+}
+
+static STARTUP_COMMAND_HANDLER: OnceLock<std::sync::Arc<tauri::ipc::InvokeHandler<tauri::Wry>>> =
+  OnceLock::new();
+
+static STARTUP_INVOKE_GATE: Mutex<StartupInvokeGate<tauri::ipc::Invoke<tauri::Wry>>> =
+  Mutex::new(StartupInvokeGate {
+    ready: false,
+    pending: Vec::new(),
   });
 
-  Ok(())
+/// Let the real frontend load during setup, but keep application commands in
+/// arrival order until all managed state exists. Plugin/core window commands
+/// do not pass through this application handler and retain their old behavior.
+fn startup_invoke_handler(
+  invoke: tauri::ipc::Invoke<tauri::Wry>,
+  handler: &tauri::ipc::InvokeHandler<tauri::Wry>,
+) -> bool {
+  let immediate = STARTUP_INVOKE_GATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner())
+    .submit(invoke);
+  match immediate {
+    Some(invoke) => handler(invoke),
+    None => true,
+  }
+}
+
+fn gate_startup_handler<F>(
+  handler: F,
+) -> impl Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static
+where
+  F: Fn(tauri::ipc::Invoke<tauri::Wry>) -> bool + Send + Sync + 'static,
+{
+  let handler: std::sync::Arc<tauri::ipc::InvokeHandler<tauri::Wry>> = std::sync::Arc::new(handler);
+  let _ = STARTUP_COMMAND_HANDLER.set(handler.clone());
+  move |invoke| startup_invoke_handler(invoke, handler.as_ref())
+}
+
+fn release_startup_invokes() {
+  let pending = STARTUP_INVOKE_GATE
+    .lock()
+    .unwrap_or_else(|poisoned| poisoned.into_inner())
+    .release();
+  let Some(handler) = STARTUP_COMMAND_HANDLER.get() else {
+    debug_assert!(pending.is_empty());
+    return;
+  };
+  for invoke in pending {
+    handler(invoke);
+  }
+}
+
+fn prepare_tray_popup(app: &tauri::App) {
+  if let Some(tray_popup) = app.get_webview_window("tray_popup") {
+    let _ = tray_popup.set_skip_taskbar(true);
+    let app_handle = app.handle().clone();
+    tray_popup.on_window_event(move |event| {
+      if matches!(event, tauri::WindowEvent::Focused(false)) {
+        if let Some(window) = app_handle.get_webview_window("tray_popup") {
+          let _ = window.hide();
+        }
+      }
+    });
+  }
 }
 
 pub async fn run() -> i32 {
@@ -131,8 +186,8 @@ pub async fn run() -> i32 {
     .plugin(tauri_plugin_os::init())
     .plugin(tauri_plugin_process::init())
     .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-      // The main window may not exist yet: it is created at the end of setup.
-      // It shows itself once the frontend is ready, so there is nothing to do in that case.
+      // The early-created main window may still be loading while setup runs.
+      // Application commands are held by the startup gate, so showing it is safe.
       if let Some(main_window) = app.get_webview_window("main") {
         let _ = main_window.show(); // may hide by launcher_visibility settings
                                     // FIXME: this show() seems no use in macOS build mode (ref: https://github.com/tauri-apps/tauri/issues/13400#issuecomment-2866462355).
@@ -147,7 +202,7 @@ pub async fn run() -> i32 {
         )
         .build(),
     )
-    .invoke_handler(tauri::generate_handler![
+    .invoke_handler(gate_startup_handler(tauri::generate_handler![
       launcher_config::commands::retrieve_launcher_config,
       launcher_config::commands::update_launcher_config,
       launcher_config::commands::restore_launcher_config,
@@ -328,7 +383,7 @@ pub async fn run() -> i32 {
       utils::commands::check_service_availability,
       tray_popup::resize,
       tray_popup::show_message_notification,
-    ])
+    ]))
     .setup(|app| {
       // init APP_DATA_DIR
       APP_DATA_DIR
@@ -390,6 +445,10 @@ pub async fn run() -> i32 {
       // start local yggdrasil server for offline accounts
       let local_ygg_server = YggdrasilServer::new();
       app.manage(Mutex::new(local_ygg_server.clone()));
+
+      release_startup_invokes();
+      prepare_tray_popup(app);
+
       tauri::async_runtime::spawn(async move {
         local_ygg_server.run().await.unwrap_or_default();
       });
@@ -504,8 +563,6 @@ pub async fn run() -> i32 {
         }
       }
 
-      create_startup_windows(app)?;
-
       Ok(())
     })
     .build(tauri::generate_context!())
@@ -553,4 +610,31 @@ pub async fn run() -> i32 {
       tauri::RunEvent::Exit => log::info!("Launcher exited normally."),
       _ => {}
     })
+}
+
+#[cfg(test)]
+mod startup_invoke_tests {
+  use super::StartupInvokeGate;
+
+  #[test]
+  fn commands_wait_and_release_in_arrival_order() {
+    let mut gate = StartupInvokeGate {
+      ready: false,
+      pending: Vec::new(),
+    };
+    assert_eq!(gate.submit("first"), None);
+    assert_eq!(gate.submit("second"), None);
+    assert_eq!(gate.release(), vec!["first", "second"]);
+    assert_eq!(gate.submit("third"), Some("third"));
+  }
+
+  #[test]
+  fn release_is_idempotent_and_does_not_replay_old_commands() {
+    let mut gate = StartupInvokeGate {
+      ready: false,
+      pending: vec!["command"],
+    };
+    assert_eq!(gate.release(), vec!["command"]);
+    assert!(gate.release().is_empty());
+  }
 }

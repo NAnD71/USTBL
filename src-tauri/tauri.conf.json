@@ -13,7 +13,7 @@
     "windows": [
       {
         "label": "main",
-        "create": false,
+        "create": true,
         "title": "USTBL",
         "url": "/",
         "width": 800,
@@ -52,7 +52,7 @@
       },
       {
         "label": "tray_popup",
-        "create": false,
+        "create": true,
         "title": "USTBL",
         "url": "/tray-popup",
         "width": 268,
