@@ -1071,41 +1071,71 @@ impl Drop for PlanGuard {
 enum InstallPhase {
   Running,
   CancelRequested,
-  /// `apply` is about to write its journal; the install can only finish.
+  /// The operation exceeded its overall deadline; safe pre-commit work stops.
+  TimedOut,
+  /// `apply` is about to write its journal; the operation can only finish.
   Committing,
 }
 
-/// Cooperative cancellation of one running first install. A cancel request and
-/// the move into the commit are decided under one lock, so exactly one wins.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum InstallKind {
+  CampusInstall,
+  UpdateApply,
+}
+
+/// Overall watchdog for a first install or an update apply. Network requests
+/// already have idle timeouts; this bounds waits and CPU-heavy local work that
+/// are otherwise unbounded.
+const MODPACK_OPERATION_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(6 * 60 * 60);
+
+/// Cooperative cancellation of one running first install or update apply. A
+/// cancel request, a timeout and the move into the commit are decided under one
+/// lock, so exactly one wins and the commit is never interrupted.
 struct InstallControl {
+  kind: InstallKind,
   phase: Mutex<InstallPhase>,
   wake: tokio::sync::Notify,
 }
 
 impl InstallControl {
-  fn new() -> Arc<Self> {
+  fn new(kind: InstallKind) -> Arc<Self> {
     Arc::new(Self {
+      kind,
       phase: Mutex::new(InstallPhase::Running),
       wake: tokio::sync::Notify::new(),
     })
   }
 
-  /// Refused with `ModpackUpdateBusy` once the install passed the point where
-  /// it can still be abandoned.
+  /// Refused with `ModpackUpdateBusy` once the operation passed the point where
+  /// it can still be abandoned. A timeout has the same safe cancellation path.
   fn request_cancel(&self) -> USTBLResult<()> {
     let mut phase = self.phase.lock()?;
     if *phase == InstallPhase::Committing {
       return Err(InstanceError::ModpackUpdateBusy.into());
     }
-    *phase = InstallPhase::CancelRequested;
+    if *phase == InstallPhase::Running {
+      *phase = InstallPhase::CancelRequested;
+    }
     drop(phase);
     self.wake.notify_waiters();
     Ok(())
   }
 
+  fn request_timeout(&self) {
+    if let Ok(mut phase) = self.phase.lock() {
+      if *phase == InstallPhase::Running {
+        *phase = InstallPhase::TimedOut;
+      }
+    }
+    self.wake.notify_waiters();
+  }
+
   fn begin_commit(&self) -> USTBLResult<()> {
     let mut phase = self.phase.lock()?;
-    if *phase == InstallPhase::CancelRequested {
+    if matches!(
+      *phase,
+      InstallPhase::CancelRequested | InstallPhase::TimedOut
+    ) {
       return Err(InstanceError::ModpackInstallInterrupted.into());
     }
     *phase = InstallPhase::Committing;
@@ -1113,10 +1143,26 @@ impl InstallControl {
   }
 
   fn cancel_requested(&self) -> bool {
+    self.phase.lock().is_ok_and(|phase| {
+      matches!(
+        *phase,
+        InstallPhase::CancelRequested | InstallPhase::TimedOut
+      )
+    })
+  }
+
+  fn user_cancel_requested(&self) -> bool {
     self
       .phase
       .lock()
       .is_ok_and(|phase| *phase == InstallPhase::CancelRequested)
+  }
+
+  fn timed_out(&self) -> bool {
+    self
+      .phase
+      .lock()
+      .is_ok_and(|phase| *phase == InstallPhase::TimedOut)
   }
 
   async fn cancelled(&self) {
@@ -1143,23 +1189,52 @@ fn install_control(instance_id: &str) -> Option<Arc<InstallControl>> {
 struct InstallControlGuard {
   instance_id: String,
   control: Arc<InstallControl>,
+  watchdog: tauri::async_runtime::JoinHandle<()>,
 }
 
 impl InstallControlGuard {
   fn register(instance_id: &str) -> Self {
-    let control = InstallControl::new();
+    Self::register_with_timeout(
+      instance_id,
+      InstallKind::CampusInstall,
+      MODPACK_OPERATION_TIMEOUT,
+    )
+  }
+
+  fn register_update(instance_id: &str) -> Self {
+    Self::register_with_timeout(
+      instance_id,
+      InstallKind::UpdateApply,
+      MODPACK_OPERATION_TIMEOUT,
+    )
+  }
+
+  fn register_with_timeout(
+    instance_id: &str,
+    kind: InstallKind,
+    timeout: std::time::Duration,
+  ) -> Self {
+    let control = InstallControl::new(kind);
     if let Ok(mut controls) = install_controls().lock() {
       controls.insert(instance_id.to_string(), control.clone());
     }
+    let watchdog_control = control.clone();
+    let watchdog = tauri::async_runtime::spawn(async move {
+      tokio::time::sleep(timeout).await;
+      log::warn!("modpack operation timed out after {timeout:?}");
+      watchdog_control.request_timeout();
+    });
     Self {
       instance_id: instance_id.to_string(),
       control,
+      watchdog,
     }
   }
 }
 
 impl Drop for InstallControlGuard {
   fn drop(&mut self) {
+    self.watchdog.abort();
     if let Ok(mut controls) = install_controls().lock() {
       // A resumed install may have registered its own control already.
       if controls
@@ -1178,6 +1253,26 @@ fn ensure_install_not_cancelled(instance_id: &str) -> USTBLResult<()> {
     return Err(InstanceError::ModpackInstallInterrupted.into());
   }
   Ok(())
+}
+
+/// A deadline is reported as the existing generic task failure. User
+/// cancellation keeps the interrupted wording, and a timeout after the commit
+/// point leaves the result alone because no cancellation was accepted there.
+fn map_operation_timeout<T>(
+  control: &InstallControl,
+  timeout_error: InstanceError,
+  result: USTBLResult<T>,
+) -> USTBLResult<T> {
+  if control.timed_out()
+    && matches!(
+      &result,
+      Err(error) if error.0 == InstanceError::ModpackInstallInterrupted.to_string()
+    )
+  {
+    Err(timeout_error.into())
+  } else {
+    result
+  }
 }
 
 /// Run `work` until it ends or the player abandons the install. `work` is
@@ -1940,6 +2035,20 @@ fn cancel_prepare(instance_id: &str) {
 pub async fn cancel_modpack_update_prepare(instance_id: String) -> USTBLResult<()> {
   cancel_prepare(&instance_id);
   Ok(())
+}
+
+/// Ask a running update apply to stop before its commit point. This is the
+/// backend half of cancellation; TaskMonitor deliberately refuses to abort the
+/// transaction itself. A first install owns a different control kind and is
+/// cancelled through its discard command.
+#[tauri::command]
+pub async fn cancel_modpack_update_apply(instance_id: String) -> USTBLResult<()> {
+  let Some(control) =
+    install_control(&instance_id).filter(|control| control.kind == InstallKind::UpdateApply)
+  else {
+    return Err(InstanceError::ModpackUpdateBusy.into());
+  };
+  control.request_cancel()
 }
 
 /// Pause or resume following. A paused instance is never checked; its identity
@@ -3078,6 +3187,7 @@ pub async fn apply_modpack_update(
   let optional_choice = normalized_choice(optional_choice);
   let target = update_target(&app, &instance_id)?.ok_or(InstanceError::ModpackUpdateUnsupported)?;
   let guard = PlanGuard::acquire(&target.root)?;
+  let control = InstallControlGuard::register_update(&instance_id);
   if has_campus_install(&target.root) {
     return Err(InstanceError::ModpackInstallInterrupted.into());
   }
@@ -3100,15 +3210,19 @@ pub async fn apply_modpack_update(
     if ready.await.is_err() {
       return;
     }
-    let mut result = run_modpack_update_task(apply_modpack_update_inner(
-      app_for_job.clone(),
-      instance_id.clone(),
-      plan_hash.clone(),
-      choices,
-      optional_choice,
-      tasks.clone(),
-    ))
-    .await;
+    let mut result = map_operation_timeout(
+      &control.control,
+      InstanceError::ModpackUpdateTaskFailed,
+      run_modpack_update_task(apply_modpack_update_inner(
+        app_for_job.clone(),
+        instance_id.clone(),
+        plan_hash.clone(),
+        choices,
+        optional_choice,
+        tasks.clone(),
+      ))
+      .await,
+    );
     if result.is_err() {
       log::warn!("modpack update failed: {:?}", result.as_ref().err());
       // An unwound worker may have left a journal. Recover it before releasing
@@ -3187,15 +3301,18 @@ async fn apply_modpack_update_inner(
   reporter.progress(Stage::Preparing);
   let baseline = load_baseline(&target).await?;
   recover_checked(&target.root, || ensure_not_running(&app, &instance_id))?;
-  let latest = newest_version(&app, &target)
+  let latest = until_install_cancelled(&instance_id, newest_version(&app, &target))
     .await?
     .ok_or(InstanceError::ModpackUpdateStale)?;
-  let mut remote = resolve_remote(
-    &app,
-    &target.origin,
-    &target.root,
-    &target.instance.name,
-    &latest,
+  let mut remote = until_install_cancelled(
+    &instance_id,
+    resolve_remote(
+      &app,
+      &target.origin,
+      &target.root,
+      &target.instance.name,
+      &latest,
+    ),
   )
   .await?;
   let resolution = optional::select(&mut remote, &target.root, &baseline, &optional_choice);
@@ -3214,7 +3331,8 @@ async fn apply_modpack_update_inner(
   } else {
     baseline.component_refs()
   };
-  let compared = compare(&target.root, &baseline, &remote).await?;
+  let compared =
+    until_install_cancelled(&instance_id, compare(&target.root, &baseline, &remote)).await?;
   if !compared.both_variants.is_empty() {
     log::info!(
       "modpack update apply refused: instance={instance_id} both variants on disk: {}",
@@ -3222,8 +3340,15 @@ async fn apply_modpack_update_inner(
     );
     return Err(InstanceError::ModpackUpdateBothVariants.into());
   }
-  let compared = if recover_base_copies(&app, &target, &baseline, &compared.diff.conflicts).await {
-    let again = compare(&target.root, &baseline, &remote).await?;
+  let recovered_bases = until_install_cancelled(&instance_id, async {
+    Ok::<_, crate::error::USTBLError>(
+      recover_base_copies(&app, &target, &baseline, &compared.diff.conflicts).await,
+    )
+  })
+  .await?;
+  let compared = if recovered_bases {
+    let again =
+      until_install_cancelled(&instance_id, compare(&target.root, &baseline, &remote)).await?;
     if !again.both_variants.is_empty() {
       return Err(InstanceError::ModpackUpdateBothVariants.into());
     }
@@ -3231,34 +3356,43 @@ async fn apply_modpack_update_inner(
   } else {
     compared
   };
-  let remote_contents =
-    materialize_text_candidates(&app, &target, &remote, &compared.diff.conflicts).await?;
+  let remote_contents = until_install_cancelled(
+    &instance_id,
+    materialize_text_candidates(&app, &target, &remote, &compared.diff.conflicts),
+  )
+  .await?;
   // The new text bytes fetched for the merge; `apply` caches them so a file
   // that ends up differing from the new version (merged, or kept local) still
   // has a base to diff against. Text files only; `store` re-validates.
   let base_texts = remote_contents.clone();
   let prepared = finish(compared, &target.root, &remote, &remote_contents)?;
-  if prepared.plan_hash != plan_hash
-    && !preview_was_confirmed(
-      &app,
-      &target,
-      &baseline,
-      &latest,
-      &prepared,
-      &plan_hash,
-      fresh,
-      &optional_choice,
-    )
-    .await
-  {
-    // The cached plan the player looked at describes another state; drop it
-    // so a retry re-plans instead of serving it again.
-    plan_cache::clear_plan_cache(&target.root);
-    log::info!(
-      "modpack update apply stale: instance={instance_id} confirmed plan_hash={plan_hash} current plan_hash={}",
-      prepared.plan_hash,
-    );
-    return Err(InstanceError::ModpackUpdateStale.into());
+  if prepared.plan_hash != plan_hash {
+    let confirmed = until_install_cancelled(&instance_id, async {
+      Ok::<_, crate::error::USTBLError>(
+        preview_was_confirmed(
+          &app,
+          &target,
+          &baseline,
+          &latest,
+          &prepared,
+          &plan_hash,
+          fresh,
+          &optional_choice,
+        )
+        .await,
+      )
+    })
+    .await?;
+    if !confirmed {
+      // The cached plan the player looked at describes another state; drop it
+      // so a retry re-plans instead of serving it again.
+      plan_cache::clear_plan_cache(&target.root);
+      log::info!(
+        "modpack update apply stale: instance={instance_id} confirmed plan_hash={plan_hash} current plan_hash={}",
+        prepared.plan_hash,
+      );
+      return Err(InstanceError::ModpackUpdateStale.into());
+    }
   }
 
   let env = AppEnv {
@@ -3475,14 +3609,18 @@ async fn start_campus_modpack_install(
     }
     // Keep the plan guard in the supervisor: unwinding the inner task must
     // still persist the failure and publish the card's final result.
-    let result = run_campus_install_task(install_campus_modpack_inner(
-      app_for_job.clone(),
-      instance_for_job,
-      tasks,
-      retry_client,
-    ))
-    .await;
-    if result.is_err() && control.control.cancel_requested() {
+    let result = map_operation_timeout(
+      &control.control,
+      InstanceError::ModpackInstallTaskFailed,
+      run_campus_install_task(install_campus_modpack_inner(
+        app_for_job.clone(),
+        instance_for_job,
+        tasks,
+        retry_client,
+      ))
+      .await,
+    );
+    if result.is_err() && control.control.user_cancel_requested() {
       // The player abandoned the install: no failure record and no result
       // event. The discard command removes the groups and the instance. The
       // card is closed here so it cannot stay running if that fails.
@@ -5569,7 +5707,7 @@ mod tests {
   }
   #[test]
   fn a_cancelled_install_cannot_enter_the_commit() {
-    let control = InstallControl::new();
+    let control = InstallControl::new(InstallKind::CampusInstall);
     control.request_cancel().unwrap();
     assert!(control.cancel_requested());
     assert_eq!(
@@ -5580,7 +5718,7 @@ mod tests {
 
   #[test]
   fn an_install_past_the_commit_point_refuses_to_be_cancelled() {
-    let control = InstallControl::new();
+    let control = InstallControl::new(InstallKind::CampusInstall);
     control.begin_commit().unwrap();
     assert_eq!(
       control.request_cancel().unwrap_err().0,
@@ -5593,7 +5731,7 @@ mod tests {
   #[test]
   fn a_cancel_and_the_commit_race_has_exactly_one_winner() {
     for _ in 0..200 {
-      let control = InstallControl::new();
+      let control = InstallControl::new(InstallKind::CampusInstall);
       let (a, b) = (control.clone(), control.clone());
       let cancel = std::thread::spawn(move || a.request_cancel().is_ok());
       let commit = std::thread::spawn(move || b.begin_commit().is_ok());
@@ -5605,7 +5743,7 @@ mod tests {
 
   #[tokio::test]
   async fn waiting_for_a_cancel_wakes_up_when_it_is_requested() {
-    let control = InstallControl::new();
+    let control = InstallControl::new(InstallKind::CampusInstall);
     let waiting = {
       let control = control.clone();
       tokio::spawn(async move { control.cancelled().await })
@@ -5643,6 +5781,68 @@ mod tests {
     assert!(ensure_install_not_cancelled(&id).is_err());
     drop(registered);
     assert!(ensure_install_not_cancelled(&id).is_ok());
+  }
+
+  #[tokio::test]
+  async fn the_overall_watchdog_stops_precommit_work_and_reports_a_task_failure() {
+    let id = format!("games:timeout-{}", uuid::Uuid::new_v4());
+    let registered = InstallControlGuard::register_with_timeout(
+      &id,
+      InstallKind::CampusInstall,
+      std::time::Duration::from_millis(20),
+    );
+    let result: USTBLResult<()> = until_install_cancelled(&id, async {
+      std::future::pending::<USTBLResult<()>>().await
+    })
+    .await;
+    let result = map_operation_timeout(
+      &registered.control,
+      InstanceError::ModpackInstallTaskFailed,
+      result,
+    );
+
+    assert_eq!(
+      result.unwrap_err().0,
+      InstanceError::ModpackInstallTaskFailed.to_string()
+    );
+    assert!(registered.control.timed_out());
+    assert!(!registered.control.user_cancel_requested());
+    drop(registered);
+    assert!(install_control(&id).is_none());
+  }
+
+  #[test]
+  fn a_timeout_after_the_commit_point_does_not_cancel_the_transaction() {
+    let control = InstallControl::new(InstallKind::UpdateApply);
+    control.begin_commit().unwrap();
+
+    control.request_timeout();
+
+    assert!(!control.timed_out());
+    assert!(!control.cancel_requested());
+    assert!(control.begin_commit().is_ok());
+  }
+
+  #[tokio::test]
+  async fn the_update_cancel_command_only_cancels_an_update_apply() {
+    let id = format!("games:update-cancel-{}", uuid::Uuid::new_v4());
+    let registered = InstallControlGuard::register_update(&id);
+
+    cancel_modpack_update_apply(id.clone()).await.unwrap();
+
+    assert!(registered.control.user_cancel_requested());
+    assert_eq!(
+      registered.control.begin_commit().unwrap_err().0,
+      InstanceError::ModpackInstallInterrupted.to_string()
+    );
+    drop(registered);
+
+    let registered = InstallControlGuard::register(&id);
+    assert_eq!(
+      cancel_modpack_update_apply(id.clone()).await.unwrap_err().0,
+      InstanceError::ModpackUpdateBusy.to_string()
+    );
+    assert!(!registered.control.cancel_requested());
   }
 
   #[test]
