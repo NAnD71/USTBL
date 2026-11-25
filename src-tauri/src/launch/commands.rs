@@ -53,6 +53,13 @@ use tauri::{AppHandle, Manager, State};
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+fn ensure_launch_not_installing(instance: &Instance) -> USTBLResult<()> {
+  if has_campus_install(&instance.version_path) {
+    return Err(LaunchError::LaunchInstanceInstalling.into());
+  }
+  Ok(())
+}
+
 fn launchable_instance(
   instance: Option<Instance>,
   pending_instance: impl FnOnce() -> Option<Instance>,
@@ -60,9 +67,7 @@ fn launchable_instance(
   let instance = instance
     .or_else(pending_instance)
     .ok_or(InstanceError::InstanceNotFoundByID)?;
-  if has_campus_install(&instance.version_path) {
-    return Err(LaunchError::LaunchInstanceInstalling.into());
-  }
+  ensure_launch_not_installing(&instance)?;
   Ok(instance)
 }
 
@@ -416,6 +421,7 @@ async fn start_game_process(
   let selected_java = launching.selected_java.clone();
   let game_config = launching.game_config.clone();
   let instance = launching.selected_instance.clone();
+  ensure_launch_not_installing(&instance)?;
   let instance_id = instance.id.clone();
   let work_dir = get_instance_subdir_paths(app, &instance, &[&InstanceSubdirType::Root])
     .ok_or(InstanceError::InstanceNotFoundByID)?
@@ -459,6 +465,10 @@ async fn start_game_process(
   if !precall_cmd.trim().is_empty() {
     let _ = execute_command_line(&precall_cmd);
   }
+
+  // The install state can appear after step 1 finished; check again right
+  // before handing the prepared command to the operating system.
+  ensure_launch_not_installing(&instance)?;
 
   // execute launch command
   #[cfg(target_os = "windows")]
@@ -668,6 +678,34 @@ mod tests {
     assert_eq!(
       launchable_instance(None, || None).unwrap_err().0,
       "INSTANCE_NOT_FOUND_BY_ID"
+    );
+    fs::remove_dir_all(root).unwrap();
+  }
+
+  #[test]
+  fn a_campus_install_that_starts_after_step_one_is_rejected_before_spawn() {
+    let root = std::env::temp_dir().join(format!("ustbl-launch-race-{}", uuid::Uuid::new_v4()));
+    fs::create_dir_all(&root).unwrap();
+    let instance = Instance {
+      version_path: root.clone(),
+      ..Instance::default()
+    };
+    assert!(ensure_launch_not_installing(&instance).is_ok());
+
+    fs::create_dir_all(root.join(".ustbl-update")).unwrap();
+    fs::write(
+      root.join(".ustbl-update/campus-install.json"),
+      serde_json::to_vec(&serde_json::json!({
+        "instanceId": "test:pending", "instanceName": "pending",
+        "label": "Test", "phase": "installing", "error": null
+      }))
+      .unwrap(),
+    )
+    .unwrap();
+
+    assert_eq!(
+      ensure_launch_not_installing(&instance).unwrap_err().0,
+      "LAUNCH_INSTANCE_INSTALLING"
     );
     fs::remove_dir_all(root).unwrap();
   }
