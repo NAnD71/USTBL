@@ -492,8 +492,63 @@ fn validate_journal(journal: &Journal) -> io::Result<()> {
   }
   Ok(())
 }
+
+/// A journal path can be lexically inside the instance yet still escape it:
+/// a directory on the way (or the target itself) may be a junction or a
+/// symlink pointing elsewhere. Walk every component from the trusted `root`
+/// down to `path` and refuse any reparse point, so neither an update nor a
+/// rollback can be redirected outside the instance. The check is about
+/// redirection only; which files the update manages stays the journal's job.
+fn ensure_no_reparse_point(root: &Path, path: &Path) -> io::Result<()> {
+  let Ok(relative) = path.strip_prefix(root) else {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      format!("path outside the instance: {}", path.display()),
+    ));
+  };
+  let mut current = root.to_path_buf();
+  for component in relative.components() {
+    current.push(component);
+    let is_reparse = fs::symlink_metadata(&current)
+      .map(|metadata| metadata.file_type().is_symlink())
+      .unwrap_or(false);
+    if is_reparse {
+      log::warn!(
+        "Refused a modpack update path through a reparse point: {}",
+        current.display()
+      );
+      return Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("reparse point in the update path: {}", current.display()),
+      ));
+    }
+  }
+  Ok(())
+}
+
+/// Preflight every path a rollback may touch. Runs before the first write or
+/// delete so a refusal still leaves the instance untouched, keeping the
+/// all-or-nothing guarantee of [`validate_journal`].
+fn ensure_rollback_paths_safe(root: &Path, backup: &Path, journal: &Journal) -> io::Result<()> {
+  for op in &journal.ops {
+    ensure_no_reparse_point(root, &root.join(&op.path))?;
+    ensure_no_reparse_point(root, &root.join(disabled_path(&op.path)))?;
+    ensure_no_reparse_point(root, &backup.join("files").join(&op.path))?;
+    ensure_no_reparse_point(root, &backup.join("files").join(disabled_path(&op.path)))?;
+    for dir in &op.pruned_dirs {
+      ensure_no_reparse_point(root, &root.join(dir))?;
+    }
+  }
+  for name in journal.meta_present.iter().chain(&journal.meta_absent) {
+    ensure_no_reparse_point(root, &root.join(name))?;
+    ensure_no_reparse_point(root, &backup.join("meta").join(name))?;
+  }
+  Ok(())
+}
+
 fn roll_back_from(root: &Path, backup: &Path, journal: &Journal) -> io::Result<()> {
   validate_journal(journal)?;
+  ensure_rollback_paths_safe(root, backup, journal)?;
   for op in journal.ops.iter().rev() {
     let target = root.join(&op.path);
     let saved = backup.join("files").join(&op.path);
@@ -1135,6 +1190,20 @@ fn fetch_units<'a>(
 /// Move originals aside and put the staged files in place.
 fn commit_files(root: &Path, operations: &[Operation], journal: &Journal) -> io::Result<()> {
   let backup = backup_dir(root);
+  // Refuse before the first move: a junction or symlink inside the instance
+  // (or in the update dir) could redirect a write or a delete outside it.
+  for op in &journal.ops {
+    let disabled = disabled_path(&op.path);
+    for path in [
+      root.join(&op.path),
+      root.join(&disabled),
+      staging_dir(root).join(&op.path),
+      backup.join("files").join(&op.path),
+      backup.join("files").join(&disabled),
+    ] {
+      ensure_no_reparse_point(root, &path)?;
+    }
+  }
   for (operation, op) in operations.iter().zip(&journal.ops) {
     let target = root.join(&op.path);
     let disabled = disabled_path(&op.path);
@@ -1205,8 +1274,10 @@ fn save_meta_backup(root: &Path, names: &[String]) -> io::Result<(Vec<String>, V
   let (mut present, mut absent) = (Vec::new(), Vec::new());
   for name in names {
     let file = root.join(name);
+    let saved = meta.join(name);
+    ensure_no_reparse_point(root, &file)?;
+    ensure_no_reparse_point(root, &saved)?;
     if file.is_file() {
-      let saved = meta.join(name);
       if let Some(parent) = saved.parent() {
         fs::create_dir_all(parent).at_in(parent, root)?;
       }
@@ -1247,6 +1318,18 @@ async fn run(env: &dyn UpdateEnv, request: &UpdateRequest) -> USTBLResult<()> {
   let root = &request.root;
   if env.cancel_requested() {
     return Err(cancelled_error());
+  }
+  // Before the first download or journal write: a junction or symlink in the
+  // update dir could redirect staging, the journal or the backup outside the
+  // instance. Per-file checks follow in `commit_files` and `save_meta_backup`.
+  for dir in [
+    update_dir(root),
+    staging_dir(root),
+    components_dir(root),
+    backup_dir(root),
+    last_backup_dir(root),
+  ] {
+    ensure_no_reparse_point(root, &dir).map_err(io_error)?;
   }
   // The plan was made against these ignores; others on disk mean it is stale.
   if let Some(update) = &request.ignores {
@@ -3363,6 +3446,172 @@ mod tests {
       );
     }
   }
+  #[cfg(any(windows, unix))]
+  fn dir_link(link: &Path, target: &Path) -> bool {
+    #[cfg(windows)]
+    {
+      std::process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+    }
+    #[cfg(unix)]
+    {
+      std::os::unix::fs::symlink(target, link).is_ok()
+    }
+  }
+
+  #[cfg(any(windows, unix))]
+  fn unlink_dir_link(link: &Path) {
+    // Removing the link itself never traverses into its target.
+    #[cfg(windows)]
+    let _ = fs::remove_dir(link);
+    #[cfg(unix)]
+    let _ = fs::remove_file(link);
+  }
+
+  #[cfg(any(windows, unix))]
+  fn single_op_journal(path: &str, had_original: bool) -> Journal {
+    Journal {
+      schema: JOURNAL_SCHEMA,
+      state: JournalState::Committing,
+      from_version: "1".into(),
+      to_version: "2".into(),
+      ops: vec![JournalOp {
+        path: path.into(),
+        had_original,
+        moves_disabled: false,
+        writes_enabled: Some(true),
+        writes_disabled: false,
+        pruned_dirs: Vec::new(),
+      }],
+      meta_present: Vec::new(),
+      meta_absent: Vec::new(),
+    }
+  }
+
+  /// A lexically safe journal path can still escape the instance when a
+  /// directory on the way is a junction or a symlink. Recovery must refuse
+  /// before touching anything outside, and finish once the link is removed.
+  #[cfg(any(windows, unix))]
+  #[test]
+  fn recovery_refuses_to_cross_a_junction_inside_the_instance() {
+    let victim_dir = Root::new();
+    victim_dir.write("planted.toml", "keep");
+    let root = setup();
+    fs::create_dir_all(update_dir(&root.0)).unwrap();
+    if !dir_link(&root.0.join("config"), &victim_dir.0) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+    write_journal(&root.0, &single_op_journal("config/planted.toml", false)).unwrap();
+
+    let error = recover(&root.0).unwrap_err();
+    assert!(error.0.contains("reparse point"), "{error:?}");
+
+    assert_eq!(victim_dir.read("planted.toml").as_deref(), Some("keep"));
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old"));
+    assert!(journal_path(&root.0).is_file());
+
+    unlink_dir_link(&root.0.join("config"));
+    assert_eq!(recover(&root.0).unwrap(), Recovery::RolledBack);
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old"));
+    assert_eq!(root.read("config/planted.toml"), None);
+  }
+
+  /// The backup directory is part of the attack surface too: moving a planted
+  /// "backup" into the instance through a junction would delete its outside
+  /// source and pull untrusted bytes in.
+  #[cfg(any(windows, unix))]
+  #[test]
+  fn recovery_refuses_a_junction_in_the_backup_dir() {
+    let victim_dir = Root::new();
+    victim_dir.write("files/mods/old.jar", "outside-backup");
+    let root = setup();
+    fs::create_dir_all(update_dir(&root.0)).unwrap();
+    if !dir_link(&backup_dir(&root.0), &victim_dir.0) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+    write_journal(&root.0, &single_op_journal("mods/old.jar", true)).unwrap();
+
+    let error = recover(&root.0).unwrap_err();
+    assert!(error.0.contains("reparse point"), "{error:?}");
+
+    assert_eq!(
+      victim_dir.read("files/mods/old.jar").as_deref(),
+      Some("outside-backup")
+    );
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old"));
+    assert!(journal_path(&root.0).is_file());
+  }
+
+  /// The update commit shares the refusal: nothing may be written through a
+  /// junction, the failed run leaves the journal for the next recovery, and
+  /// removing the junction lets recovery put the instance back.
+  #[cfg(any(windows, unix))]
+  #[tokio::test]
+  async fn an_update_refuses_to_write_through_a_junction() {
+    let victim_dir = Root::new();
+    let root = setup();
+    if !dir_link(&root.0.join("config"), &victim_dir.0) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      ..Default::default()
+    };
+    let new = url_file("config/new.toml", "new", &mut env);
+    let operations = vec![write_op(&new)];
+    // Same loader: the run reaches `commit_files` without a loader switch.
+    let error = apply(&env, request(&root, vec![new], operations, "0.15.0"))
+      .await
+      .unwrap_err();
+    assert!(error.0.contains("reparse point"), "{error:?}");
+
+    assert!(!victim_dir.0.join("new.toml").exists());
+    assert_eq!(victim_dir.read("config/new.toml"), None);
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old"));
+    assert_eq!(root.read("ustblcfg.json").as_deref(), Some("cfg-v1"));
+    assert!(journal_path(&root.0).is_file());
+
+    unlink_dir_link(&root.0.join("config"));
+    assert_eq!(recover(&root.0).unwrap(), Recovery::RolledBack);
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old"));
+    assert_eq!(root.read("config/new.toml"), None);
+  }
+
+  /// A junction where the update directory itself should be stops the run
+  /// before the first download, journal or backup write.
+  #[cfg(any(windows, unix))]
+  #[tokio::test]
+  async fn an_update_refuses_a_junction_where_the_update_dir_should_be() {
+    let victim_dir = Root::new();
+    let root = setup();
+    if !dir_link(&update_dir(&root.0), &victim_dir.0) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+    let mut env = FakeEnv {
+      root: root.0.clone(),
+      ..Default::default()
+    };
+    let new = url_file("mods/new.jar", "new", &mut env);
+    let operations = vec![write_op(&new)];
+    let error = apply(&env, request(&root, vec![new], operations, "0.16.0"))
+      .await
+      .unwrap_err();
+    assert!(error.0.contains("reparse point"), "{error:?}");
+
+    assert_eq!(fs::read_dir(&victim_dir.0).unwrap().count(), 0);
+    assert_eq!(root.read("mods/old.jar").as_deref(), Some("old"));
+    assert_eq!(root.read("mods/gone.jar").as_deref(), Some("gone"));
+  }
+
   #[test]
   fn unlink_is_refused_while_an_update_is_mid_flight() {
     let root = setup();
