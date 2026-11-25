@@ -682,6 +682,8 @@
   "DownloadTasksPage": {
     "updateStarted": "Modpack update added to the task page",
     "recheckUpdate": "Check for updates again",
+    "cancelUpdate": "Cancel update",
+    "cancelUpdateBusy": "Writing files; cannot cancel",
     "title": "Download & Upload Tasks",
     "unfinishedPublish": {
       "title": "Unfinished publishes",
@@ -2942,9 +2944,11 @@
       },
       "applyModpackUpdate": {
         "success": "Modpack updated",
+        "cancelled": "Update cancelled",
         "error": {
           "title": "Modpack update failed",
           "description": {
+            "MODPACK_INSTALL_INTERRUPTED": "Update cancelled",
             "MODPACK_UPDATE_TASK_FAILED": "The update task ended unexpectedly. Details are in the launcher log; check for updates again",
             "NETWORK_ERROR": "Network requests still failed after retries. Restore the connection and check for updates again",
             "FILE_OPERATION_ERROR": "Cannot read or write update files. Check disk space and permissions, then check for updates again",
@@ -2961,6 +2965,14 @@
             "MODPACK_UPDATE_LINE_GONE": "This modpack version line is no longer available on the platform",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "The files of this version are temporarily unavailable on the platform. Try again later",
             "MODPACK_UPDATE_MERGE_INVALID": "The configuration format is invalid after merging your choices; try a different choice"
+          }
+        }
+      },
+      "cancelModpackUpdateApply": {
+        "error": {
+          "title": "Cannot cancel update",
+          "description": {
+            "MODPACK_UPDATE_BUSY": "Writing files; cannot cancel"
           }
         }
       },

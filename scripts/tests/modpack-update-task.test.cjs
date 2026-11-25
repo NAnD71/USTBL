@@ -55,6 +55,10 @@ test("update groups are separate from installs, have ordered stages and a clean 
   assert.equal(update.isModpackUpdateGroup(group), true);
   assert.equal(stages.isCampusInstallGroup(group), false);
   assert.equal(stages.campusInstallGroupLabel(group), "航空学");
+  assert.equal(
+    stages.campusInstallGroupInstanceId(group),
+    "APP_DATA_SUBDIR:test"
+  );
   assert.deepEqual(
     ["Applying", "Fetching", "Preparing", "Locating"]
       .map((filename) => ({ payload: { filename } }))
@@ -77,6 +81,7 @@ test("update failure and panic reasons are readable in all five locales", () => 
       options?.defaultValue ??
       key;
     for (const code of [
+      "MODPACK_INSTALL_INTERRUPTED",
       "MODPACK_UPDATE_TASK_FAILED",
       "MODPACK_UPDATE_VERIFY_FAILED",
       "MODPACK_UPDATE_STALE",
@@ -87,6 +92,12 @@ test("update failure and panic reasons are readable in all five locales", () => 
       assert.ok(text.length > 0);
       assert.notEqual(text, code);
       assert.doesNotMatch(text, /MODPACK_|Services\./);
+      if (code === "MODPACK_INSTALL_INTERRUPTED") {
+        assert.equal(
+          text,
+          messages.Services.instance.applyModpackUpdate.error.description[code]
+        );
+      }
     }
   }
 });
@@ -222,6 +233,12 @@ test("global task context receives results with no update modal mounted", () => 
       return { useSharedModals: () => ({}) };
     if (name === "@/contexts/toast")
       return { useToast: () => (notice) => notices.push(notice) };
+    if (name === "@/enums/service-error")
+      return {
+        InstanceError: {
+          ModpackInstallInterrupted: "MODPACK_INSTALL_INTERRUPTED",
+        },
+      };
     if (name === "@/utils/modpack-update-task") return update;
     if (name === "@/utils/rename-suggestion") return renameSuggestion;
     if (name === "@/utils/file-error") return fileError;
@@ -274,18 +291,65 @@ test("global task context receives results with no update modal mounted", () => 
     currentChoices: answer,
   });
   assert.deepEqual(changed, { choices: {}, toastPlanChanged: true });
+  finished({ ...payload, error: "MODPACK_INSTALL_INTERRUPTED" });
+  assert.equal(notices.at(-1).status, "info");
+  assert.equal(
+    notices.at(-1).title,
+    "Services.instance.applyModpackUpdate.cancelled"
+  );
+  assert.equal(notices.at(-1).description, undefined);
   finished({
     ...payload,
     error: null,
     outcome: { versionId: "next", loaderInstallPending: true },
   });
-  assert.equal(refreshes, 2);
+  assert.equal(refreshes, 3);
   assert.deepEqual(checks, [["test", true]]);
   assert.deepEqual(routes, ["/downloads"]);
   assert.equal(choices.rememberedChoices.has("test"), false);
   assert.equal(choices.failedUpdatePlans.has("test"), false);
   assert.equal(notices.at(-2).status, "success");
   assert.equal(notices.at(-1).status, "info");
+});
+
+test("running update cards call apply cancellation with their instance id", () => {
+  const read = (file) =>
+    fs.readFileSync(path.join(__dirname, "../../", file), "utf8");
+  const page = read("src/pages/downloads.tsx");
+  assert.match(page, /isModpackUpdateGroup\(group\.taskGroup\)/);
+  assert.match(page, /GTaskEventStatusEnums\.Started/);
+  assert.match(page, /cancelUpdate\(taskInstanceId\(group\.taskGroup\)!\)/);
+  assert.match(
+    page,
+    /campusInstallGroupInstanceId\(taskGroup, knownInstanceIds\)/
+  );
+  assert.match(
+    page,
+    /ModpackUpdateService\.cancelModpackUpdateApply\(instanceId\)/
+  );
+  assert.match(page, /InstanceError\.ModpackUpdateBusy/);
+  assert.match(page, /DownloadTasksPage\.cancelUpdateBusy/);
+
+  const service = read("src/services/modpack-update.ts");
+  assert.match(
+    service,
+    /cancelModpackUpdateApply[\s\S]*invoke\("cancel_modpack_update_apply", \{ instanceId \}\)/
+  );
+  for (const locale of ["en", "fr", "ja", "zh-Hans", "zh-Hant"]) {
+    const messages = JSON.parse(read(`src/locales/${locale}.json`));
+    assert.ok(messages.DownloadTasksPage.cancelUpdate.length > 0);
+    assert.ok(messages.DownloadTasksPage.cancelUpdateBusy.length > 0);
+    assert.equal(
+      messages.Services.instance.cancelModpackUpdateApply.error.description
+        .MODPACK_UPDATE_BUSY,
+      messages.DownloadTasksPage.cancelUpdateBusy
+    );
+    assert.equal(
+      messages.Services.instance.applyModpackUpdate.cancelled,
+      messages.Services.instance.applyModpackUpdate.error.description
+        .MODPACK_INSTALL_INTERRUPTED
+    );
+  }
 });
 
 test("failed update cards reopen the planner, never offer download retry or install continuation", () => {

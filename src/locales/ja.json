@@ -682,6 +682,8 @@
   "DownloadTasksPage": {
     "updateStarted": "モッドパックの更新をタスクページに追加しました",
     "recheckUpdate": "更新を再確認",
+    "cancelUpdate": "更新をキャンセル",
+    "cancelUpdateBusy": "書き込み中のためキャンセルできません",
     "title": "ダウンロード・アップロードタスク",
     "unfinishedPublish": {
       "title": "未完了の公開",
@@ -2942,9 +2944,11 @@
       },
       "applyModpackUpdate": {
         "success": "モッドパックを更新しました",
+        "cancelled": "更新をキャンセルしました",
         "error": {
           "title": "モッドパックの更新に失敗しました",
           "description": {
+            "MODPACK_INSTALL_INTERRUPTED": "更新をキャンセルしました",
             "MODPACK_UPDATE_TASK_FAILED": "更新タスクが予期せず終了しました。ランチャーログを確認し、更新を再確認してください",
             "NETWORK_ERROR": "再試行後もネットワーク要求に失敗しました。接続を復旧して更新を再確認してください",
             "FILE_OPERATION_ERROR": "更新ファイルを読み書きできません。ディスク容量と権限を確認して更新を再確認してください",
@@ -2961,6 +2965,14 @@
             "MODPACK_UPDATE_LINE_GONE": "このモッドパックのバージョン系列はプラットフォームに存在しません",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "このバージョンのファイルはプラットフォーム上で一時的に利用できません。しばらくしてからやり直してください",
             "MODPACK_UPDATE_MERGE_INVALID": "選択をマージした後の設定ファイル形式が無効です。別の選択を試してください"
+          }
+        }
+      },
+      "cancelModpackUpdateApply": {
+        "error": {
+          "title": "更新をキャンセルできません",
+          "description": {
+            "MODPACK_UPDATE_BUSY": "書き込み中のためキャンセルできません"
           }
         }
       },

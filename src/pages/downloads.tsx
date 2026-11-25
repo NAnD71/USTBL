@@ -30,6 +30,8 @@ import { useLauncherConfig } from "@/contexts/config";
 import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { destOf, parseTaskGroup, useTaskContext } from "@/contexts/task";
+import { useToast } from "@/contexts/toast";
+import { InstanceError } from "@/enums/service-error";
 import { useDiscardCampusInstall } from "@/hooks/discard-campus-install";
 import {
   GTaskEventStatusEnums,
@@ -39,6 +41,7 @@ import {
   TaskParam,
   TaskTypeEnums,
 } from "@/models/task";
+import { ModpackUpdateService } from "@/services/modpack-update";
 import {
   campusInstallCardState,
   campusInstallGroupInstanceId,
@@ -62,6 +65,7 @@ export const DownloadTasksPage = () => {
   const { t } = useTranslation();
   const router = useRouter();
   const { openSharedModal } = useSharedModals();
+  const toast = useToast();
   const { config } = useLauncherConfig();
   const { getInstanceList } = useGlobalData();
   const primaryColor = config.appearance.theme.primaryColor;
@@ -83,6 +87,30 @@ export const DownloadTasksPage = () => {
   const [taskGroupList, setTaskGroupList] = useState<
     [TaskGroupDesc, boolean][]
   >([]); // boolean is used to record accordion state.
+  const [cancellingUpdates, setCancellingUpdates] = useState<string[]>([]);
+
+  const cancelUpdate = async (instanceId: string) => {
+    if (cancellingUpdates.includes(instanceId)) return;
+    setCancellingUpdates((previous) => [...previous, instanceId]);
+    try {
+      const response =
+        await ModpackUpdateService.cancelModpackUpdateApply(instanceId);
+      if (response.status !== "success") {
+        const busy = response.raw_error === InstanceError.ModpackUpdateBusy;
+        toast({
+          title: busy
+            ? t("DownloadTasksPage.cancelUpdateBusy")
+            : response.message,
+          description: busy ? undefined : response.details,
+          status: busy ? "info" : "error",
+        });
+      }
+    } finally {
+      setCancellingUpdates((previous) =>
+        previous.filter((id) => id !== instanceId)
+      );
+    }
+  };
 
   useEffect(() => {
     setTaskGroupList((prev) => {
@@ -175,7 +203,7 @@ export const DownloadTasksPage = () => {
   const canPause = (group: TaskGroupDesc) =>
     !isModpackTransferGroup(group.taskGroup);
 
-  const runningInstallId = (taskGroup: string) =>
+  const taskInstanceId = (taskGroup: string) =>
     installProgress[taskGroup]?.instanceId ??
     campusInstallGroupInstanceId(taskGroup, knownInstanceIds);
 
@@ -373,9 +401,27 @@ export const DownloadTasksPage = () => {
                         </Tooltip>
                       )}
 
+                    {isModpackUpdateGroup(group.taskGroup) &&
+                      group.status === GTaskEventStatusEnums.Started &&
+                      taskInstanceId(group.taskGroup) && (
+                        <Button
+                          size="xs"
+                          variant="ghost"
+                          colorScheme="red"
+                          isDisabled={cancellingUpdates.includes(
+                            taskInstanceId(group.taskGroup)!
+                          )}
+                          onClick={() =>
+                            void cancelUpdate(taskInstanceId(group.taskGroup)!)
+                          }
+                        >
+                          {t("DownloadTasksPage.cancelUpdate")}
+                        </Button>
+                      )}
+
                     {isCampusInstallGroup(group.taskGroup) &&
                       group.status === GTaskEventStatusEnums.Started &&
-                      runningInstallId(group.taskGroup) && (
+                      taskInstanceId(group.taskGroup) && (
                         <Button
                           size="xs"
                           variant="ghost"
@@ -383,14 +429,14 @@ export const DownloadTasksPage = () => {
                           isDisabled={
                             discarding ||
                             !canDiscardRunningInstall(
-                              runningInstallId(group.taskGroup)!,
+                              taskInstanceId(group.taskGroup)!,
                               tasks,
                               installProgress,
                               knownInstanceIds
                             )
                           }
                           onClick={() =>
-                            discard(runningInstallId(group.taskGroup)!)
+                            discard(taskInstanceId(group.taskGroup)!)
                           }
                         >
                           {t("DownloadTasksPage.unfinishedInstall.discard")}

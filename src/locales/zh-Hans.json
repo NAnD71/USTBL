@@ -682,6 +682,8 @@
   "DownloadTasksPage": {
     "updateStarted": "整合包更新已加入任务页",
     "recheckUpdate": "重新检查更新",
+    "cancelUpdate": "取消更新",
+    "cancelUpdateBusy": "正在写入，无法取消",
     "title": "下载与上传任务",
     "unfinishedPublish": {
       "title": "未完成的发布",
@@ -2942,9 +2944,11 @@
       },
       "applyModpackUpdate": {
         "success": "整合包已更新",
+        "cancelled": "更新已取消",
         "error": {
           "title": "整合包更新失败",
           "description": {
+            "MODPACK_INSTALL_INTERRUPTED": "更新已取消",
             "MODPACK_UPDATE_TASK_FAILED": "更新任务意外终止，详情已记录到启动器日志；请重新检查更新",
             "NETWORK_ERROR": "网络请求重试后仍失败，请恢复网络后重新检查更新",
             "FILE_OPERATION_ERROR": "更新时无法读写文件，请检查磁盘空间和权限后重新检查更新",
@@ -2961,6 +2965,14 @@
             "MODPACK_UPDATE_LINE_GONE": "平台上已没有这个整合包的这条版本线",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "平台上暂时取不到此版本所需的文件，请稍后重试",
             "MODPACK_UPDATE_MERGE_INVALID": "按你的选择合并后，配置文件格式不对，请换个选择再试"
+          }
+        }
+      },
+      "cancelModpackUpdateApply": {
+        "error": {
+          "title": "无法取消更新",
+          "description": {
+            "MODPACK_UPDATE_BUSY": "正在写入，无法取消"
           }
         }
       },

@@ -166,6 +166,14 @@ export class ModpackUpdateService {
     });
   }
 
+  /** Ask a running update to stop before it starts writing instance files. */
+  @responseHandler("instance")
+  static async cancelModpackUpdateApply(
+    instanceId: string
+  ): Promise<InvokeResponse<null>> {
+    return await invoke("cancel_modpack_update_apply", { instanceId });
+  }
+
   static onUpdateFinished(
     callback: (payload: ModpackUpdateFinished) => void
   ): () => void {

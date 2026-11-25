@@ -682,6 +682,8 @@
   "DownloadTasksPage": {
     "updateStarted": "Mise à jour du modpack ajoutée à la page des tâches",
     "recheckUpdate": "Rechercher à nouveau les mises à jour",
+    "cancelUpdate": "Annuler la mise à jour",
+    "cancelUpdateBusy": "Écriture en cours, annulation impossible",
     "title": "Tâches de téléchargement et d'envoi",
     "unfinishedPublish": {
       "title": "Publications inachevées",
@@ -2942,9 +2944,11 @@
       },
       "applyModpackUpdate": {
         "success": "Pack mis à jour",
+        "cancelled": "Mise à jour annulée",
         "error": {
           "title": "Échec de la mise à jour du pack",
           "description": {
+            "MODPACK_INSTALL_INTERRUPTED": "Mise à jour annulée",
             "MODPACK_UPDATE_TASK_FAILED": "La tâche de mise à jour s'est arrêtée de façon inattendue. Consultez le journal du lanceur et recherchez à nouveau les mises à jour",
             "NETWORK_ERROR": "Les requêtes réseau ont échoué après plusieurs tentatives. Rétablissez la connexion et recherchez à nouveau les mises à jour",
             "FILE_OPERATION_ERROR": "Impossible de lire ou d'écrire les fichiers. Vérifiez l'espace disque et les autorisations, puis recherchez à nouveau les mises à jour",
@@ -2961,6 +2965,14 @@
             "MODPACK_UPDATE_LINE_GONE": "Cette ligne de versions du modpack n’est plus disponible sur la plateforme",
             "MODPACK_UPDATE_PACK_UNAVAILABLE": "Les fichiers de cette version sont momentanément indisponibles sur la plateforme. Réessayez plus tard",
             "MODPACK_UPDATE_MERGE_INVALID": "Le format de configuration est invalide après la fusion de vos choix ; essayez un autre choix"
+          }
+        }
+      },
+      "cancelModpackUpdateApply": {
+        "error": {
+          "title": "Impossible d'annuler la mise à jour",
+          "description": {
+            "MODPACK_UPDATE_BUSY": "Écriture en cours, annulation impossible"
           }
         }
       },

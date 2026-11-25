@@ -14,6 +14,7 @@ import { useGlobalData } from "@/contexts/global-data";
 import { useSharedModals } from "@/contexts/shared-modal";
 import { useToast } from "@/contexts/toast";
 import { OtherResourceType } from "@/enums/resource";
+import { InstanceError } from "@/enums/service-error";
 import {
   CampusInstallProgress,
   CampusUnfinishedInstall,
@@ -709,18 +710,24 @@ export const TaskContextProvider: React.FC<{ children: React.ReactNode }> = ({
         getInstanceList(true);
       },
       check: checkModpackUpdate,
-      notify: (failed, error) =>
+      notify: (failed, error) => {
+        const cancelled = error === InstanceError.ModpackInstallInterrupted;
         toast({
           title: t(
-            failed
-              ? "Services.instance.applyModpackUpdate.error.title"
-              : "Services.instance.applyModpackUpdate.success"
+            cancelled
+              ? "Services.instance.applyModpackUpdate.cancelled"
+              : failed
+                ? "Services.instance.applyModpackUpdate.error.title"
+                : "Services.instance.applyModpackUpdate.success"
           ),
           description: error
-            ? localizeModpackUpdateError(t, error)
+            ? cancelled
+              ? undefined
+              : localizeModpackUpdateError(t, error)
             : payload.instanceName,
-          status: failed ? "error" : "success",
-        }),
+          status: cancelled ? "info" : failed ? "error" : "success",
+        });
+      },
       loaderPending: () => {
         toast({
           title: t("UpdateModpackModal.toast.loaderPending"),
