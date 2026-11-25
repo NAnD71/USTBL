@@ -962,8 +962,9 @@ impl PublishJob {
         .map_err(|e| USTBLError(e.to_string()))??;
     } else {
       let objects: Vec<PackObject> = self.record.objects.iter().map(PackObject::from).collect();
+      let root = instance_of(&self.app, &self.record.instance_id)?.version_path;
       tokio::task::spawn_blocking(move || {
-        rebuild_pack(&objects, &check_path, &pack.sha1, pack.size)
+        rebuild_pack(&objects, &check_path, &pack.sha1, pack.size, &root)
       })
       .await
       .map_err(|e| USTBLError(e.to_string()))??;

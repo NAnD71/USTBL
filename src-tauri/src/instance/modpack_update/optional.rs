@@ -79,6 +79,9 @@ pub struct OptionalRecord {
 /// Read the record. A missing or unreadable file is an instance without one.
 pub fn read(root: &Path) -> OptionalRecord {
   let path = record_path(root);
+  if super::ensure_path(root, &path).is_err() {
+    return OptionalRecord::default();
+  }
   let recovered = recover_json(&path);
   recovered.value
 }
@@ -86,6 +89,7 @@ pub fn read(root: &Path) -> OptionalRecord {
 /// Store `record`; a record that knows no file removes the file instead.
 pub fn write(root: &Path, record: &OptionalRecord) -> io::Result<()> {
   let path = record_path(root);
+  super::ensure_path(root, &path)?;
   if record.known.is_empty() && record.selected.is_empty() {
     return match fs::remove_file(&path) {
       Err(error) if error.kind() != io::ErrorKind::NotFound => Err(error),
@@ -93,6 +97,7 @@ pub fn write(root: &Path, record: &OptionalRecord) -> io::Result<()> {
     };
   }
   if let Some(parent) = path.parent() {
+    super::ensure_path(root, parent)?;
     fs::create_dir_all(parent)?;
   }
   let record = OptionalRecord {

@@ -8,11 +8,12 @@
 //! it stores no instance name or path, and renaming or moving the instance does
 //! not affect it.
 
-use crate::file_error::AtPath;
+use crate::file_error::{tag, AtPath};
 use crate::instance::models::misc::{InstanceOrigin, ModLoaderType, OriginPlatform};
 use crate::instance::modpack_update::diff::FileKey;
 use crate::instance::modpack_update::remote::RemoteRule;
 use crate::storage::{load_json_async, save_json_async};
+use crate::utils::fs::ensure_no_reparse_point;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha1::{Digest, Sha1};
@@ -368,6 +369,8 @@ impl ModpackBaseline {
 
   pub async fn save(&self, instance_dir: &Path) -> std::io::Result<()> {
     let path = instance_dir.join(BASELINE_FILE_NAME);
+    ensure_no_reparse_point(instance_dir, &path)
+      .map_err(|error| tag(error, &path, Some(instance_dir)))?;
     save_json_async(self, &path)
       .await
       .at_in(&path, instance_dir)

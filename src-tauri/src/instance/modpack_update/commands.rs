@@ -53,7 +53,7 @@ use crate::tasks::streams::reporter::Sink;
 use crate::tasks::streams::PHandle;
 use crate::tasks::upload::upload_handle;
 use crate::tasks::PTaskParam;
-use crate::utils::fs::validate_sha1;
+use crate::utils::fs::{ensure_no_reparse_point, validate_sha1};
 use async_trait::async_trait;
 use serde::Serialize;
 use std::collections::{BTreeMap, HashMap, HashSet};
@@ -67,6 +67,12 @@ use tauri::{AppHandle, Emitter, Manager};
 use tauri_plugin_opener::reveal_item_in_dir;
 
 const PROGRESS_EVENT: &str = "modpack-update:progress";
+
+fn ensure_update_path(root: &Path, path: &Path) -> USTBLResult<()> {
+  ensure_no_reparse_point(root, path).map_err(|error| {
+    crate::error::USTBLError::from(crate::file_error::tag(error, path, Some(root)))
+  })
+}
 
 /// A missing release record is repaired at most twice per process for one
 /// instance/version: the initial lookup and one retry. This keeps an offline
@@ -337,6 +343,8 @@ fn campus_install_record(root: &Path) -> PathBuf {
 fn save_campus_install_record(root: &Path, record: &CampusInstallRecord) -> USTBLResult<()> {
   let path = campus_install_record(root);
   let bytes = serde_json::to_vec_pretty(record)?;
+  ensure_update_path(root, path.parent().unwrap())?;
+  ensure_update_path(root, &path)?;
   fs::create_dir_all(path.parent().unwrap()).at_in(path.parent().unwrap(), root)?;
   write_atomic(&path, &bytes, Durability::Sync).at_in(&path, root)?;
   Ok(())
@@ -366,7 +374,10 @@ pub fn pending_campus_instances(app: &AppHandle) -> HashMap<String, Instance> {
 }
 
 fn remove_campus_install_record(root: &Path) {
-  let _ = fs::remove_file(campus_install_record(root));
+  let path = campus_install_record(root);
+  if ensure_update_path(root, &path).is_ok() {
+    let _ = fs::remove_file(path);
+  }
 }
 
 /// Persist the pending install before instance creation reports success. The
@@ -563,8 +574,21 @@ pub async fn discard_campus_modpack_install(
     .await??;
     return Ok(());
   }
+  let update_root = root.join(super::remote::UPDATE_DIR);
+  ensure_update_path(&root, &update_root)?;
+  for name in [
+    "staging",
+    "components",
+    "remote",
+    "staging-manifest.json",
+    "staging-manifest.json.tmp",
+    "campus-install.json.tmp",
+    "campus-install.json",
+  ] {
+    ensure_update_path(&root, &update_root.join(name))?;
+  }
   for name in ["staging", "components", "remote"] {
-    match fs::remove_dir_all(root.join(super::remote::UPDATE_DIR).join(name)) {
+    match fs::remove_dir_all(update_root.join(name)) {
       Ok(()) => {}
       Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
       Err(error) => return Err(error.into()),
@@ -576,7 +600,7 @@ pub async fn discard_campus_modpack_install(
     "campus-install.json.tmp",
     "campus-install.json",
   ] {
-    match fs::remove_file(root.join(super::remote::UPDATE_DIR).join(name)) {
+    match fs::remove_file(update_root.join(name)) {
       Ok(()) => {}
       Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
       Err(error) => return Err(error.into()),
@@ -764,6 +788,7 @@ pub async fn recover_publish_base(
     .version_path
     .join(super::remote::UPDATE_DIR)
     .join(format!("publish-diff-{}", uuid::Uuid::new_v4()));
+  ensure_update_path(&instance.version_path, &preview)?;
   let dest = preview.join(path);
   let result = materialize_remote_file(&env, dest.clone(), file).await;
   if result.is_ok() {
@@ -779,7 +804,9 @@ pub async fn recover_publish_base(
     crate::instance::helpers::modpack::base_store::store(&instance.version_path, &baseline, &bytes)
       .map_err(crate::error::USTBLError::from)?;
   }
-  let _ = tokio::fs::remove_dir_all(preview).await;
+  if ensure_update_path(&instance.version_path, &preview).is_ok() {
+    let _ = tokio::fs::remove_dir_all(preview).await;
+  }
   result.map(|_| Some(()))
 }
 
@@ -1838,7 +1865,15 @@ async fn light_check(app: &AppHandle, target: &Target) -> USTBLResult<LightCheck
 /// Drop the identity and baseline; the game files and isolation stay.
 async fn unlink_origin(app: &AppHandle, instance_id: &str, target: &Target) -> USTBLResult<()> {
   let _guard = ensure_unlink_safe(&target.root)?;
-  match fs::remove_file(target.root.join(BASELINE_FILE_NAME)) {
+  let baseline_path = target.root.join(BASELINE_FILE_NAME);
+  ensure_update_path(&target.root, &baseline_path)?;
+  ensure_update_path(
+    &target.root,
+    &target
+      .root
+      .join(crate::instance::constants::INSTANCE_CFG_FILE_NAME),
+  )?;
+  match fs::remove_file(&baseline_path) {
     Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
     result => result?,
   }
@@ -2399,7 +2434,13 @@ struct PlannedRun {
 /// Drop files an interrupted preview could have left behind.
 fn cleanup_preview_leftovers(root: &Path) {
   let update = root.join(super::remote::UPDATE_DIR);
-  let _ = fs::remove_dir_all(update.join("remote-preview"));
+  if ensure_update_path(root, &update).is_err() {
+    return;
+  }
+  let preview = update.join("remote-preview");
+  if ensure_update_path(root, &preview).is_ok() {
+    let _ = fs::remove_dir_all(preview);
+  }
   if let Ok(entries) = fs::read_dir(&update) {
     for entry in entries.flatten() {
       if entry
@@ -2407,7 +2448,9 @@ fn cleanup_preview_leftovers(root: &Path) {
         .to_string_lossy()
         .starts_with("base-recovery-")
       {
-        let _ = fs::remove_dir_all(entry.path());
+        if ensure_update_path(root, &entry.path()).is_ok() {
+          let _ = fs::remove_dir_all(entry.path());
+        }
       }
     }
   }
@@ -2740,6 +2783,7 @@ async fn recover_base_copies(
       .collect();
     let recovered = async {
       let mut recovered = false;
+      ensure_update_path(&target.root, &preview)?;
       env.progress(Stage::Locating);
       prepare_packs(&files).await?;
       let contents = read_remote_files(&env, &preview, &files).await?;
@@ -2752,7 +2796,9 @@ async fn recover_base_copies(
       Ok::<_, crate::error::USTBLError>(recovered)
     }
     .await;
-    let _ = tokio::fs::remove_dir_all(preview).await;
+    if ensure_update_path(&target.root, &preview).is_ok() {
+      let _ = tokio::fs::remove_dir_all(preview).await;
+    }
     recovered
   }
   .await;
@@ -2871,6 +2917,7 @@ async fn materialize_text_candidates(
     .root
     .join(super::remote::UPDATE_DIR)
     .join("remote-preview");
+  ensure_update_path(&target.root, &preview)?;
   let _ = tokio::fs::remove_dir_all(&preview).await;
   let mut result = BTreeMap::new();
   let candidates: Vec<_> = remote
@@ -2885,8 +2932,11 @@ async fn materialize_text_candidates(
     .into_iter()
     .filter(|file| file.key.size <= text::MAX_TEXT_SIZE as u64)
     .collect();
+  ensure_update_path(&target.root, &preview)?;
   let contents = read_remote_files(&env, &preview, &fetchable).await;
-  let _ = tokio::fs::remove_dir_all(&preview).await;
+  if ensure_update_path(&target.root, &preview).is_ok() {
+    let _ = tokio::fs::remove_dir_all(&preview).await;
+  }
   for (file, bytes) in fetchable.into_iter().zip(contents?) {
     if text::is_text_path(&file.path, &bytes) {
       result.insert(file.path.clone(), bytes);
@@ -3002,11 +3052,14 @@ async fn fetch_diff_remote(
     .join("file-diff")
     .join(uuid::Uuid::new_v4().to_string());
   let candidates = [&file];
+  ensure_update_path(&target.root, &scratch)?;
   let result = match prepare_packs(&candidates).await {
     Ok(()) => read_remote_files(&env, &scratch, &candidates).await,
     Err(error) => Err(error),
   };
-  let _ = tokio::fs::remove_dir_all(&scratch).await;
+  if ensure_update_path(&target.root, &scratch).is_ok() {
+    let _ = tokio::fs::remove_dir_all(&scratch).await;
+  }
   result?
     .into_iter()
     .next()
@@ -4119,7 +4172,10 @@ pub async fn stage_local_modpack_update(
   .map_err(|e| crate::error::USTBLError(e.to_string()))??;
   // Replacing an earlier pick: its archive is not needed any more.
   if let Some(previous) = previous.filter(|previous| previous.sha1 != sha1) {
-    let _ = fs::remove_file(super::sources::archive_path(&root, &previous.sha1));
+    let previous_archive = super::sources::archive_path(&root, &previous.sha1);
+    if ensure_update_path(&root, &previous_archive).is_ok() {
+      let _ = fs::remove_file(previous_archive);
+    }
   }
   let label = Some(label.trim().to_string())
     .filter(|label| !label.is_empty())

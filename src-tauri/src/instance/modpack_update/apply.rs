@@ -20,6 +20,7 @@ use crate::instance::helpers::modpack::multimc::snapshot::{
 };
 use crate::instance::models::misc::{Instance, InstanceError, InstanceOrigin};
 use crate::tasks::download::DownloadParam;
+use crate::utils::fs::ensure_no_reparse_point;
 use async_trait::async_trait;
 use futures::stream::{FuturesUnordered, StreamExt};
 use serde::{Deserialize, Serialize};
@@ -488,39 +489,6 @@ fn validate_journal(journal: &Journal) -> io::Result<()> {
   for name in journal.meta_present.iter().chain(&journal.meta_absent) {
     if !journal_meta_name_is_safe(name) {
       return refuse("meta file name", name);
-    }
-  }
-  Ok(())
-}
-
-/// A journal path can be lexically inside the instance yet still escape it:
-/// a directory on the way (or the target itself) may be a junction or a
-/// symlink pointing elsewhere. Walk every component from the trusted `root`
-/// down to `path` and refuse any reparse point, so neither an update nor a
-/// rollback can be redirected outside the instance. The check is about
-/// redirection only; which files the update manages stays the journal's job.
-fn ensure_no_reparse_point(root: &Path, path: &Path) -> io::Result<()> {
-  let Ok(relative) = path.strip_prefix(root) else {
-    return Err(io::Error::new(
-      io::ErrorKind::InvalidData,
-      format!("path outside the instance: {}", path.display()),
-    ));
-  };
-  let mut current = root.to_path_buf();
-  for component in relative.components() {
-    current.push(component);
-    let is_reparse = fs::symlink_metadata(&current)
-      .map(|metadata| metadata.file_type().is_symlink())
-      .unwrap_or(false);
-    if is_reparse {
-      log::warn!(
-        "Refused a modpack update path through a reparse point: {}",
-        current.display()
-      );
-      return Err(io::Error::new(
-        io::ErrorKind::InvalidData,
-        format!("reparse point in the update path: {}", current.display()),
-      ));
     }
   }
   Ok(())

@@ -134,23 +134,30 @@ fn memory_path(root: &Path) -> PathBuf {
 
 /// The recorded suggestion; `None` when there is none or the file is unreadable.
 pub fn read(root: &Path) -> Option<MemorySuggestion> {
-  serde_json::from_slice(&fs::read(memory_path(root)).ok()?).ok()
+  let path = memory_path(root);
+  super::ensure_path(root, &path).ok()?;
+  serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
 fn write(root: &Path, suggestion: &MemorySuggestion) -> USTBLResult<()> {
   let path = memory_path(root);
+  super::ensure_path(root, &path)?;
   let temporary = path.with_extension("json.tmp");
+  super::ensure_path(root, &temporary)?;
   let bytes =
     serde_json::to_vec_pretty(suggestion).map_err(|_| InstanceError::FileOperationError)?;
-  fs::create_dir_all(path.parent().unwrap_or(root))
-    .map_err(|_| InstanceError::FileOperationError)?;
+  let parent = path.parent().unwrap_or(root);
+  super::ensure_path(root, parent)?;
+  fs::create_dir_all(parent).map_err(|_| InstanceError::FileOperationError)?;
   fs::write(&temporary, bytes).map_err(|_| InstanceError::FileOperationError)?;
   fs::rename(&temporary, &path).map_err(|_| InstanceError::FileOperationError)?;
   Ok(())
 }
 
 fn clear(root: &Path) -> USTBLResult<()> {
-  match fs::remove_file(memory_path(root)) {
+  let path = memory_path(root);
+  super::ensure_path(root, &path)?;
+  match fs::remove_file(path) {
     Ok(()) => Ok(()),
     Err(error) if error.kind() == ErrorKind::NotFound => Ok(()),
     Err(_) => Err(InstanceError::FileOperationError.into()),

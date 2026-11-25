@@ -137,6 +137,8 @@ pub async fn restore_component_profile(
     .extend(get_invalid_assets(app, &version_info, &priority_list, assets_dir, false).await?);
 
   let client_json = instance.version_path.join(format!("{name}.json"));
+  crate::utils::fs::ensure_no_reparse_point(&instance.version_path, &client_json)
+    .at_in(&client_json, &instance.version_path)?;
   save_json_async(&version_info, &client_json)
     .await
     .at_in(&client_json, &instance.version_path)

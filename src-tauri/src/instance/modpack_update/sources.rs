@@ -478,7 +478,7 @@ pub(crate) fn archive_path(root: &Path, sha1: &str) -> PathBuf {
 pub fn downloaded_archive(root: &Path, latest: &LatestVersion) -> Option<PathBuf> {
   let (sha1, _) = latest.archive_ref()?;
   let path = archive_path(root, sha1);
-  path.is_file().then_some(path)
+  (super::ensure_path(root, &path).is_ok() && path.is_file()).then_some(path)
 }
 
 /// The cache of `version`, when one exists that describes it fetched into `root`.
@@ -487,7 +487,9 @@ pub fn matching_remote_cache(
   root: &Path,
   version: &LatestVersion,
 ) -> Option<RemoteCache> {
-  let bytes = fs::read(remote_cache_path(root, &version.version_id)).ok()?;
+  let path = remote_cache_path(root, &version.version_id);
+  super::ensure_path(root, &path).ok()?;
+  let bytes = fs::read(path).ok()?;
   let cache: RemoteCache = serde_json::from_slice(&bytes).ok()?;
   (cache.matches(origin, root, version)
     && !cache.remote.has_listed_files()
@@ -509,10 +511,13 @@ pub fn load_remote_cache(
 
 pub fn write_remote_cache(root: &Path, cache: &RemoteCache) -> std::io::Result<()> {
   let path = remote_cache_path(root, &cache.version_id);
+  super::ensure_path(root, &path)?;
   if let Some(parent) = path.parent() {
+    super::ensure_path(root, parent)?;
     fs::create_dir_all(parent)?;
   }
   let temp = path.with_extension("json.tmp");
+  super::ensure_path(root, &temp)?;
   fs::write(&temp, serde_json::to_vec_pretty(cache)?)?;
   fs::rename(temp, path)
 }
@@ -1031,6 +1036,9 @@ where
   Fut: std::future::Future<Output = USTBLResult<()>>,
 {
   let expected = param.sha1.as_ref().map(|sha1| sha1.to_lowercase());
+  super::ensure_path(root, cached)?;
+  let part = part_path(cached);
+  super::ensure_path(root, &part)?;
   let hash = |path: PathBuf| async move {
     tokio::task::spawn_blocking(move || hash_file(&path))
       .await
@@ -1041,8 +1049,7 @@ where
       return Ok(FileKey { sha1, size });
     }
   }
-  remove_parts_of(cached);
-  let part = part_path(cached);
+  remove_parts_of(root, cached);
   param.dest = part.clone();
   if let Err(error) = fetch(param).await {
     let _ = fs::remove_file(&part);
@@ -1055,6 +1062,8 @@ where
       return Err(USTBLError(error.to_string()));
     }
   };
+  super::ensure_path(root, &part)?;
+  super::ensure_path(root, cached)?;
   fs::rename(&part, cached).at_in(&part, root)?;
   Ok(key)
 }
@@ -1332,17 +1341,23 @@ fn part_path(path: &Path) -> PathBuf {
 }
 
 /// Remove what earlier downloads of the archive at `path` left behind.
-fn remove_parts_of(path: &Path) {
+fn remove_parts_of(root: &Path, path: &Path) {
   let (Some(dir), Some(name)) = (path.parent(), path.file_name()) else {
     return;
   };
+  if super::ensure_path(root, dir).is_err() {
+    return;
+  }
   let prefix = format!("{}.", name.to_string_lossy());
   let Ok(entries) = fs::read_dir(dir) else {
     return;
   };
   for entry in entries.flatten() {
     let entry_name = entry.file_name().to_string_lossy().into_owned();
-    if entry_name.starts_with(&prefix) && entry_name.ends_with(PART_SUFFIX) {
+    if entry_name.starts_with(&prefix)
+      && entry_name.ends_with(PART_SUFFIX)
+      && super::ensure_path(root, &entry.path()).is_ok()
+    {
       let _ = fs::remove_file(entry.path());
     }
   }
@@ -1359,12 +1374,16 @@ pub(super) async fn download_archive(
   sha1: &str,
   root: &Path,
 ) -> USTBLResult<()> {
-  remove_parts_of(path);
+  super::ensure_path(root, path)?;
   let part = part_path(path);
+  super::ensure_path(root, &part)?;
+  remove_parts_of(root, path);
   if let Err(error) = download_url(app, url, &part, Some(sha1)).await {
     let _ = fs::remove_file(&part);
     return Err(error);
   }
+  super::ensure_path(root, &part)?;
+  super::ensure_path(root, path)?;
   fs::rename(&part, path).at_in(&part, root)?;
   Ok(())
 }
@@ -1972,6 +1991,7 @@ pub async fn resolve_remote(
   latest: &LatestVersion,
 ) -> USTBLResult<RemoteModpack> {
   let dir = remote_dir(root);
+  super::ensure_path(root, &dir)?;
   fs::create_dir_all(&dir).at_in(&dir, root)?;
   let remote = if let Some(remote) = load_remote_cache(app, origin, root, latest) {
     remote
@@ -2655,7 +2675,7 @@ mod tests {
     for path in [&first, &second, &archive, &other, &other_part, &cache] {
       fs::write(path, b"x").unwrap();
     }
-    remove_parts_of(&archive);
+    remove_parts_of(&root, &archive);
     assert!(!first.exists() && !second.exists());
     for path in [&archive, &other, &other_part, &cache] {
       assert!(path.exists(), "{path:?} must stay");

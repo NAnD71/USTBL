@@ -111,7 +111,9 @@ pub fn fingerprint_paths(root: &Path, paths: &[String]) -> io::Result<String> {
 }
 
 pub fn load_plan_cache(root: &Path) -> Option<PlanCache> {
-  let bytes = fs::read(cache_path(root)).ok()?;
+  let path = cache_path(root);
+  super::ensure_path(root, &path).ok()?;
+  let bytes = fs::read(path).ok()?;
   let cache: PlanCache = serde_json::from_slice(&bytes).ok()?;
   if cache.schema != CACHE_SCHEMA {
     return None;
@@ -121,16 +123,22 @@ pub fn load_plan_cache(root: &Path) -> Option<PlanCache> {
 
 pub fn write_plan_cache(root: &Path, cache: &PlanCache) -> io::Result<()> {
   let path = cache_path(root);
+  super::ensure_path(root, &path)?;
   if let Some(parent) = path.parent() {
+    super::ensure_path(root, parent)?;
     fs::create_dir_all(parent)?;
   }
   let temp = path.with_extension("json.tmp");
+  super::ensure_path(root, &temp)?;
   fs::write(&temp, serde_json::to_vec_pretty(cache)?)?;
   fs::rename(temp, path)
 }
 
 pub fn clear_plan_cache(root: &Path) {
-  let _ = fs::remove_file(cache_path(root));
+  let path = cache_path(root);
+  if super::ensure_path(root, &path).is_ok() {
+    let _ = fs::remove_file(path);
+  }
 }
 
 /// The paths a plan covers: every path either side lists, so a local edit

@@ -46,20 +46,28 @@ fn target_path(root: &Path) -> PathBuf {
 
 pub(crate) fn save_target(root: &Path, target: &LocalTarget) -> USTBLResult<()> {
   let path = target_path(root);
+  super::ensure_path(root, &path)?;
   let parent = path.parent().unwrap();
+  super::ensure_path(root, parent)?;
   fs::create_dir_all(parent).at_in(parent, root)?;
   let temporary = path.with_extension("json.tmp");
+  super::ensure_path(root, &temporary)?;
   fs::write(&temporary, serde_json::to_vec_pretty(target)?).at_in(&temporary, root)?;
   fs::rename(&temporary, &path).at_in(&path, root)?;
   Ok(())
 }
 
 pub(crate) fn load_target(root: &Path) -> Option<LocalTarget> {
-  serde_json::from_slice(&fs::read(target_path(root)).ok()?).ok()
+  let path = target_path(root);
+  super::ensure_path(root, &path).ok()?;
+  serde_json::from_slice(&fs::read(path).ok()?).ok()
 }
 
 pub(crate) fn clear_target(root: &Path) {
-  let _ = fs::remove_file(target_path(root));
+  let path = target_path(root);
+  if super::ensure_path(root, &path).is_ok() {
+    let _ = fs::remove_file(path);
+  }
 }
 
 /// The picked archive that updates this instance, if there is one. A record
@@ -70,13 +78,20 @@ pub(crate) fn pending_target(root: &Path, origin: &InstanceOrigin) -> Option<Loc
     return None;
   }
   load_target(root)
-    .filter(|target| target.sha1 != origin.version_id && archive_path(root, &target.sha1).is_file())
+    .filter(|target| target.sha1 != origin.version_id)
+    .filter(|target| {
+      let archive = archive_path(root, &target.sha1);
+      super::ensure_path(root, &archive).is_ok() && archive.is_file()
+    })
 }
 
 /// Drop the pending target together with its staged archive.
 pub(crate) fn discard_target(root: &Path) {
   if let Some(target) = load_target(root) {
-    let _ = fs::remove_file(archive_path(root, &target.sha1));
+    let archive = archive_path(root, &target.sha1);
+    if super::ensure_path(root, &archive).is_ok() {
+      let _ = fs::remove_file(archive);
+    }
   }
   clear_target(root);
 }
@@ -85,9 +100,12 @@ pub(crate) fn discard_target(root: &Path) {
 /// may be moved or deleted while the dialog is open.
 pub(crate) fn stage_archive(source: &Path, root: &Path, sha1: &str) -> USTBLResult<()> {
   let target = archive_path(root, sha1);
+  super::ensure_path(root, &target)?;
   let parent = target.parent().unwrap();
+  super::ensure_path(root, parent)?;
   fs::create_dir_all(parent).at_in(parent, root)?;
   let temporary = target.with_extension("zip.part");
+  super::ensure_path(root, &temporary)?;
   fs::copy(source, &temporary).at_in(&temporary, root)?;
   fs::rename(&temporary, &target).at_in(&target, root)?;
   Ok(())

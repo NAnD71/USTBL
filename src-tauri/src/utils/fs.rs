@@ -82,6 +82,37 @@ pub fn same_existing_path(left: &Path, right: &Path) -> bool {
   canonical_path_eq(&left, &right)
 }
 
+/// Walk every component from the trusted `root` down to `path` and refuse any
+/// reparse point, so a lexically safe path cannot be redirected outside `root`.
+/// Missing trailing components are allowed for paths that are about to be
+/// created; the trusted root itself is not revalidated.
+pub fn ensure_no_reparse_point(root: &Path, path: &Path) -> io::Result<()> {
+  let Ok(relative) = path.strip_prefix(root) else {
+    return Err(io::Error::new(
+      io::ErrorKind::InvalidData,
+      format!("path outside the root: {}", path.display()),
+    ));
+  };
+  let mut current = root.to_path_buf();
+  for component in relative.components() {
+    current.push(component);
+    let is_reparse = fs::symlink_metadata(&current)
+      .map(|metadata| metadata.file_type().is_symlink())
+      .unwrap_or(false);
+    if is_reparse {
+      log::warn!(
+        "Refused a path through a reparse point: {}",
+        current.display()
+      );
+      return Err(io::Error::new(
+        io::ErrorKind::InvalidData,
+        format!("reparse point in path: {}", current.display()),
+      ));
+    }
+  }
+  Ok(())
+}
+
 /// Recursively copies the contents of a source directory to a destination directory.
 ///
 /// # Examples

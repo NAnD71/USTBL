@@ -126,7 +126,9 @@ fn release_path(root: &Path) -> PathBuf {
 /// The saved record, or `None` when it is missing, unreadable or from another
 /// schema. A damaged record is the same as no record: the caller falls back.
 pub fn read(root: &Path) -> Option<Release> {
-  let bytes = std::fs::read(release_path(root)).ok()?;
+  let path = release_path(root);
+  super::ensure_path(root, &path).ok()?;
+  let bytes = std::fs::read(path).ok()?;
   serde_json::from_slice::<Release>(&bytes)
     .ok()
     .filter(|release| release.schema == RELEASE_SCHEMA)
@@ -134,11 +136,16 @@ pub fn read(root: &Path) -> Option<Release> {
 
 pub async fn write(root: &Path, release: &Release) -> io::Result<()> {
   let path = release_path(root);
+  super::ensure_path(root, &path)?;
+  if let Some(parent) = path.parent() {
+    super::ensure_path(root, parent)?;
+  }
   save_json_async(release, &path).await.at_in(&path, root)
 }
 
 pub fn remove(root: &Path) -> io::Result<()> {
   let path = release_path(root);
+  super::ensure_path(root, &path)?;
   match std::fs::remove_file(&path) {
     Err(error) if error.kind() != io::ErrorKind::NotFound => Err(tag(error, &path, Some(root))),
     _ => Ok(()),

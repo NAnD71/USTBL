@@ -10,6 +10,7 @@ use super::manifest::PackObject;
 use crate::error::{USTBLError, USTBLResult};
 use crate::file_error::{tag, AtPath};
 use crate::instance::helpers::modpack::baseline::hash_file;
+use crate::utils::fs::ensure_no_reparse_point;
 use sha1::{Digest, Sha1};
 use std::collections::HashMap;
 use std::fs::File;
@@ -116,9 +117,15 @@ pub struct VerifiedPack {
 /// `verify_pack` before it is used, and that read yields the hash. (Hashing
 /// the bytes as they are written does not work: `ZipWriter` seeks back to
 /// patch each entry's local header once its data is written.)
-pub fn build_pack(objects: &[PackObject], dest: &Path) -> USTBLResult<()> {
+pub fn build_pack(objects: &[PackObject], dest: &Path, root: &Path) -> USTBLResult<()> {
   let mut ordered: Vec<&PackObject> = objects.iter().collect();
   ordered.sort_by(|a, b| a.sha1.cmp(&b.sha1));
+  for object in &ordered {
+    if object.path.starts_with(root) {
+      ensure_no_reparse_point(root, &object.path)
+        .map_err(|error| tag(error, &object.path, Some(root)))?;
+    }
+  }
 
   let mut zip = ZipWriter::new(File::create(dest).at(dest)?);
   let mut buffer = vec![0u8; COPY_BUFFER];
@@ -138,6 +145,10 @@ pub fn build_pack(objects: &[PackObject], dest: &Path) -> USTBLResult<()> {
       .start_file(format!("objects/{}", object.sha1), options)
       .map_err(zip_error(dest))?;
 
+    if object.path.starts_with(root) {
+      ensure_no_reparse_point(root, &object.path)
+        .map_err(|error| tag(error, &object.path, Some(root)))?;
+    }
     let mut source = File::open(&object.path).at(&object.path)?;
     let mut hasher = Sha1::new();
     loop {
@@ -167,8 +178,9 @@ pub fn rebuild_pack(
   dest: &Path,
   expected_sha1: &str,
   expected_size: u64,
+  root: &Path,
 ) -> USTBLResult<()> {
-  build_pack(objects, dest)?;
+  build_pack(objects, dest, root)?;
   let built = verify_pack(dest, None)?;
   if built.sha1 != expected_sha1 || built.size != expected_size {
     let _ = std::fs::remove_file(dest);
@@ -308,6 +320,24 @@ mod tests {
     }
   }
 
+  #[cfg(any(windows, unix))]
+  fn dir_link(link: &Path, target: &Path) -> bool {
+    #[cfg(windows)]
+    {
+      std::process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+    }
+    #[cfg(unix)]
+    {
+      std::os::unix::fs::symlink(target, link).is_ok()
+    }
+  }
+
   #[test]
   fn the_pack_holds_each_object_under_its_hash_and_reads_back() {
     let root = dir();
@@ -320,7 +350,7 @@ mod tests {
     ];
     let dest = root.join("pack.zip");
 
-    build_pack(&objects, &dest).unwrap();
+    build_pack(&objects, &dest, &root).unwrap();
     let built = verify_pack(&dest, None).unwrap();
 
     assert_eq!(built.size, fs::metadata(&dest).unwrap().len());
@@ -344,6 +374,38 @@ mod tests {
     let _ = fs::remove_dir_all(root);
   }
 
+  #[cfg(any(windows, unix))]
+  #[test]
+  fn building_a_pack_refuses_an_instance_junction_to_an_external_file() {
+    let root = dir();
+    let outside = dir();
+    let secret = outside.join("secret.txt");
+    fs::write(&secret, b"outside").unwrap();
+    let link = root.join("link");
+    if !dir_link(&link, &outside) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+    let objects = vec![PackObject {
+      sha1: hex::encode(Sha1::digest(b"outside")),
+      path: link.join("secret.txt"),
+      stored: true,
+    }];
+    let dest = root.join("pack.zip");
+
+    let result = build_pack(&objects, &dest, &root);
+
+    assert!(result.is_err());
+    assert_eq!(fs::read(&secret).unwrap(), b"outside");
+    assert!(!dest.exists());
+    #[cfg(windows)]
+    let _ = fs::remove_dir(&link);
+    #[cfg(unix)]
+    let _ = fs::remove_file(&link);
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(outside);
+  }
+
   /// §5.2: the local header length must be computable from the entry name
   /// and its own starting offset alone, so the server's verify step (and our
   /// own self-check) can derive every data offset from the central directory
@@ -360,7 +422,7 @@ mod tests {
       object(&root, "b", &b"beta".repeat(10_000), true),
     ];
     let dest = root.join("pack.zip");
-    build_pack(&objects, &dest).unwrap();
+    build_pack(&objects, &dest, &root).unwrap();
 
     let mut zip = zip::ZipArchive::new(File::open(&dest).unwrap()).unwrap();
     for object in &objects {
@@ -406,7 +468,7 @@ mod tests {
       object(&root, "b", &b"beta".repeat(1000), true),
     ];
     let dest = root.join("pack.zip");
-    build_pack(&objects, &dest).unwrap();
+    build_pack(&objects, &dest, &root).unwrap();
     let built = verify_pack(&dest, None).unwrap();
     assert_eq!(verify_pack(&dest, Some(&built.sha1)).unwrap(), built);
     let _ = fs::remove_dir_all(root);
@@ -545,7 +607,7 @@ mod tests {
     let root = dir();
     let objects = vec![object(&root, "a", b"alpha", false)];
     let dest = root.join("pack.zip");
-    build_pack(&objects, &dest).unwrap();
+    build_pack(&objects, &dest, &root).unwrap();
     assert!(verify_pack(&dest, Some(&"0".repeat(40))).is_err());
     let _ = fs::remove_dir_all(root);
   }
@@ -558,7 +620,7 @@ mod tests {
       object(&root, "b", b"beta beta beta beta", false),
     ];
     let dest = root.join("pack.zip");
-    build_pack(&objects, &dest).unwrap();
+    build_pack(&objects, &dest, &root).unwrap();
     let built = verify_pack(&dest, None).unwrap();
 
     // Flip a byte inside the first (stored or deflated) entry's compressed
@@ -589,7 +651,7 @@ mod tests {
       object(&root, "c", &b"gamma".repeat(500), false),
     ];
     let built = |objects: &[PackObject], dest: PathBuf| {
-      build_pack(objects, &dest).unwrap();
+      build_pack(objects, &dest, &root).unwrap();
       hash_file(&dest).unwrap()
     };
     let first = built(&objects, root.join("one.zip"));
@@ -642,7 +704,7 @@ mod tests {
       object(&root, "empty", b"", false),
     ];
     let dest = root.join("pack.zip");
-    build_pack(&objects, &dest).unwrap();
+    build_pack(&objects, &dest, &root).unwrap();
     let expected = VerifiedPack {
       sha1: "9f3f8b0b84b9c4e8096f7ec8fb035b1bb3311146".into(),
       size: 1_003_380,
@@ -663,11 +725,11 @@ mod tests {
       object(&root, "b", &noise(5_000, 3), true),
     ];
     let first = root.join("first.zip");
-    build_pack(&objects, &first).unwrap();
+    build_pack(&objects, &first, &root).unwrap();
     let recorded = verify_pack(&first, None).unwrap();
 
     let dest = root.join("pack.zip");
-    rebuild_pack(&objects, &dest, &recorded.sha1, recorded.size).unwrap();
+    rebuild_pack(&objects, &dest, &recorded.sha1, recorded.size, &root).unwrap();
     assert_eq!(hash_file(&dest).unwrap(), (recorded.sha1, recorded.size));
     let _ = fs::remove_dir_all(root);
   }
@@ -679,15 +741,16 @@ mod tests {
     let root = dir();
     let objects = vec![object(&root, "a", b"alpha alpha", false)];
     let first = root.join("first.zip");
-    build_pack(&objects, &first).unwrap();
+    build_pack(&objects, &first, &root).unwrap();
     let recorded = verify_pack(&first, None).unwrap();
 
     let dest = root.join("pack.zip");
-    let error = rebuild_pack(&objects, &dest, &"0".repeat(40), recorded.size).unwrap_err();
+    let error = rebuild_pack(&objects, &dest, &"0".repeat(40), recorded.size, &root).unwrap_err();
     assert!(error.0.contains("发生了变化"), "{}", error.0);
     assert!(!dest.exists());
 
-    let error = rebuild_pack(&objects, &dest, &recorded.sha1, recorded.size + 1).unwrap_err();
+    let error =
+      rebuild_pack(&objects, &dest, &recorded.sha1, recorded.size + 1, &root).unwrap_err();
     assert!(error.0.contains("发生了变化"), "{}", error.0);
     assert!(!dest.exists());
     let _ = fs::remove_dir_all(root);
@@ -698,7 +761,7 @@ mod tests {
     let root = dir();
     let objects = vec![object(&root, "a", b"before", false)];
     fs::write(&objects[0].path, b"after").unwrap();
-    assert!(build_pack(&objects, &root.join("p.zip")).is_err());
+    assert!(build_pack(&objects, &root.join("p.zip"), &root).is_err());
     let _ = fs::remove_dir_all(root);
   }
 

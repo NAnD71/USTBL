@@ -37,6 +37,7 @@ use crate::instance::modpack_update::sources::{
   campus_base_remote, campus_client, loader_slug, CAMPUS_API,
 };
 use crate::storage::{save_json_async, write_json_atomic};
+use crate::utils::fs::ensure_no_reparse_point;
 use crate::utils::web::build_part_upload_client;
 use futures::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -373,7 +374,9 @@ where
       async move {
         let file = tokio::task::spawn_blocking(move || {
           let on_disk = checked_disk_path(&root, &picked)?;
-          let (sha1, size) = hash_file(&root.join(on_disk)).rooted(&root)?;
+          let path = root.join(on_disk);
+          ensure_no_reparse_point(&root, &path).rooted(&root)?;
+          let (sha1, size) = hash_file(&path).rooted(&root)?;
           Ok::<LocalFile, USTBLError>(LocalFile {
             path: picked.path,
             key: FileKey { sha1, size },
@@ -855,8 +858,8 @@ async fn prepare(
   } else {
     report(app, instance_id, Stage::Packing, 0, 1);
     fs::create_dir_all(dir).at(dir)?;
-    let (objects, target) = (needed.clone(), job_paths.pack.clone());
-    tokio::task::spawn_blocking(move || build_pack(&objects, &target))
+    let (objects, target, pack_root) = (needed.clone(), job_paths.pack.clone(), root.clone());
+    tokio::task::spawn_blocking(move || build_pack(&objects, &target, &pack_root))
       .await
       .map_err(|e| USTBLError(e.to_string()))??;
     // §13.2: the self-check runs before anything is sent to the platform, so
@@ -1255,8 +1258,13 @@ fn staged_adopt_release(root: &Path) -> PathBuf {
   root.join(".ustbl-update").join("adopt-release.json")
 }
 
+fn ensure_publish_path(root: &Path, path: &Path) -> USTBLResult<()> {
+  ensure_no_reparse_point(root, path).map_err(|error| tag(error, path, Some(root)).into())
+}
+
 fn read_adoption_pending(root: &Path) -> USTBLResult<Option<AdoptionPending>> {
   let path = adopt_pending_path(root);
+  ensure_publish_path(root, &path)?;
   match fs::read(&path) {
     Ok(bytes) => {
       let pending = serde_json::from_slice::<AdoptionPending>(&bytes)
@@ -1281,7 +1289,9 @@ fn io_invalid_data(error: serde_json::Error, path: &Path, root: &Path) -> USTBLE
 }
 
 fn write_adoption_pending(root: &Path, pending: &AdoptionPending) -> USTBLResult<()> {
-  write_json_atomic(&adopt_pending_path(root), pending)?;
+  let path = adopt_pending_path(root);
+  ensure_publish_path(root, &path)?;
+  write_json_atomic(&path, pending)?;
   Ok(())
 }
 
@@ -1291,6 +1301,9 @@ fn clear_adoption_pending(root: &Path) {
     staged_adopt_release(root),
     adopt_pending_path(root),
   ] {
+    if ensure_publish_path(root, &path).is_err() {
+      continue;
+    }
     if let Err(error) = fs::remove_file(&path) {
       if error.kind() != std::io::ErrorKind::NotFound {
         log::warn!("Could not clear publish adoption staging {path:?}: {error}");
@@ -1301,14 +1314,18 @@ fn clear_adoption_pending(root: &Path) {
 
 fn restore_publish_deletes(root: &Path, paths: &[String]) -> USTBLResult<()> {
   let backup = root.join(".ustbl-update").join("publish-deleted");
+  ensure_publish_path(root, &backup)?;
   for path in paths.iter().rev() {
     safe_relative(path)?;
     let source = root.join(path);
+    let saved = backup.join(path);
+    ensure_publish_path(root, &source)?;
+    ensure_publish_path(root, &saved)?;
     if source.exists() {
       continue;
     }
-    let saved = backup.join(path);
     if let Some(parent) = source.parent() {
+      ensure_publish_path(root, parent)?;
       fs::create_dir_all(parent).at_in(parent, root)?;
     }
     fs::copy(&saved, &source)
@@ -1319,6 +1336,8 @@ fn restore_publish_deletes(root: &Path, paths: &[String]) -> USTBLResult<()> {
 }
 
 fn install_staged_record(staged: &Path, target: &Path, root: &Path) -> USTBLResult<()> {
+  ensure_publish_path(root, staged)?;
+  ensure_publish_path(root, target)?;
   if staged.exists() {
     fs::rename(staged, target).at_in(staged, root)?;
   }
@@ -1370,6 +1389,13 @@ pub(crate) async fn settle_adoption(app: &AppHandle, instance_id: &str) -> USTBL
     return Ok(());
   }
 
+  // Check every final target before replacing any of the adoption records.
+  ensure_publish_path(
+    &root,
+    &root.join(crate::instance::constants::INSTANCE_CFG_FILE_NAME),
+  )?;
+  ensure_publish_path(&root, &root.join(BASELINE_FILE_NAME))?;
+  ensure_publish_path(&root, &root.join(release::meta_name()))?;
   install_staged_record(
     &staged_adopt_baseline(&root),
     &root.join(BASELINE_FILE_NAME),
@@ -1417,8 +1443,15 @@ fn backup_and_delete_publish_files_inner(
     return Ok(0);
   }
   let backup = root.join(".ustbl-update").join("publish-deleted");
+  ensure_publish_path(root, &adopt_pending_path(root))?;
+  ensure_publish_path(root, &backup)?;
   if !current_adoption && adopt_pending_path(root).exists() {
     return Err(InstanceError::ModpackUpdateBusy.into());
+  }
+  for path in paths {
+    safe_relative(path)?;
+    ensure_publish_path(root, &root.join(path))?;
+    ensure_publish_path(root, &backup.join(path))?;
   }
   if backup.exists() {
     fs::remove_dir_all(&backup).at_in(&backup, root)?;
@@ -1427,12 +1460,17 @@ fn backup_and_delete_publish_files_inner(
     let source = root.join(path);
     let target = backup.join(path);
     if let Some(parent) = target.parent() {
+      ensure_publish_path(root, parent)?;
       fs::create_dir_all(parent).at_in(parent, root)?;
     }
+    ensure_publish_path(root, &source)?;
+    ensure_publish_path(root, &target)?;
     fs::copy(&source, &target).at_in(&source, root)?;
   }
   for path in paths {
-    if let Err(error) = fs::remove_file(root.join(path)) {
+    let source = root.join(path);
+    ensure_publish_path(root, &source)?;
+    if let Err(error) = fs::remove_file(&source) {
       log::warn!("Could not remove published delete target {path}: {error}");
       if let Err(restore_error) = restore_publish_deletes(root, paths) {
         log::error!("Could not restore published delete targets: {restore_error:?}");
@@ -1506,6 +1544,13 @@ async fn try_adopt(
   let delete_paths = publish_delete_paths(&root, &compared, &remote)?;
   if !is_fast_forward_after_delete_rules(&compared, &remote) {
     return Ok((Adoption::LocalChanged, 0));
+  }
+  for path in [
+    staged_adopt_baseline(&root),
+    staged_adopt_release(&root),
+    adopt_pending_path(&root),
+  ] {
+    ensure_publish_path(&root, &path)?;
   }
   let mut baseline = ModpackBaseline::build(&new_origin, loader, compared.next_baseline);
   if let Some(components) = remote.components.clone() {
@@ -1615,6 +1660,32 @@ mod tests {
       fs::write(file, content).unwrap();
     }
     root
+  }
+
+  #[cfg(any(windows, unix))]
+  fn dir_link(link: &Path, target: &Path) -> bool {
+    #[cfg(windows)]
+    {
+      std::process::Command::new("cmd")
+        .args(["/c", "mklink", "/J"])
+        .arg(link)
+        .arg(target)
+        .status()
+        .map(|status| status.success())
+        .unwrap_or(false)
+    }
+    #[cfg(unix)]
+    {
+      std::os::unix::fs::symlink(target, link).is_ok()
+    }
+  }
+
+  #[cfg(any(windows, unix))]
+  fn unlink_dir_link(link: &Path) {
+    #[cfg(windows)]
+    let _ = fs::remove_dir(link);
+    #[cfg(unix)]
+    let _ = fs::remove_file(link);
   }
 
   #[test]
@@ -2081,6 +2152,89 @@ mod tests {
       .unwrap();
     assert!(!adopt_pending_path(&root).exists());
     let _ = fs::remove_dir_all(root);
+  }
+
+  #[cfg(any(windows, unix))]
+  #[test]
+  fn publish_deletes_refuse_a_junction_to_outside_the_instance() {
+    let root = instance_dir(&[("config/old.txt", "local")]);
+    let outside = instance_dir(&[("old.txt", "outside")]);
+    fs::create_dir_all(root.join(".ustbl-update")).unwrap();
+    let link = root.join(".ustbl-update/publish-deleted");
+    if !dir_link(&link, &outside) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+
+    let result = backup_and_delete_publish_files(&root, &["config/old.txt".into()]);
+
+    assert!(result.is_err());
+    assert_eq!(
+      fs::read_to_string(outside.join("old.txt")).unwrap(),
+      "outside"
+    );
+    assert_eq!(
+      fs::read_to_string(root.join("config/old.txt")).unwrap(),
+      "local"
+    );
+    unlink_dir_link(&link);
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(outside);
+  }
+
+  #[cfg(any(windows, unix))]
+  #[test]
+  fn publish_restore_refuses_to_read_a_backup_through_a_junction() {
+    let root = instance_dir(&[]);
+    let outside = instance_dir(&[("config/old.txt", "outside-backup")]);
+    fs::create_dir_all(root.join(".ustbl-update")).unwrap();
+    let link = root.join(".ustbl-update/publish-deleted");
+    if !dir_link(&link, &outside) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+
+    let result = restore_publish_deletes(&root, &["config/old.txt".into()]);
+
+    assert!(result.is_err());
+    assert!(!root.join("config/old.txt").exists());
+    assert_eq!(
+      fs::read_to_string(outside.join("config/old.txt")).unwrap(),
+      "outside-backup"
+    );
+    unlink_dir_link(&link);
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(outside);
+  }
+
+  #[cfg(any(windows, unix))]
+  #[test]
+  fn adoption_metadata_refuses_a_junction_at_the_update_dir() {
+    let root = instance_dir(&[]);
+    let outside = instance_dir(&[("adopt-pending.json", "outside")]);
+    let link = root.join(".ustbl-update");
+    if !dir_link(&link, &outside) {
+      println!("cannot create a junction or symlink for this test");
+      return;
+    }
+    let pending = AdoptionPending {
+      schema: ADOPTION_PENDING_SCHEMA,
+      phase: AdoptionPhase::Deleting,
+      paths: Vec::new(),
+      origin: followed(OriginPlatform::Campus, "p", "1.21.1"),
+      label: "2".into(),
+    };
+
+    let result = write_adoption_pending(&root, &pending);
+
+    assert!(result.is_err());
+    assert_eq!(
+      fs::read_to_string(outside.join("adopt-pending.json")).unwrap(),
+      "outside"
+    );
+    unlink_dir_link(&link);
+    let _ = fs::remove_dir_all(root);
+    let _ = fs::remove_dir_all(outside);
   }
 
   #[test]

@@ -4,6 +4,7 @@ use super::baseline::BaselineFile;
 use super::text::is_text_path;
 use crate::file_error::{tag, AtPath};
 use crate::instance::modpack_update::remote::UPDATE_DIR;
+use crate::utils::fs::ensure_no_reparse_point;
 use sha1::{Digest, Sha1};
 use std::fs;
 use std::io;
@@ -17,8 +18,13 @@ pub fn base_path(root: &Path, sha1: &str) -> PathBuf {
   base_dir(root).join(sha1)
 }
 
+fn ensure_safe_path(root: &Path, path: &Path) -> io::Result<()> {
+  ensure_no_reparse_point(root, path).map_err(|error| tag(error, path, Some(root)))
+}
+
 pub fn load(root: &Path, sha1: &str) -> io::Result<Option<Vec<u8>>> {
   let path = base_path(root, sha1);
+  ensure_safe_path(root, &path)?;
   match fs::read(&path) {
     Ok(bytes) => Ok(Some(bytes)),
     Err(error) if error.kind() == io::ErrorKind::NotFound => Ok(None),
@@ -36,9 +42,13 @@ pub fn store(root: &Path, file: &BaselineFile, bytes: &[u8]) -> io::Result<()> {
       "invalid text baseline",
     ));
   }
-  fs::create_dir_all(base_dir(root)).at_in(&base_dir(root), root)?;
+  let dir = base_dir(root);
+  ensure_safe_path(root, &dir)?;
+  fs::create_dir_all(&dir).at_in(&dir, root)?;
   let target = base_path(root, &file.sha1);
+  ensure_safe_path(root, &target)?;
   let temporary = target.with_extension(uuid::Uuid::new_v4().to_string());
+  ensure_safe_path(root, &temporary)?;
   fs::write(&temporary, bytes).at_in(&temporary, root)?;
   let result = fs::rename(&temporary, &target).at_in(&target, root);
   let _ = fs::remove_file(temporary);
@@ -49,6 +59,7 @@ pub fn store(root: &Path, file: &BaselineFile, bytes: &[u8]) -> io::Result<()> {
 /// A disabled file reads from its `.disabled` variant.
 pub fn cache(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
   let dir = base_dir(root);
+  ensure_safe_path(root, &dir)?;
   fs::create_dir_all(&dir).at_in(&dir, root)?;
   for file in files {
     if file.sha1.is_empty() {
@@ -64,6 +75,7 @@ pub fn cache(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
       file.path.clone()
     };
     let source = root.join(&variant);
+    ensure_safe_path(root, &source)?;
     let bytes = match fs::read(&source) {
       Ok(bytes) if is_text_path(&file.path, &bytes) => bytes,
       Ok(_) => continue,
@@ -75,8 +87,10 @@ pub fn cache(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
       continue;
     }
     let target = base_path(root, &file.sha1);
+    ensure_safe_path(root, &target)?;
     if !target.exists() {
       let temporary = target.with_extension("tmp");
+      ensure_safe_path(root, &temporary)?;
       fs::write(&temporary, bytes).at_in(&temporary, root)?;
       fs::rename(&temporary, &target).at_in(&target, root)?;
     }
@@ -87,6 +101,7 @@ pub fn cache(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
 /// Remove copies no longer referenced by a committed baseline.
 pub fn prune(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
   let dir = base_dir(root);
+  ensure_safe_path(root, &dir)?;
   fs::create_dir_all(&dir).at_in(&dir, root)?;
   let referenced = files
     .iter()
@@ -98,6 +113,7 @@ pub fn prune(root: &Path, files: &[BaselineFile]) -> io::Result<()> {
     if entry.file_type().at_in(&entry.path(), root)?.is_file()
       && !referenced.contains(&entry.file_name().to_string_lossy().to_string())
     {
+      ensure_safe_path(root, &entry.path())?;
       fs::remove_file(entry.path()).at_in(&entry.path(), root)?;
     }
   }

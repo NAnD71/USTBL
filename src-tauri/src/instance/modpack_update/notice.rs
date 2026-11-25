@@ -25,6 +25,7 @@ fn notice_path(instance_dir: &std::path::Path) -> PathBuf {
 /// Returns `None` when no notice was recorded yet or the file is unreadable.
 pub fn read_update_notice(instance_dir: &std::path::Path) -> Option<UpdateNotice> {
   let path = notice_path(instance_dir);
+  super::ensure_path(instance_dir, &path).ok()?;
   let data = fs::read_to_string(path).ok()?;
   serde_json::from_str(&data).ok()
 }
@@ -34,8 +35,9 @@ pub fn write_update_notice(
   instance_dir: &std::path::Path,
   notice: &UpdateNotice,
 ) -> USTBLResult<()> {
-  write_json_atomic(&notice_path(instance_dir), notice)
-    .map_err(|_| InstanceError::FileOperationError)?;
+  let path = notice_path(instance_dir);
+  super::ensure_path(instance_dir, &path)?;
+  write_json_atomic(&path, notice).map_err(|_| InstanceError::FileOperationError)?;
   Ok(())
 }
 

@@ -52,7 +52,9 @@ fn load_listing_cache(
   version_id: &str,
   archive_sha1: &str,
 ) -> Option<ListingCache> {
-  let bytes = fs::read(listing_cache_path(root, version_id)).ok()?;
+  let path = listing_cache_path(root, version_id);
+  super::ensure_path(root, &path).ok()?;
+  let bytes = fs::read(path).ok()?;
   let cache: ListingCache = serde_json::from_slice(&bytes).ok()?;
   (cache.schema == LISTING_SCHEMA
     && cache.platform == platform
@@ -63,10 +65,13 @@ fn load_listing_cache(
 
 fn write_listing_cache(root: &Path, cache: &ListingCache) -> std::io::Result<()> {
   let path = listing_cache_path(root, &cache.version_id);
+  super::ensure_path(root, &path)?;
   if let Some(parent) = path.parent() {
+    super::ensure_path(root, parent)?;
     fs::create_dir_all(parent)?;
   }
   let temp = path.with_extension("json.tmp");
+  super::ensure_path(root, &temp)?;
   fs::write(&temp, serde_json::to_vec(cache)?)?;
   fs::rename(temp, path)
 }

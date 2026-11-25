@@ -27,3 +27,8 @@ pub mod remote;
 pub mod restore;
 pub mod sources;
 pub mod text_diff;
+
+pub(crate) fn ensure_path(root: &std::path::Path, path: &std::path::Path) -> std::io::Result<()> {
+  crate::utils::fs::ensure_no_reparse_point(root, path)
+    .map_err(|error| crate::file_error::tag(error, path, Some(root)))
+}

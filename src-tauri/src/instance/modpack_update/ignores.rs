@@ -152,7 +152,12 @@ impl Ignores {
 }
 
 fn on_disk(root: &Path, path: &str) -> bool {
-  root.join(path).is_file() || root.join(format!("{path}{DISABLED_SUFFIX}")).is_file()
+  [
+    root.join(path),
+    root.join(format!("{path}{DISABLED_SUFFIX}")),
+  ]
+  .iter()
+  .any(|file| super::ensure_path(root, file).is_ok() && file.is_file())
 }
 
 fn canonical(entry: &IgnoreEntry) -> IgnoreEntry {
@@ -191,7 +196,11 @@ pub fn merge_regions(mut regions: Vec<Region>) -> Vec<Region> {
 }
 
 pub fn read(root: &Path) -> Ignores {
-  let recovered: crate::storage::RecoveredJson<Ignores> = recover_json(&ignores_path(root));
+  let path = ignores_path(root);
+  if super::ensure_path(root, &path).is_err() {
+    return Ignores::default();
+  }
+  let recovered: crate::storage::RecoveredJson<Ignores> = recover_json(&path);
   if recovered.value.schema == SCHEMA {
     recovered.value
   } else {
@@ -216,9 +225,11 @@ pub fn read_valid_for_release(
 
 pub fn write(root: &Path, ignores: &Ignores) -> io::Result<()> {
   let path = ignores_path(root);
+  super::ensure_path(root, &path)?;
   match ignores.to_bytes() {
     Some(bytes) => {
       if let Some(parent) = path.parent() {
+        super::ensure_path(root, parent)?;
         fs::create_dir_all(parent).at_in(parent, root)?;
       }
       write_atomic(&path, &bytes, Durability::Sync).at_in(&path, root)
